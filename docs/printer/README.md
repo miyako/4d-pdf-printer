@@ -1,16 +1,18 @@
 # PSA v4 feasibility prototype
 
-**Gate: not established for a named-user Windows service before login or after sign-out.**
+**Gate: queue registration failed in the first reported Windows 11 experiment;
+named-user service activation remains untested.**
 This is a diagnostic Windows 11 24H2+ (build 26100) PSA application, not a legacy
 v4 driver, PDF implementation, finished installer, or 4D plugin. It deliberately
-does not launch a renderer. No Windows 11/4D print-runtime host was available during
-development. A successful hosted build does not close the gate.
+does not launch a renderer. The first user-run package installation reported
+success, but neither diagnostic queue appeared. A successful hosted build does
+not close this earlier registration gate. See [runtime evidence](validation.md).
 
 | Claim category | Evidence / limit |
 |---|---|
 | Confirmed by source | PSA v4 API is introduced in 26100 / UniversalApiContract 19. Manifest supports OXPS, multiple endpoints and OS Save As. Packaged-app-to-Win32-service RPC is a documented transport pattern; logoff is a task cancellation reason. See [sources](sources.md). |
 | Compile checked | [Actual successful Windows run and artifact evidence](validation.md): native MSVC compile, probe argument tests, direct DLL factory smoke test and MakeAppx manifest/package validation. This is not printer installation, PDC semantic validation or service activation. |
-| Runtime observed on Windows 11 | **None.** No installed queue, actual captured job, Save As result, 4D print, worker handoff, or pre-login/sign-out execution is claimed. |
+| Runtime observed on Windows 11 | User reports package installation/Status Ok and both installed manifest declarations, with the intended PDC bytes, but **neither queue exists**. No job, Save As, service, 4D or renderer test has run. See [details and limits](validation.md). |
 | Still unverified | Queue/package visibility to a service identity; session-0 activation; source MIME type and ticket semantics; `DOCINFO.lpszOutput` to PSA target mapping; no-file endpoint target behavior; allowed authenticated external coordinator transport; cancellation/termination/repeated activation. |
 
 ## Implemented boundaries
@@ -23,7 +25,8 @@ prototype. PSA activation is entirely the platform's print contract.
 There are no NuGet/runtime framework packages, full-trust capability, network
 capability, broad filesystem capability, tray app, or process-spawning code.
 
-The package registers two clearly diagnostic queues:
+The manifest declares two clearly diagnostic queues. Their creation has **not**
+been demonstrated; the first runtime experiment did not create either queue:
 
 | Queue | Manifest | Behavior |
 |---|---|---|

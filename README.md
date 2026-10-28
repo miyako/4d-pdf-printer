@@ -13,6 +13,9 @@ Windows build automation. It does not render PDFs or launch an external helper.
 **The headless service gate is open:** PSA activation and an allowed external
 coordinator handoff must be demonstrated for a named-user Windows service before
 desktop login and after sign-out. A hosted Windows build is not that evidence.
+The first user-run Windows 11 installation reported package success but created
+neither diagnostic queue; **queue registration is an earlier unresolved gate**.
+No printing/service result is implied.
 See the [runtime runbook](docs/printer/runbook.md),
 [source-backed findings](docs/printer/sources.md), and
 [conditional worker interface](docs/printer/handoff.md).

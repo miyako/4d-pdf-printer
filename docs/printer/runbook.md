@@ -1,6 +1,8 @@
 # Windows 11 runtime evidence runbook
 
-**No runtime rows below have been executed.** Use synthetic pages only. Do not
+**The first user-run installation did not create either diagnostic queue.**
+The printing/service rows below remain unexecuted; see [observed evidence](validation.md).
+Use synthetic pages only. Do not
 upload account names, paths, private print tickets/documents, credentials or full
 Windows event logs to this public repository.
 
@@ -11,6 +13,11 @@ Record OS edition/build/patch, package version/hash, commit, test case, UTC
 timestamps and a synthetic job token in a private evidence bundle. Record local
 identity/session and package/queue visibility **privately**; sanitize them before
 sharing. Label every observation as observed, failed, or not run.
+Establish native CPU architecture separately from the package/process architecture
+(for example, `Get-CimInstance Win32_Processor | Select-Object Architecture`).
+The artifact targets x64; successful x64 package installation alone does not
+establish a native x64 host. Do not diagnose an architecture failure without
+the host evidence.
 
 Install the diagnostic MSIX for the desktop test identity. Separately determine
 whether supported deployment can register it for the **named service identity**
@@ -41,7 +48,49 @@ synthetic job name to `jobTitleSha256`; `workflowSessionSha256` is not a GDI job
 ID. The probe logs numeric GDI job ID, UTC FILETIME, process/session and stage.
 Titles, accounts, queue names and destinations are not written to its JSON log.
 
-## Desktop cases
+## Queue-registration gate before desktop printing
+
+Package installation success and `Get-AppxPackage` Status Ok are not queue
+registration evidence. Check the expected names against **unfiltered**
+`Get-Printer` output under the same test identity before submitting:
+
+```powershell
+$expected = @('PSA Diagnostic OXPS (Save As)', 'PSA Diagnostic Capture (no file UI)')
+$installedPrinters = @(Get-Printer -ErrorAction Stop)
+$missing = @($expected | Where-Object { $_ -notin $installedPrinters.Name })
+if ($missing.Count) {
+    throw "Queue registration not established; stop printing tests. Missing: $($missing -join ', ')"
+}
+```
+
+If queues are missing, preserve the original deployment evidence before changing
+or reinstalling anything. Confirm both virtual-printer declarations in the
+**installed** manifest (including enclosing Extension Category/EntryPoint and
+application multi-instance attribute), and the installed PDC's existence/hash.
+Compare to the same build's unpacked package rather than assuming a same-version
+rebuild replaced its installed contents. LF/CRLF hash variants of the unchanged
+diagnostic PDC are documented in [validation evidence](validation.md).
+
+Use the deployment activity/correlation ID to obtain its complete event chain,
+without filtering individual messages for the package name or PDC:
+
+```powershell
+# Use the ActivityId of the relevant package Add operation, not an unrelated install.
+Get-AppxLog -ActivityId '<deployment-activity-guid>' |
+    Select-Object TimeCreated, Id, LevelDisplayName, Message
+```
+
+Retain this output privately and redact user SIDs, account names and paths before
+sharing. Microsoft's [deployment troubleshooting guide](https://learn.microsoft.com/en-us/windows/win32/appxpkg/troubleshooting)
+starts with AppXDeploymentServer/Operational. An empty PrintService/Admin query
+does not prove a successful deployment extension handler (DEH) operation. Neither
+does the absence of handler messages in keyword-filtered deployment output.
+If the complete activity still does not expose a handler/PDC result, report the
+gap rather than inferring that the handler ran, was absent, or that the PDC was
+accepted. Do not add a queue manually or change capabilities, print drivers,
+runtime trust level or PDC contents to make this gate appear to pass.
+
+## Desktop cases (only after the queue-registration gate passes)
 
 ```powershell
 $probe = (Resolve-Path .\printer\out\build\Release\PrintProbe.exe).Path

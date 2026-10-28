@@ -35,12 +35,74 @@ the activation ABI/typed factory consumer, and MakeAppx's requirement that
 virtual-printer workflow applications declare multi-instance support.
 The portable invariant check now enforces that manifest declaration.
 
-## Not run / not proven
+## User-reported Windows 11 queue-registration experiment
 
-No signing/trust/installation, Windows 11 queue creation, semantic PDC acceptance,
-real XPS/OXPS capture, Save As, native output-path mapping, named-service account
+Reported 2026-10-28, separately from hosted CI. Environment: Windows 11
+Enterprise 25H2, build 26200.9711, local SDK 26100 build/signing. No account
+identifiers, machine names, install paths or raw event logs are retained here.
+Native processor architecture has not yet been established: an installed x64
+package does not distinguish native x64 from an emulated x64 process on ARM64.
+This prototype/build artifact is intentionally x64-only.
+
+| Observation | Evidence / limit |
+|---|---|
+| Local development package installation | User reports trusted development certificate, successful `Add-AppxPackage`, and package `Miyako.PsaFeasibility` version 0.1.0.0 x64 with Status Ok. This is not a successful printer installation. |
+| Installed manifest | Both intended `PrintSupportVirtualPrinter` nodes are present in namespace `http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2`, with intended queue names/URIs, OXPS input and `Config\DiagnosticPdc.xml`. Only the interactive node declares `OutputFileTypes="oxps"`. |
+| Installed PDC | File exists. Reported SHA256 equals the Windows CI package's CRLF bytes exactly; no further content dump is needed to establish those bytes. This does **not** establish semantic acceptance by the print deployment handler. |
+| Printer enumeration | Unfiltered `Get-Printer` lists only the two inbox document writers, neither diagnostic queue. **Queue-registration gate failed.** No wildcard-filter diagnosis is warranted. |
+| PrintService/Admin | No matching events in the queried interval. This is not proof of handler success or absence. |
+| Package deployment events | Full activity-correlated output includes fresh Add, signature validation, initial preferred-version selection and successful Add completion, with no error or explicit print-handler invocation/result. This does not establish whether the handler ran or accepted the PDC. |
+| Printing, service, 4D and worker | Not attempted. No workflow activation or downstream success/failure can be inferred from this earlier installation-stage result. |
+
+Expected SHA256 for the unchanged `DiagnosticPdc.xml` at commit `7318067`:
+
+```text
+LF:   7eede5839af460ed587b8f48232d1cbf6dce1364f7060dc9332986b452bb2925
+CRLF: e38b25327081ec310b21c5cb077b018ccc8c71090d7ccd09e42bcf6b9a6b4e2c
+```
+
+The reported installed hash is the CRLF variant, exactly matching the downloaded
+Windows package from [run 40650171835](https://github.com/miyako/4d-pdf-printer/actions/runs/40650171835).
+The difference from the LF git checkout is line endings, not changed XML content.
+
+### Source inspection and remaining discriminator
+
+The [manifest specification](https://learn.microsoft.com/en-us/windows-hardware/drivers/devapps/msix-manifest-specification-print-support-virtual-printer)
+requires a package-relative, valid PDC and describes queue creation by a
+deployment extension handler. The declared namespace, category, relative path,
+OXPS preference and application multi-instance flag match the documented/sample
+shape. The reduced PDC contains the same four standard feature categories as
+the [Microsoft UWP sample](https://github.com/microsoft/print-oem-samples/blob/652343e4980cc962fb099496125cf749aee51c71/PSASamples/UWP/CSharp/PrintSupportApp/Config/PrinterPdc.xml):
+media size, orientation, resolution and color. The inspected sources do not
+establish an omitted mandatory feature or a required network/full-trust
+capability for this local virtual-printer registration. Sample IPP networking
+permissions are not justification for adding them.
+
+This comparison is **not** a Windows PDC semantic validator or evidence that the
+runtime handler implemented/accepted this registration. No behavior patch is
+justified by these observations alone. The full Add operation's
+activity-correlated events, obtained using [Get-AppxLog](https://learn.microsoft.com/en-us/powershell/module/appx/get-appxlog)
+without a per-message keyword filter, still do not expose a handler result.
+Establish the native host architecture before selecting any architecture-specific
+next test. Architecture is an unresolved discriminator, **not a diagnosis**.
+Handler-specific diagnostic evidence remains needed; do not infer a feature
+prohibition or fix native job code that has not been reached.
+
+Microsoft's [deployment troubleshooting reference](https://learn.microsoft.com/en-us/windows/win32/appxpkg/troubleshooting)
+documents error 0x80073CFB for non-bitwise-identical rebuilt/resigned packages
+with an existing identity/version. Preserve installed-vs-built evidence before
+any controlled update. Merely rerunning installation is not proof that the DEH
+reran. The observed fresh Add/initial preferred-version selection does not
+support a pre-existing same-version registration as the explanation for this
+initial failure.
+No removal/reinstallation or manual printer/driver workaround is prescribed.
+
+## Still not run / not proven
+
+Windows 11 queue creation has not succeeded. Semantic PDC acceptance, real
+XPS/OXPS capture, Save As, native output-path mapping, named-service account
 registration/activation, pre-login execution, post-sign-out execution, 4D printing,
-external coordinator IPC or PDF rendering has been observed in this printer PR.
+external coordinator IPC and PDF rendering remain unobserved in this printer PR.
 No PDF size or repeated-job reliability metric has been measured.
 
 Use the [runtime runbook](runbook.md) to close those gaps. Build or direct COM
