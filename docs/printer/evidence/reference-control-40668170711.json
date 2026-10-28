@@ -1,0 +1,79 @@
+{
+  "kind": "Summary of sanitized hosted evidence; not a replacement for the original artifact",
+  "run": "https://github.com/miyako/4d-pdf-printer/actions/runs/40668170711",
+  "recipeCommit": "26efcb32412eb22d607de8ee946852b65405a96b",
+  "upstreamCommit": "652343e4980cc962fb099496125cf749aee51c71",
+  "runtimeEvidence": {
+    "artifactId": 12806504439,
+    "artifactZipSha256": "bdcc328958be5ec41de607a1c786011de403f98be8c92a538e575b0c4d570d56",
+    "originalRuntimeJsonSha256": "09bbedb2b16914e3c4ba552268ac571662aae2d455ed2b068bc1f13a319ac379"
+  },
+  "unsignedControl": {
+    "artifactId": 12806758379,
+    "artifactZipSha256": "cc37c4401425003a8fbaf2fe963a397d7773bc09c86906c728488463f0a09790",
+    "file": "PsaReferenceControl.arm64.msix",
+    "sha256": "e780082071c909bbf677ad60a78109a67af725742c093530d91c297189e9f52f",
+    "name": "Miyako.PsaReferenceControl",
+    "publisher": "CN=PsaReferenceControlDev",
+    "version": "1.1.14.0",
+    "architecture": "arm64",
+    "mainPeFiles": { "ARM64": 5, "ILONLY_AnyCPU": 1 },
+    "mainAndFourFrameworksPeFiles": { "ARM64": 20, "ILONLY_AnyCPU": 2 }
+  },
+  "host": {
+    "osArchitecture": "Arm64",
+    "processArchitecture": "Arm64",
+    "osVersion": "10.0.26200",
+    "build": 26200,
+    "kernelFileVersion": "10.0.26100.9711 (WinBuild.160101.0800)",
+    "powershellVersion": "5.1.26100.9711",
+    "runnerImage": "20261022.194.1",
+    "clientOS": true,
+    "elevated": true
+  },
+  "deployment": {
+    "registration": "installed",
+    "status": "ok",
+    "signature": "validated-by-appx-deployment",
+    "frameworkSignaturesVerified": 4,
+    "dependencyAttempts": 3,
+    "dependenciesAlreadySatisfied": 1,
+    "sharedRegistrationAttempts": 1
+  },
+  "printers": {
+    "beforeCount": 1,
+    "beforeKnownInboxQueues": ["Microsoft Print to PDF"],
+    "beforeVirtualPdfPrinter": false,
+    "beforeVirtualPostScriptPrinter": false,
+    "afterCount": 3,
+    "afterKnownInboxQueues": ["Microsoft Print to PDF"],
+    "afterVirtualPdfPrinter": true,
+    "afterVirtualPostScriptPrinter": true,
+    "outcome": "present",
+    "observations": 1,
+    "intervalSeconds": 10
+  },
+  "cleanup": {
+    "overallRun": "failure",
+    "runtime": "completed",
+    "outcome": "cleanup-failed",
+    "packagesRemoved": 1,
+    "sharedFrameworkRegistrationsRemoved": 0,
+    "completed": false,
+    "errorStage": "cleanup-package",
+    "errorCode": "exact-package-cleanup-failed",
+    "hresult": "0x80073CF3",
+    "exceptionType": "System.IO.IOException",
+    "developerLeafRemoved": true,
+    "signingKeyCleanupStep": "success",
+    "noBroaderOrForcedCleanupAttempted": true
+  },
+  "limits": {
+    "uiLaunched": false,
+    "dynamicRegistrationInvoked": false,
+    "printOrSaveAsJobSubmitted": false,
+    "prototypeInstalledOnThisRunner": false,
+    "referenceTestedOnUserHost": false,
+    "serviceOr4DExecutionTested": false
+  }
+}

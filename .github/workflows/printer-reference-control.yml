@@ -1,0 +1,106 @@
+name: Microsoft printer reference control
+on:
+  push:
+    paths: ['printer/reference-control/**', 'docs/printer/reference-control.md', '.github/workflows/printer-reference-control.yml']
+  pull_request:
+    paths: ['printer/reference-control/**', 'docs/printer/reference-control.md', '.github/workflows/printer-reference-control.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    name: ARM64 UWP cross-build on VS2022 x64
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check pinned source and isolation rules
+        shell: pwsh
+        run: |
+          ./printer/reference-control/tests/Check-Source.ps1
+          ./printer/reference-control/tests/Check-Signing.ps1
+          ./printer/reference-control/tests/Check-HostedGuard.ps1
+          ./printer/reference-control/tests/Check-Verifier.ps1
+          ./printer/reference-control/tests/Check-CleanupOwnership.ps1
+      - name: Build pinned official sample
+        shell: pwsh
+        run: ./printer/reference-control/Build-Control.ps1 -OutputDirectory "$env:RUNNER_TEMP\rc"
+      - name: Preserve build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-control-build-evidence
+          path: |
+            ${{ runner.temp }}/rc/build.log
+            ${{ runner.temp }}/rc/build-evidence.json
+            ${{ runner.temp }}/rc/host-evidence.json
+            ${{ runner.temp }}/rc/source-comparison.json
+            ${{ runner.temp }}/rc/source/original-files.json
+            ${{ runner.temp }}/rc/upstream.json
+            ${{ runner.temp }}/rc/Microsoft-LICENSE.txt
+            ${{ runner.temp }}/rc/resources/resource-evidence.json
+            ${{ runner.temp }}/rc/resources/packaged-AppxManifest.xml
+          if-no-files-found: warn
+      - name: Unsigned ARM64 control
+        uses: actions/upload-artifact@v4
+        with:
+          name: microsoft-reference-control-unsigned-arm64
+          path: ${{ runner.temp }}/rc/delivery/
+          if-no-files-found: error
+  registration:
+    name: Static registration on native Windows 11 ARM64
+    needs: build
+    runs-on: windows-11-arm
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: microsoft-reference-control-unsigned-arm64
+          path: ${{ runner.temp }}/control
+      - name: Sign ephemeral copy without exporting private key
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostArchitecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+          if ($hostArchitecture -ne 'Arm64') { throw "Expected native ARM64 OS, got $hostArchitecture" }
+          $package = "$env:RUNNER_TEMP\control\PsaReferenceControl.arm64.msix"
+          ./printer/reference-control/Sign-Control.ps1 -PackagePath $package `
+            -ExpectedSha256 (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash `
+            -OutputDirectory "$env:RUNNER_TEMP\signed-control"
+      - name: Bounded static install and unfiltered queue comparison
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $certificates = @(Get-ChildItem "$env:RUNNER_TEMP\signed-control" -File -Filter *.cer)
+          $packages = @(Get-ChildItem "$env:RUNNER_TEMP\signed-control" -File -Filter *.msix)
+          if ($certificates.Count -ne 1 -or $packages.Count -ne 1) { throw 'Expected exactly one newly signed control and certificate.' }
+          ./printer/reference-control/Test-HostedRegistration.ps1 `
+            -PackagePath $packages[0].FullName -CertificatePath $certificates[0].FullName `
+            -DependencyDirectory "$env:RUNNER_TEMP\control\Dependencies\arm64" `
+            -OutputPath "$env:RUNNER_TEMP\runtime-result.json"
+      - name: Remove only this job's local signing key
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $signed = "$env:RUNNER_TEMP\signed-control"
+          if (Test-Path -LiteralPath $signed) {
+            $certificates = @(Get-ChildItem -LiteralPath $signed -File -Filter *.cer)
+            if ($certificates.Count -gt 1) { throw 'Unexpected signing output; refusing ambiguous certificate cleanup.' }
+            if ($certificates.Count -eq 1) {
+              $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($certificates[0].FullName)
+              if ($certificate.Subject -ne 'CN=PsaReferenceControlDev') { throw 'Unexpected certificate subject.' }
+              $key = "Cert:\CurrentUser\My\$($certificate.Thumbprint)"
+              if (Test-Path -LiteralPath $key) { Remove-Item -LiteralPath $key -DeleteKey }
+            }
+          }
+      - name: Sanitized native registration evidence (never private keys or raw logs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-control-native-arm64-registration
+          path: |
+            ${{ runner.temp }}/runtime-result.json
+            ${{ runner.temp }}/signed-control/*.json
+          if-no-files-found: warn

@@ -1,0 +1,27 @@
+Microsoft reference control source:
+  microsoft/print-oem-samples
+  Commit 652343e4980cc962fb099496125cf749aee51c71
+  https://github.com/microsoft/print-oem-samples/tree/652343e4980cc962fb099496125cf749aee51c71
+  Copyright (c) Microsoft Corporation. All rights reserved.
+  MIT License; the complete upstream license is distributed as Microsoft-LICENSE.txt.
+
+The package identity and publisher are adapted for development signing.
+This is not a Microsoft-signed distribution, endorsement, or production release.
+Application code, static printer declarations, PDC/PDR, assets and resources
+are fetched from the pinned archive, not replaced with the prototype.
+
+Upstream build dependencies retain their own licenses, not this source license:
+  Microsoft.NETCore.UniversalWindowsPlatform 6.2.10
+    https://www.nuget.org/packages/Microsoft.NETCore.UniversalWindowsPlatform/6.2.10
+  Microsoft.UI.Xaml 2.4.0
+    https://www.nuget.org/packages/Microsoft.UI.Xaml/2.4.0
+  Microsoft.Windows.CppWinRT 2.0.250303.1
+    https://www.nuget.org/packages/Microsoft.Windows.CppWinRT/2.0.250303.1
+  Microsoft.Windows.ImplementationLibrary 1.0.250325.1
+    https://www.nuget.org/packages/Microsoft.Windows.ImplementationLibrary/1.0.250325.1
+  Microsoft .NET Native Framework/Runtime 2.2 and Microsoft VCLibs 14.0
+    Official ARM64 framework APPXs, unmodified and signed by their publishers.
+    Supplied by the upstream NuGet/Visual Studio build and governed by their
+    applicable Microsoft redistributable terms; not relicensed as our own code.
+
+No license for the repository's original product code is selected here.
