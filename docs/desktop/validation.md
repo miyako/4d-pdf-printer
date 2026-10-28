@@ -46,8 +46,71 @@ native probe's exact StartDoc/context helpers to distinguish that.
 The recorded package SHA256 was
 `c0d0db30e0e5effb3e27953e723aed41522d8f87151b74db0487172da7124ea0`.
 The runner again reported native ARM64, OS build 26200 and submitter session 2.
-Diagnostic metadata was preserved. No service/configuration, profile, COM
+The diagnostic metadata snapshot was unchanged. No service/configuration, profile, COM
 apartment or foreground-launch workaround was attempted.
+
+## Final bounded follow-up: stop condition
+
+[Run 40703572402](https://github.com/miyako/4d-pdf-printer/actions/runs/40703572402)
+at `d58bb2f4e0c8c08d842935865adec0dfa902566b` used **separate disposable ARM64
+hosts** for desktop launch and independent direct GDI submission. A coordinator
+from one experiment could not satisfy readiness in the other.
+
+All three native build/package jobs passed: x64 and both ARM64 jobs. Both ARM64
+runtime attempts installed the new identity and registered both queues, then
+returned `blocked`, with `pdfProduced=false` and no captured PSA records.
+
+| Independent observation | Exact result |
+|---|---|
+| Packaged desktop launcher | Operation creation returned; the combined wait/GetResults step threw `0x80010117` at `coordinator-launch-wait-get-results`. `launchResultAvailable=false`: no launch-result/error-details object was obtained. This does not establish whether the coordinator executable was started. |
+| Direct synthetic GDI | CreateDC succeeded; `gdi-start-doc` recorded signed StartDoc return `-1`, immediate LastError `3003` and HRESULT `0x80070BBB`. The native helper clears LastError before the call and captures it before other API calls. |
+| Own caller context, both hosts | Not AppContainer; expected package identity verified; token/process session 2; apartment type 1 (MTA), qualifier 0; LSA query NTSTATUS 0, actual logon type 2; profile-hive open error 0; current-user package query error 122/count 1. |
+
+The preceding raw-context run
+[40703033308](https://github.com/miyako/4d-pdf-printer/actions/runs/40703033308)
+at `c00455f` independently recorded the same signed StartDoc `-1`/3003 and own
+context. Actual LSA logon type 2 is stronger evidence than merely observing
+session 2, but is not proof of a ready shell, complete profile initialization or
+an activatable PSA environment. Neither generic error establishes a root cause.
+No captured record is not proof that Run was never entered.
+
+Exact sanitized acceptance records, including checked-out source, package/EXE
+hashes and the submitted synthetic title hash where submission was attempted:
+
+- [Desktop launcher](evidence/40703572402-arm64-desktop.json)
+- [Independent GDI/PSA attempt](evidence/40703572402-arm64-psa.json)
+
+No OXPS source was captured, so no OXPS-content hash or conversion assertion is
+available. Different package/EXE hashes identify separate native builds on the
+two hosts, not interchangeable artifacts. The wrapper's .NET exception is not
+the native failure; the typed client stage and HRESULT above are authoritative.
+
+`diagnosticPreserved=true` compares package-name/status snapshots before and
+after. An empty snapshot also compares equal: this does **not** establish that
+the old package was installed, nor test its LocalState contents or update
+lifecycle. The prototype uses a separate identity and never requests removal or
+an update of the diagnostic package.
+
+## Smallest proposed ordinary-desktop gate
+
+**For creator review only; no user-host run or trust change is authorized.**
+The next genuine observation would use the existing `-PsaBootstrapOnly` mode on
+an explicitly approved ordinary Windows 11 24H2+ desktop, matching native
+architecture, with the coordinator initially absent. Development trust and the
+new current-user prototype installation require separate explicit approval;
+there is no service/profile/COM/caller substitution.
+
+One original synthetic page to the no-file-UI endpoint must demonstrate positive
+StartDoc, actual PSA metadata/launch result, authenticated AppContainer RPC and
+the expected missing-config rejection with failed/canceled completion. It must
+not show a picker, claim PDF success or turn a dummy print into production
+startup. This can only close the **partial** actual-background gate. The full
+desktop startup, in-flight RPC, auth/title/replay/cancel gate still needs its own
+measured pass before destination/worker/publication implementation resumes.
+
+No new startup bridge is implemented or selected. An app-service startup bridge
+would require a separate primary-source-backed design review and would not
+itself prove PSA activation.
 
 ## What remains unverified
 

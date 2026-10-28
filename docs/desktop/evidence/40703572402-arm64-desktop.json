@@ -1,0 +1,44 @@
+{
+  "schema": "4d-pdf-printer.desktop-acceptance",
+  "version": 1,
+  "scope": "handoff-gate-only",
+  "result": "blocked",
+  "pdfProduced": false,
+  "osBuild": 26200,
+  "architecture": "Arm64",
+  "processArchitecture": "Arm64",
+  "processSessionId": 2,
+  "sourceCommit": "d58bb2f4e0c8c08d842935865adec0dfa902566b",
+  "packageSha256": "26bb1360b8c8a6c4b90a37262f22e9938e603f74617c5eb75bf950b75ee557cf",
+  "diagnosticPreserved": true,
+  "client": {
+    "schema": "4d-pdf-printer.desktop-gate",
+    "version": 1,
+    "stage": "coordinator-launch-wait-get-results",
+    "pdfProduced": false,
+    "callerAppContainer": false,
+    "callerSession": 2,
+    "expectedPackage": true,
+    "apartmentType": 1,
+    "apartmentQualifier": 0,
+    "processArchitecture": "arm64",
+    "executableSha256": "0ed326a2c64676337a8db7d90736fd22d2c4ea65bb7c4ad829c4dc9af450708f",
+    "submissionContext": {
+      "version": 1,
+      "tokenSessionId": 2,
+      "logonQueryNtStatus": 0,
+      "logonType": 2,
+      "profileHiveOpenWin32Error": 0,
+      "packageQueryWin32Error": 122,
+      "currentUserPackageCount": 1
+    },
+    "launchResultAvailable": false,
+    "hresult": -2147417833
+  },
+  "psa": [],
+  "error": {
+    "stage": "native-gate",
+    "hresult": "0x80131501",
+    "exceptionType": "System.Management.Automation.RuntimeException"
+  }
+}
