@@ -1,11 +1,18 @@
 cmake_minimum_required(VERSION 3.24)
 project(pdf_render_worker VERSION 0.1.0 LANGUAGES CXX)
 
-if(WIN32 AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-  message(FATAL_ERROR "The initial Windows prototype supports x64 only")
-endif()
-if(WIN32 AND NOT CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|amd64|x86_64|X86_64")
-  message(FATAL_ERROR "Windows ARM64 is not supported by this prototype")
+if(WIN32)
+  set(worker_windows_arch "${CMAKE_SYSTEM_PROCESSOR}")
+  if(CMAKE_VS_PLATFORM_NAME)
+    set(worker_windows_arch "${CMAKE_VS_PLATFORM_NAME}")
+  elseif(CMAKE_CXX_COMPILER_ARCHITECTURE_ID)
+    set(worker_windows_arch "${CMAKE_CXX_COMPILER_ARCHITECTURE_ID}")
+  endif()
+  string(TOLOWER "${worker_windows_arch}" worker_windows_arch)
+  if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8 OR
+     NOT worker_windows_arch MATCHES "^(x64|amd64|x86_64|arm64|aarch64)$")
+    message(FATAL_ERROR "Windows builds require native x64 or ARM64 targets (not ARM64EC)")
+  endif()
 endif()
 
 find_package(PkgConfig REQUIRED)
@@ -15,6 +22,10 @@ pkg_check_modules(ARCHIVE REQUIRED IMPORTED_TARGET libarchive>=3.6)
 pkg_get_variable(GXPS_FAIL_CLOSED libgxps worker_fail_closed)
 if(NOT GXPS_FAIL_CLOSED STREQUAL "1")
   message(FATAL_ERROR "Use renderer/ports/libgxps overlay or tools/build-libgxps.py: stock 0.3.2 silently drops failed images")
+endif()
+pkg_get_variable(GXPS_INTERLEAVED libgxps worker_interleaved)
+if(NOT GXPS_INTERLEAVED STREQUAL "1")
+  message(FATAL_ERROR "Use renderer/ports/libgxps overlay #7 or tools/build-libgxps.py: interleaved resource fixes are required")
 endif()
 
 add_executable(pdf-render-worker src/main.cpp src/output.cpp src/status.cpp)
@@ -30,9 +41,16 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
   find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
+  set(PDF_RENDER_WORKER_TEST_EXECUTABLE "" CACHE FILEPATH
+    "Optional packaged worker to exercise instead of the build-tree worker")
+  if(PDF_RENDER_WORKER_TEST_EXECUTABLE)
+    set(worker_contract_executable "${PDF_RENDER_WORKER_TEST_EXECUTABLE}")
+  else()
+    set(worker_contract_executable "$<TARGET_FILE:pdf-render-worker>")
+  endif()
   add_test(NAME worker-contract
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_worker.py"
-      --worker "$<TARGET_FILE:pdf-render-worker>"
+      --worker "${worker_contract_executable}"
       --output-tests "$<TARGET_FILE:output-tests>"
       --schema "${CMAKE_CURRENT_SOURCE_DIR}/status-v1.schema.json")
   set_tests_properties(worker-contract PROPERTIES TIMEOUT 180)

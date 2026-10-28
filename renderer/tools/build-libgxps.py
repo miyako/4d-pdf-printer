@@ -28,7 +28,7 @@ def main():
         source.extractall(work, filter="data")
     source = work / "libgxps-0.3.2"
     patches = Path(__file__).resolve().parents[1] / "ports" / "libgxps"
-    for patch in ("meson-compat.patch", "fail-closed.patch"):
+    for patch in ("meson-compat.patch", "fail-closed.patch", "interleaved.patch"):
         subprocess.run(["patch", "-p1", "--input", str(patches / patch)], cwd=source, check=True)
     subprocess.run(["meson", "setup", str(work / "build"), str(source),
                     "--prefix", str(prefix), "--libdir", "lib", "-Ddisable-introspection=true",

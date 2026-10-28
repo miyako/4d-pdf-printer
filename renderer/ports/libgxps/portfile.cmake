@@ -7,7 +7,7 @@ vcpkg_download_distfile(ARCHIVE
 )
 vcpkg_extract_source_archive(SOURCE_PATH
     ARCHIVE "${ARCHIVE}"
-    PATCHES meson-compat.patch fail-closed.patch
+    PATCHES meson-compat.patch fail-closed.patch interleaved.patch
 )
 vcpkg_configure_meson(SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
