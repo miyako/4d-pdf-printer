@@ -18,7 +18,8 @@ or trust change is requested by these results.
 
 The resumed **milestone-A product proof** is a separate standalone target:
 [size/fidelity/lifetime harness](product-proof.md). It requires no new package
-or RPC bridge, but has not yet been compiled/exercised on Windows. The first
+or RPC bridge. Its single x64/native-ARM64 compile/unit batch passed; actual
+desktop comparison and worker/resource measurements remain unexecuted. The first
 usable prototype still requires both silent application destinations and Save As.
 
 ## Early gate

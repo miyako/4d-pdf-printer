@@ -1,10 +1,11 @@
 # Product proof harness (milestone A)
 
-**Implementation is not yet Windows-native compiled or exercised. No product
-size, fidelity or repeated-printing result is claimed.** The current machine is
-macOS; Windows execution and a matching **locally available** renderer require
-separate creator approval. No new CI, installation, signing, trust change,
-runtime download or dependency build is authorized by this document.
+**The own-code harness is Windows-native compiled and unit-checked; the actual
+product experiment is unexecuted. No product size, fidelity or repeated-printing
+result is claimed.** Normal-desktop execution and a matching **locally
+available** renderer require separate creator approval. No installation,
+signing, trust change, runtime download or dependency build is authorized by this
+document.
 The creator separately authorized **one own-code-only compile/unit CI batch**:
 manual dispatch only, no automatic push/PR runs or historical activation steps.
 That batch does not execute this document's Windows printing/worker experiment.
@@ -13,6 +14,39 @@ This is a standalone original-input experiment, **not a Save-As-only usable
 printer**. Silent application-supplied output and the interactive endpoint both
 remain mandatory for the later first usable prototype. Existing activation
 failures and exact source SHAs remain in [validation.md](validation.md).
+
+## Exact compile/unit checkpoint
+
+The **single** authorized manual batch
+[40735110227](https://github.com/miyako/4d-pdf-printer/actions/runs/40735110227)
+passed at source `6cf816ee4a80cdc2319f77ecb29cbdaea7954a45`:
+
+| Native target | Actual observations |
+|---|---|
+| x64, job122981444543 | Own-code MSVC/SDK26100 build and PE check; one CTest protocol/framing/hash unit; six PowerShell consent/subprocess tests; 45 Python tests discovered, 44 passed/one actual-Poppler smoke skipped. |
+| ARM64, job122981445082 | Same own-code build/PE/native CTest and helper units on native Windows ARM64; same Python 44 passed/one skipped. |
+
+[x64 build receipt](evidence/40735110227-x64.json) and
+[ARM64 build receipt](evidence/40735110227-arm64.json) contain exact own-code
+executable hashes, source identity and `sourceDirty:false`. Artifacts are
+JSON/text evidence only, not downloadable proof executables or renderer trees.
+The workflow is manual-only; the source commit's skip-ci marker suppressed
+automatic push/PR builds of the older cumulative printer diff. No second batch,
+MIDL/MSIX creation, renderer/dependency build/cache, binary upload, signing/trust,
+installation, GDI submission or PSA activation occurred.
+
+Local macOS validation ran all 45 comparator tests, including a real Poppler
+interoperability case with an original stdlib-generated Type3 glyph and vector
+primitive. Identical PDFs passed the automated content/render checks but had
+ratio1.0, correctly failing the size gate. That is tool interoperability, **not
+a Microsoft comparison or product improvement**. Six local consent/subprocess
+units and the existing 36 build-support cases also passed.
+
+Not executed: original Windows GDI/EMF fixture generation/replay, old diagnostic
+control, Microsoft PDF baseline, actual worker launch/repetitions/faults through
+this supervisor, resource thresholds, manual fidelity review or either new
+printing endpoint. Compiling Job Object code is not execution evidence for its
+worker lifecycle. No result here closes the historical activation/service gates.
 
 ## What this measures
 
