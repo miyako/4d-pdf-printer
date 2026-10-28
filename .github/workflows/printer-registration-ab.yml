@@ -1,0 +1,34 @@
+name: Printer static registration discriminator
+on:
+  workflow_dispatch:
+  push:
+    paths: ['printer/diagnostics/**', '.github/workflows/printer-registration-ab.yml']
+  pull_request:
+    paths: ['printer/diagnostics/**', '.github/workflows/printer-registration-ab.yml']
+permissions:
+  contents: read
+jobs:
+  registration:
+    runs-on: windows-11-arm
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build unchanged native product baseline
+        shell: pwsh
+        run: ./printer/build.ps1 -Architecture ARM64 -VisualStudioVersion 2026
+      - name: Bounded baseline and conditional PDC-only fresh Add
+        shell: powershell
+        run: |
+          ./printer/diagnostics/Test-RegistrationAB.ps1 `
+            -ProductDirectory ./printer/out/arm64 `
+            -OutputDirectory "$env:RUNNER_TEMP/registration-ab"
+      - name: Sanitized static registration evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: printer-static-registration-ab
+          path: |
+            ${{ runner.temp }}/registration-ab/registration-ab.json
+            ${{ runner.temp }}/registration-ab/*-installed.xml
+            printer/out/arm64/build-evidence.json
+          if-no-files-found: warn
