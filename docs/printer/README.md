@@ -2,6 +2,8 @@
 
 **Gate: queue registration failed in the first reported Windows 11 experiment;
 named-user service activation remains untested.**
+The isolated [Microsoft reference control](reference-control.md) investigates
+static registration without changing the product or replacing its package.
 This is a diagnostic Windows 11 24H2+ (build 26100) PSA application, not a legacy
 v4 driver, PDF implementation, finished installer, or 4D plugin. It deliberately
 does not launch a renderer. The first user-run package installation reported

@@ -14,6 +14,9 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - name: Check pinned source and isolation rules
+        shell: pwsh
+        run: ./printer/reference-control/tests/Check-Source.ps1
       - name: Build pinned official sample
         shell: pwsh
         run: ./printer/reference-control/Build-Control.ps1 -OutputDirectory "$env:RUNNER_TEMP\rc"
@@ -25,15 +28,16 @@ jobs:
           path: |
             ${{ runner.temp }}/rc/build.log
             ${{ runner.temp }}/rc/build-evidence.json
+            ${{ runner.temp }}/rc/host-evidence.json
+            ${{ runner.temp }}/rc/source-comparison.json
             ${{ runner.temp }}/rc/source/original-files.json
             ${{ runner.temp }}/rc/upstream.json
+            ${{ runner.temp }}/rc/Microsoft-LICENSE.txt
+            ${{ runner.temp }}/rc/resources/resource-evidence.json
           if-no-files-found: warn
       - name: Unsigned ARM64 control
         uses: actions/upload-artifact@v4
         with:
           name: microsoft-reference-control-unsigned-arm64
-          path: |
-            ${{ runner.temp }}/rc/PsaReferenceControl.arm64.appx
-            ${{ runner.temp }}/rc/Microsoft-LICENSE.txt
-            ${{ runner.temp }}/rc/packages/**/Dependencies/arm64/*.appx
+          path: ${{ runner.temp }}/rc/delivery/
           if-no-files-found: error
