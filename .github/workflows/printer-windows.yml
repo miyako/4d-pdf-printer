@@ -1,0 +1,28 @@
+name: Printer Windows build
+on:
+  push:
+    paths: ['printer/**', 'docs/printer/**', '.github/workflows/printer-windows.yml']
+  pull_request:
+    paths: ['printer/**', 'docs/printer/**', '.github/workflows/printer-windows.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check diagnostic source invariants
+        shell: pwsh
+        run: ./printer/tests/Check-Source.ps1
+      - name: Build native probe and AppContainer package
+        shell: pwsh
+        run: ./printer/build.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: printer-feasibility-unsigned-x64
+          path: |
+            printer/out/PsaDiagnostic.msix
+            printer/out/build/Release/PrintProbe.exe
+            printer/out/package/
+          if-no-files-found: error

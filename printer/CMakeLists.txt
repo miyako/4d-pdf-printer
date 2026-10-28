@@ -1,0 +1,26 @@
+cmake_minimum_required(VERSION 3.24)
+project(PsaFeasibility LANGUAGES CXX)
+if(NOT WIN32 OR NOT MSVC)
+  message(FATAL_ERROR "Build with MSVC and Windows SDK 10.0.26100.0 on Windows.")
+endif()
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
+add_executable(PrintProbe probe/PrintProbe.cpp)
+target_compile_definitions(PrintProbe PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_compile_options(PrintProbe PRIVATE /W4 /WX /EHsc)
+target_link_libraries(PrintProbe PRIVATE gdi32 winspool advapi32 ole32)
+
+add_library(PsaTask SHARED psa/Task.cpp psa/Task.def)
+add_executable(PsaDiagnostic WIN32 psa/App.cpp)
+foreach(target PsaTask PsaDiagnostic)
+  target_compile_definitions(${target} PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN
+    NOMINMAX WINAPI_FAMILY=WINAPI_FAMILY_APP)
+  target_compile_options(${target} PRIVATE /W4 /WX /EHsc /permissive-)
+  target_link_options(${target} PRIVATE /APPCONTAINER)
+  target_link_libraries(${target} PRIVATE windowsapp)
+endforeach()
+
+enable_testing()
+add_test(NAME probe-arguments COMMAND PrintProbe --self-test)

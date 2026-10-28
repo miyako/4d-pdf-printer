@@ -1,0 +1,4 @@
+LIBRARY PsaTask
+EXPORTS
+    DllGetActivationFactory
+    DllCanUnloadNow
