@@ -7,6 +7,12 @@ on:
     branches: [main]
     paths: ['renderer/**', 'docs/renderer/**', '.github/workflows/renderer-windows.yml']
   workflow_dispatch:
+    inputs:
+      architecture:
+        description: Native architecture to execute (PRs always execute both)
+        type: choice
+        options: [all, x64, arm64]
+        default: all
 
 permissions:
   contents: read
@@ -17,11 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - arch: x64
-            runner: windows-2022
-          - arch: arm64
-            runner: windows-11-arm
+        include: ${{ fromJSON(inputs.architecture == 'arm64' && '[{"arch":"arm64","runner":"windows-11-arm"}]' || inputs.architecture == 'x64' && '[{"arch":"x64","runner":"windows-2022"}]' || '[{"arch":"x64","runner":"windows-2022"},{"arch":"arm64","runner":"windows-11-arm"}]') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     defaults:
@@ -40,22 +42,11 @@ jobs:
         id: prepare
         run: |
           & renderer/tools/build-windows.ps1 -Architecture '${{ matrix.arch }}' -Stage Prepare
-      - name: Restore architecture/toolchain/recipe-specific vcpkg binary cache
-        id: dependency-cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: renderer/build-vcpkg-cache-${{ matrix.arch }}/
-          # Exact keys only; vcpkg compiler/ABI tracking remains enabled too.
-          key: renderer-vcpkg-v1-${{ matrix.arch }}-${{ env.VCPKG_COMMIT }}-${{ steps.prepare.outputs.toolchain }}-${{ hashFiles('renderer/vcpkg.json', 'renderer/ports/**', 'renderer/tools/build-windows.ps1') }}
+      # Public-repo caches can be fork-readable. Keep dependency binaries local
+      # to this job until covered-source/distribution gates are resolved.
       - name: Build dynamic target dependencies and worker
         run: |
           & renderer/tools/build-windows.ps1 -Architecture '${{ matrix.arch }}' -Stage Build
-      - name: Save reusable dependencies before exercising the contract
-        if: always() && steps.prepare.outcome == 'success' && steps.dependency-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: renderer/build-vcpkg-cache-${{ matrix.arch }}/
-          key: ${{ steps.dependency-cache.outputs.cache-primary-key }}
       - name: Assemble local runtime, verify PE closure/notices, execute native contract
         run: |
           & renderer/tools/build-windows.ps1 -Architecture '${{ matrix.arch }}' -Stage Test

@@ -67,7 +67,12 @@ the source recipe. Compiler/SDK and resulting ABIs still belong in build evidenc
 Use **dynamic** `x64-windows` or `arm64-windows`, never static or ARM64EC.
 CMake deliberately requires both fail-closed and interleaving patch markers.
 `Prepare` recreates only the selected architecture's build/runtime/evidence
-trees; installed dependencies and ABI-keyed binary caches are retained.
+trees; installed dependencies and local ABI-keyed binary caches are retained.
+Public CI does not restore/upload dependency binary caches: public-repository
+caches can be readable from fork PRs, and covered-source/distribution gates
+apply to this route too. Per-job ephemeral caches are allowed; this policy is
+not a conclusion that caching generally is unlawful or that deletion grants
+license clearance.
 
 The [Windows workflow](../../.github/workflows/renderer-windows.yml) builds,
 executes synthetic tests against the assembled native runtime with a restricted
@@ -77,6 +82,8 @@ notices/SBOMs plus recipe/compiler/SDK provenance. Each architecture has separat
 `build-evidence-<arch>` trees. The external development root is
 `renderer/build-runtime-<arch>/`, not an installed vcpkg `bin/` directory.
 CI uploads **evidence only** as `renderer-windows-<arch>-evidence`; no binaries.
+Manual dispatch can select `architecture=arm64` or `x64` to avoid a redundant
+cold build when only one architecture needs new evidence; PRs run both.
 `cmake --install` still installs the executable only, not this assembled tree.
 See [the exact layout and consumer contract](delivery.md).
 

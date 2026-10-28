@@ -5,6 +5,10 @@ clearance or production packaging promise. The renderer owns the dependency
 assembly/inventory; desktop integration consumes it instead of maintaining a
 second packager. Public CI uploads evidence only, never the executable/DLL tree,
 private captures, fonts, PDFs, screenshots or raw document diagnostics.
+Remote dependency binary-cache upload/restore is disabled as well: publicly
+retrievable CI caches are inside this project's conservative distribution gate.
+Local ephemeral per-job caches/build trees are fine. This boundary is not a
+blanket legal judgment about caching and does not establish license compliance.
 
 ## Architecture and runtime root
 
