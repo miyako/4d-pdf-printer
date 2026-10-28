@@ -52,12 +52,13 @@ if ($Stage -eq 'Prepare') {
         $tools = @(Get-ChildItem "$($candidate.installationPath)\VC\Tools\MSVC\14.44.*" -Directory |
             Sort-Object { [version]$_.Name } -Descending | Where-Object {
                 (Test-Path "$($_.FullName)\bin\Hostx64\$Architecture\cl.exe") -and
-                (Test-Path "$($_.FullName)\bin\Hostx64\x64\cl.exe")
+                (Test-Path "$($_.FullName)\lib\$Architecture\msvcrt.lib") -and
+                (Test-Path "$($_.FullName)\lib\$Architecture\msvcrtd.lib")
             })
         if ($tools.Count) { $toolset = $tools[0]; $instance = $candidate; break }
     }
     if ($null -eq $toolset) {
-        throw "VS $vsRange with v143/14.44 Hostx64 $Architecture AND x64 tools is required; no toolset fallback"
+        throw "VS $vsRange with v143/14.44 Hostx64 $Architecture tools and matching release/debug CRT libraries is required; no toolset fallback"
     }
     $sdk = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\Include" -Directory |
         Where-Object { (Test-Path "$($_.FullName)\um\Windows.h") -and
@@ -65,7 +66,7 @@ if ($Stage -eq 'Prepare') {
         Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
     if (!$sdk) { throw "No Windows SDK for $Architecture" }
     $generator = if ($Architecture -eq 'arm64') { 'Visual Studio 18 2026' } else { 'Visual Studio 17 2022' }
-    foreach ($arch in @('x64', $Architecture) | Sort-Object -Unique) {
+    foreach ($arch in @($Architecture)) {
         @"
 set(VCPKG_TARGET_ARCHITECTURE $arch)
 set(VCPKG_CRT_LINKAGE dynamic)
@@ -77,7 +78,7 @@ set(VCPKG_CMAKE_SYSTEM_VERSION $($sdk.Name))
 "@ | Set-Content -Encoding utf8 "$triplets\$arch-windows.cmake"
     }
     $compilerTools = @(foreach ($hostTools in @('Hostx64', 'Hostarm64')) {
-        foreach ($targetArch in @('x64', $Architecture) | Sort-Object -Unique) {
+        foreach ($targetArch in @($Architecture)) {
             foreach ($tool in @('cl.exe', 'link.exe')) {
                 $relative = "bin/$hostTools/$targetArch/$tool"
                 $toolPath = Join-Path $toolset.FullName $relative
@@ -102,6 +103,7 @@ set(VCPKG_CMAKE_SYSTEM_VERSION $($sdk.Name))
         }
     [ordered]@{
         source_commit = $sourceCommit; vcpkg_commit = $pin; architecture = $Architecture
+        host_triplet = $triplet
         os_architecture = $osArchitecture
         process_architecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
         generator = $generator; visual_studio = $instance.installationPath
@@ -122,7 +124,7 @@ if ($provenance.os_architecture -ne $osArchitecture) { throw 'Prepared toolchain
 $env:VCPKG_DISABLE_METRICS = '1'
 $env:VCPKG_BINARY_SOURCES = "clear;files,$cache,readwrite"
 $env:VCPKG_DEFAULT_TRIPLET = $triplet
-$env:VCPKG_DEFAULT_HOST_TRIPLET = 'x64-windows'
+$env:VCPKG_DEFAULT_HOST_TRIPLET = $triplet
 $env:VCPKG_VISUAL_STUDIO_PATH = $provenance.visual_studio
 $env:VCPKG_ROOT = $vcpkg
 
@@ -137,7 +139,7 @@ if ($Stage -eq 'Build') {
     if ($LASTEXITCODE -or $actualPin -ne $pin) { throw 'vcpkg pin mismatch' }
     Invoke-Checked git @('-C', $vcpkg, 'diff', '--quiet', 'HEAD', '--')
     Invoke-Checked "$vcpkg\bootstrap-vcpkg.bat" @('-disableMetrics')
-    Invoke-Checked "$vcpkg\vcpkg.exe" @('install', '--triplet', $triplet, '--host-triplet', 'x64-windows',
+    Invoke-Checked "$vcpkg\vcpkg.exe" @('install', '--triplet', $triplet, '--host-triplet', $triplet,
         "--x-manifest-root=$renderer", "--x-install-root=$installed", "--overlay-triplets=$triplets")
     Invoke-Checked python @('-m', 'pip', 'install', '-r', "$renderer\tests\requirements.txt")
     $env:PKG_CONFIG_PATH = "$installed\$triplet\lib\pkgconfig;$installed\$triplet\share\pkgconfig"
@@ -149,9 +151,9 @@ if ($Stage -eq 'Build') {
         "-DCMAKE_GENERATOR_INSTANCE=$($provenance.visual_studio)",
         "-DCMAKE_TOOLCHAIN_FILE=$vcpkg/scripts/buildsystems/vcpkg.cmake",
         "-DVCPKG_INSTALLED_DIR=$installed", "-DVCPKG_TARGET_TRIPLET=$triplet",
-        '-DVCPKG_HOST_TRIPLET=x64-windows', "-DVCPKG_OVERLAY_TRIPLETS=$triplets",
+        "-DVCPKG_HOST_TRIPLET=$triplet", "-DVCPKG_OVERLAY_TRIPLETS=$triplets",
         '-DVCPKG_MANIFEST_INSTALL=OFF', '-DVCPKG_APPLOCAL_DEPS=OFF', '-DBUILD_TESTING=ON',
-        "-DPKG_CONFIG_EXECUTABLE=$installed/x64-windows/tools/pkgconf/pkgconf.exe",
+        "-DPKG_CONFIG_EXECUTABLE=$installed/$triplet/tools/pkgconf/pkgconf.exe",
         "-DPython3_EXECUTABLE=$((Get-Command python).Source)",
         "-DPDF_RENDER_WORKER_TEST_EXECUTABLE=$runtime/pdf-render-worker.exe")
     Invoke-Checked cmake @('--build', $build, '--config', 'Release', '--parallel')

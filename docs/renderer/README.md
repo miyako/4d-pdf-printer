@@ -43,8 +43,11 @@ See [the exact v1 status and exit contract](cli-v1.md) and
 
 Use PowerShell 7, Git, Python 3.12 and the matching native Windows OS.
 x64 uses Visual Studio 2022; ARM64 uses Visual Studio 2026 and CMake >= 4.2.
-Both require the installed v143/14.44 Hostx64 tools for x64 and the target
-architecture, plus a matching Windows SDK. The helper selects/records the exact
+Both require installed v143/14.44 Hostx64 tools and release/debug CRT libraries
+for the target architecture, plus a matching Windows SDK. vcpkg host helpers
+use the native architecture's triplet too: the ARM64 runner's x64 cross-compiler
+executables do not imply that x64 CRT libraries are installed.
+The helper selects/records the exact
 installed patch version and SDK, generates explicit dynamic overlay triplets,
 and fails instead of silently switching toolsets/architectures.
 From the repository worktree:
