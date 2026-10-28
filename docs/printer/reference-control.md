@@ -226,6 +226,11 @@ completed, not that registration passed.** Deployment/enumeration/preflight
 errors fail the step and retain a sanitized stage/HRESULT. Cleanup removes only
 exact packages/certificate resources created by that attempt, including partial
 deployment where discoverable; cleanup errors also fail the job. The workflow
+registers required, pre-existing shared frameworks only for the job user through
+normal dependency resolution; cleanup removes only that newly created user
+registration, never their pre-existing all-user package, and checks it remains.
+An unhealthy pre-existing current-user framework is a blocker, not repaired.
+The workflow
 then removes that signing key. Neither a private key/PFX nor the ephemeral
 CI-signed package is uploaded.
 

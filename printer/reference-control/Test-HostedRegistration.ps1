@@ -61,7 +61,7 @@ $report = [ordered]@{
         status = 'not-read'
     }
     trust = [ordered]@{ store = 'LocalMachine/TrustedPeople'; created = $false; removed = $false }
-    dependencies = [ordered]@{ validated = 0; attempted = 0; alreadySatisfied = 0; signatureChecks = @() }
+    dependencies = [ordered]@{ validated = 0; attempted = 0; alreadySatisfied = 0; sharedRegistrationAttempts = 0; signatureChecks = @() }
     spooler = [ordered]@{ before = 'not-read'; after = 'not-read' }
     printers = [ordered]@{
         before = $null
@@ -71,7 +71,7 @@ $report = [ordered]@{
         maximumObservations = 6
         outcome = 'not-observed'
     }
-    cleanup = [ordered]@{ packagesRemoved = 0; completed = $false; errors = @() }
+    cleanup = [ordered]@{ packagesRemoved = 0; sharedFrameworkRegistrationsRemoved = 0; completed = $false; errors = @() }
     error = $null
 }
 
@@ -238,11 +238,27 @@ function Get-ExactPackages($Manifest, [switch]$AllUsers) {
 
 function New-InstallTarget($Manifest, [string]$Path) {
     $existing = @(Get-ExactPackages $Manifest -AllUsers)
+    $current = @(Get-ExactPackages $Manifest)
     return [pscustomobject]@{
         Manifest = $Manifest
         Path = $Path
         ExistingFullNames = @($existing | ForEach-Object { $_.PackageFullName })
+        ExistingCurrentUserFullNames = @($current | ForEach-Object { $_.PackageFullName })
         Attempted = $false
+    }
+}
+
+function Get-OwnedPackageRegistrations($Target) {
+    $shared = $Target.ExistingFullNames.Count -ne 0
+    $existing = if ($shared) { $Target.ExistingCurrentUserFullNames } else { $Target.ExistingFullNames }
+    $packages = @(Get-ExactPackages $Target.Manifest -AllUsers:(-not $shared))
+    foreach ($package in $packages) {
+        if ($existing -cnotcontains $package.PackageFullName) {
+            [pscustomobject]@{
+                PackageFullName = $package.PackageFullName
+                AllUsers = (-not $shared)
+            }
+        }
     }
 }
 
@@ -424,8 +440,8 @@ try {
             $report.dependencies.alreadySatisfied++
             continue
         }
-        if ($target.ExistingFullNames.Count -ne 0) {
-            Stop-Experiment 'will-not-register-preexisting-other-user-framework'
+        if ($target.ExistingCurrentUserFullNames.Count -ne 0) {
+            Stop-Experiment 'will-not-change-unhealthy-preexisting-current-user-framework'
         }
         $dependencyPaths.Add($target.Path)
     }
@@ -435,6 +451,7 @@ try {
         if ($dependencyPaths.Contains($target.Path)) {
             $target.Attempted = $true
             $report.dependencies.attempted++
+            if ($target.ExistingFullNames.Count -ne 0) { $report.dependencies.sharedRegistrationAttempts++ }
         }
     }
     $mainTarget.Attempted = $true
@@ -481,18 +498,26 @@ finally {
         $target = $installTargets[$index]
         if (-not $target.Attempted) { continue }
         try {
-            $created = @(Get-ExactPackages $target.Manifest -AllUsers | Where-Object {
-                $target.ExistingFullNames -cnotcontains $_.PackageFullName
-            })
+            $created = @(Get-OwnedPackageRegistrations $target)
             foreach ($package in $created) {
-                Remove-AppxPackage -Package $package.PackageFullName -AllUsers -ErrorAction Stop -WarningAction SilentlyContinue |
-                    Out-Null
-                if (@(Get-ExactPackages $target.Manifest -AllUsers | Where-Object {
+                $remove = @{ Package = $package.PackageFullName; ErrorAction = 'Stop'; WarningAction = 'SilentlyContinue' }
+                if ($package.AllUsers) { $remove.AllUsers = $true }
+                Remove-AppxPackage @remove | Out-Null
+                if (@(Get-ExactPackages $target.Manifest -AllUsers:$package.AllUsers | Where-Object {
                     $_.PackageFullName -ceq $package.PackageFullName
                 }).Count -ne 0) {
                     throw [InvalidOperationException]::new('Exact package remains registered.')
                 }
-                $report.cleanup.packagesRemoved++
+                if ($package.AllUsers) { $report.cleanup.packagesRemoved++ }
+                else { $report.cleanup.sharedFrameworkRegistrationsRemoved++ }
+            }
+            if ($target.ExistingFullNames.Count -ne 0) {
+                $remaining = @(Get-ExactPackages $target.Manifest -AllUsers | ForEach-Object { $_.PackageFullName })
+                foreach ($name in $target.ExistingFullNames) {
+                    if ($remaining -cnotcontains $name) {
+                        throw [InvalidOperationException]::new('Pre-existing shared framework no longer present.')
+                    }
+                }
             }
         }
         catch {
