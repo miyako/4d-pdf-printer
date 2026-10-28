@@ -75,6 +75,11 @@ Get-PfxCertificate -FilePath .\printer\out\arm64\PsaDiagnostic.cer |
     Select-Object Subject, Thumbprint
 ```
 
+For a VS 2026-only host, use
+`pwsh -File printer/build.ps1 -Architecture ARM64 -VisualStudioVersion 2026 -Sign`
+**instead**, with the additional v143/CMake prerequisites in the build guide.
+Do not silently switch generators in an existing CMake cache.
+
 On the confirmed native ARM64 host, the evidence must say
 `targetArchitecture=arm64`, `hostOSArchitecture=Arm64`,
 `testExecution=native`, `ctests=passed`, and `peAndManifestChecks=passed`.

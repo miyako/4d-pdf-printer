@@ -51,6 +51,34 @@ try {
         $plan = Get-PrinterBuildPlan -HostArchitecture ARM64 -Root $fixture
         Assert-Equal $plan.Architecture 'x64'
         Assert-Equal $plan.Out (Join-Path $fixture 'out')
+        Assert-Equal $plan.VisualStudioVersion '2022'
+        Assert-Equal $plan.CMakeGenerator 'Visual Studio 17 2022'
+    }
+    foreach ($vs in @('2022', '2026')) {
+        foreach ($target in @('x64', 'ARM64')) {
+            Test-Case "VS $vs / $target compiler component selection" {
+                $plan = Get-PrinterBuildPlan -Architecture $target -VisualStudioVersion $vs `
+                    -HostArchitecture ARM64 -Root $fixture
+                $suffix = if ($target -eq 'ARM64') { 'ARM64' } else { 'x86.x64' }
+                $generator = if ($vs -eq '2026') { 'Visual Studio 18 2026' } else { 'Visual Studio 17 2022' }
+                $component = if ($vs -eq '2026') {
+                    "Microsoft.VisualStudio.Component.VC.14.44.17.14.$suffix"
+                } else { "Microsoft.VisualStudio.Component.VC.Tools.$suffix" }
+                Assert-Equal $plan.CMakeGenerator $generator
+                Assert-Equal $plan.RequiredComponent $component
+            }
+        }
+    }
+    Test-Case 'unsupported VS version rejected' {
+        Expect-Failure { Get-PrinterBuildPlan -VisualStudioVersion 2019 -HostArchitecture x64 -Root $fixture }
+    }
+    Test-Case 'build selector rejects unsupported VS version before tool access' {
+        try { & (Join-Path $root 'build.ps1') -VisualStudioVersion 2019 }
+        catch {
+            if ($_.FullyQualifiedErrorId -notmatch 'ParameterArgumentValidationError') { throw }
+            return
+        }
+        throw 'Invalid VS version accepted.'
     }
     Test-Case 'unsupported target rejected' {
         Expect-Failure { Get-PrinterBuildPlan -Architecture ARM64EC -HostArchitecture x64 -Root $fixture }

@@ -104,11 +104,15 @@ Version **0.1.1.0** keeps the original package name/publisher and provides separ
 x64 and ARM64 builds, without changing PDC, capabilities, print workflow code,
 renderer or service behavior. The [build guide](README.md#build-and-installation)
 describes the explicit selector and host/target/tool separation.
-Portable source checks and **23 synthetic build-support cases** passed on macOS:
+Portable source checks and **29 synthetic build-support cases** passed on macOS:
 all four host/target plans, default/invalid selectors and SDK, generated manifests,
 PE-header/machine validation, staged/archived mixed-target and missing binaries,
 and stale package version rejection. Synthetic PE/ZIP tests are not executable
 Windows tests or MakeAppx schema validation.
+The first native ARM64 CI attempt found that `windows-11-arm` now resolves to
+the VS 2026 image, not the older VS 2022 image inventory. Prerequisite checking
+failed before compilation; explicit VS 2026 selection with its installed
+v143 component addresses that build-host distinction, not queue registration.
 
 Windows CI now requests native x64 (`windows-2022`), native ARM64
 (`windows-11-arm`) and ARM64 cross-compilation on x64. The

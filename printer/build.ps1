@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidateSet('x64', 'ARM64')][string]$Architecture = 'x64',
+    [ValidateSet('2022', '2026')][string]$VisualStudioVersion = '2022',
     [ValidateSet('10.0.26100.0')]
     [string]$SdkVersion = '10.0.26100.0',
     [switch]$Sign
@@ -12,7 +13,8 @@ $root = $PSScriptRoot
 . (Join-Path $root 'BuildSupport.ps1')
 $hostArchitecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
 $processArchitecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
-$plan = Get-PrinterBuildPlan -Architecture $Architecture -HostArchitecture $hostArchitecture -Root $root
+$plan = Get-PrinterBuildPlan -Architecture $Architecture -VisualStudioVersion $VisualStudioVersion `
+    -HostArchitecture $hostArchitecture -Root $root
 $out = $plan.Out
 $build = $plan.Build
 $stage = $plan.Stage
@@ -26,18 +28,18 @@ if ($Sign -and -not (Test-Path -LiteralPath (Join-Path $sdk 'signtool.exe'))) {
     throw "Install Windows SDK $SdkVersion including x64 SignTool host tools."
 }
 Assert-PrinterPeMachine -Bytes ([IO.File]::ReadAllBytes($makeappx)) -Architecture x64 -Name 'MakeAppx host tool'
-$component = if ($Architecture -eq 'ARM64') { 'Microsoft.VisualStudio.Component.VC.Tools.ARM64' }
-    else { 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64' }
+$component = $plan.RequiredComponent
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-if (-not (Test-Path -LiteralPath $vswhere)) { throw 'Install Visual Studio 2022 C++ tools and vswhere.' }
-$instances = @(& $vswhere -latest -products '*' -version '[17.0,18.0)' `
+if (-not (Test-Path -LiteralPath $vswhere)) { throw "Install Visual Studio $VisualStudioVersion C++ tools and vswhere." }
+$instances = @(& $vswhere -latest -products '*' -version $plan.VisualStudioRange `
     -requires $component -property installationPath)
 if ($LASTEXITCODE -ne 0 -or $instances.Count -ne 1 -or -not $instances[0]) {
-    throw "Install Visual Studio 2022 MSVC v143 component $component for target $Architecture."
+    throw "Install Visual Studio $VisualStudioVersion MSVC v143 component $component for target $Architecture."
 }
 $vsInstance = $instances[0]
 Write-Host "Build host OS: $hostArchitecture; PowerShell process: $processArchitecture; target: $($plan.Architecture)"
 Write-Host "SDK $SdkVersion tools: x64 (emulated on ARM64); test execution: $($plan.TestExecution)"
+Write-Host "Generator: $($plan.CMakeGenerator); toolset: v143"
 Write-Host "Build: $build`nStage: $stage`nPackage: $($plan.Package)"
 
 function Invoke-Checked([string]$Program, [string[]]$Arguments) {
@@ -47,7 +49,12 @@ function Invoke-Checked([string]$Program, [string[]]$Arguments) {
 
 & (Join-Path $root 'tests/Check-Source.ps1')
 & (Join-Path $root 'tests/Check-BuildSupport.ps1')
-Invoke-Checked cmake @('-S', $root, '-B', $build, '-G', 'Visual Studio 17 2022',
+$cmakeHelp = & cmake --help
+if ($LASTEXITCODE -ne 0) { throw 'CMake --help failed.' }
+if (($cmakeHelp -join "`n") -notmatch [regex]::Escape($plan.CMakeGenerator)) {
+    throw "Install CMake with generator '$($plan.CMakeGenerator)' (CMake 4.2+ for VS 2026)."
+}
+Invoke-Checked cmake @('-S', $root, '-B', $build, '-G', $plan.CMakeGenerator,
     '-A', $plan.CMakePlatform, '-T', 'v143', "-DCMAKE_SYSTEM_VERSION=$SdkVersion",
     "-DCMAKE_GENERATOR_INSTANCE=$vsInstance")
 Invoke-Checked cmake @('--build', $build, '--config', 'Release', '--parallel')
@@ -106,6 +113,8 @@ if ($Sign) {
     targetArchitecture = $plan.Architecture
     sdkVersion = $SdkVersion
     sdkToolArchitecture = $plan.SdkToolArchitecture
+    visualStudioVersion = $plan.VisualStudioVersion
+    toolset = 'v143'
     testExecution = $plan.TestExecution
     ctests = $(if ($plan.TestExecution -eq 'not-run-cross-compile') { 'not-run' } else { 'passed' })
     peAndManifestChecks = 'passed'

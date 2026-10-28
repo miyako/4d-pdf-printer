@@ -115,6 +115,11 @@ collect runtime evidence on the actual 26100+ lab build.
     lists tools/components, but images change; record actual job OS/tool/test
     results rather than equating a label with executed native tests or PSA
     runtime support.
+    The label has migrated to the
+    [VS 2026 ARM64 image](https://github.com/actions/runner-images/blob/main/images/windows/Windows11-VS2026-Arm64-Readme.md);
+    its versioned v143 ARM64 component is separate from the default toolset.
+    The [VS 2026 CMake generator](https://cmake.org/cmake/help/latest/generator/Visual%20Studio%2018%202026.html)
+    defaults to v145; this build explicitly selects v143 with `-T`.
 
 **Decision:** retain the PSA architecture as a candidate, but do not integrate a
 production worker/4D plugin until the named-user session-0 activation and permitted

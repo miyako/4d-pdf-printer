@@ -3,6 +3,7 @@ Set-StrictMode -Version Latest
 function Get-PrinterBuildPlan {
     param(
         [ValidateSet('x64', 'ARM64')][string]$Architecture = 'x64',
+        [ValidateSet('2022', '2026')][string]$VisualStudioVersion = '2022',
         [Parameter(Mandatory)][ValidateSet('x64', 'ARM64')][string]$HostArchitecture,
         [Parameter(Mandatory)][string]$Root
     )
@@ -12,6 +13,7 @@ function Get-PrinterBuildPlan {
     $execution = if ($target -eq $HostArchitecture.ToLowerInvariant()) { 'native' }
         elseif ($target -eq 'x64') { 'emulated-x64' }
         else { 'not-run-cross-compile' }
+    $componentSuffix = if ($target -eq 'arm64') { 'ARM64' } else { 'x86.x64' }
     [pscustomobject]@{
         Architecture = $target
         CMakePlatform = $(if ($target -eq 'arm64') { 'ARM64' } else { 'x64' })
@@ -21,6 +23,12 @@ function Get-PrinterBuildPlan {
         Package = Join-Path $out 'PsaDiagnostic.msix'
         SdkToolArchitecture = 'x64'
         TestExecution = $execution
+        VisualStudioVersion = $VisualStudioVersion
+        CMakeGenerator = $(if ($VisualStudioVersion -eq '2026') { 'Visual Studio 18 2026' } else { 'Visual Studio 17 2022' })
+        VisualStudioRange = $(if ($VisualStudioVersion -eq '2026') { '[18.0,19.0)' } else { '[17.0,18.0)' })
+        RequiredComponent = $(if ($VisualStudioVersion -eq '2026') {
+            "Microsoft.VisualStudio.Component.VC.14.44.17.14.$componentSuffix"
+        } else { "Microsoft.VisualStudio.Component.VC.Tools.$componentSuffix" })
     }
 }
 

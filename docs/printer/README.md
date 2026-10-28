@@ -78,6 +78,13 @@ On an ARM64 host use native Visual Studio 2022 17.4+; on x64 this component
 cross-compiles ARM64. The x64 target requires
 `Microsoft.VisualStudio.Component.VC.Tools.x86.x64`.
 Missing components fail explicitly; the build does not install them.
+For a VS 2026-only host, explicitly add `-VisualStudioVersion 2026`, install
+CMake 4.2+ and the **v143 14.44** component
+`Microsoft.VisualStudio.Component.VC.14.44.17.14.ARM64` (or `.x86.x64` for x64).
+This still requests v143, not VS 2026's default v145. The native ARM64 CI image
+currently has VS 2026, so that job selects this option explicitly.
+Choose the VS version before the first build for that target; changing generators
+in an existing CMake cache fails explicitly, with no automatic cache deletion.
 No WDK, third-party driver, renderer, or product license is selected here.
 
 ```powershell
@@ -89,6 +96,8 @@ pwsh -File printer/build.ps1
 pwsh -File printer/build.ps1 -Sign
 # Native ARM64 package/probe; independent CMake cache, staging and output.
 pwsh -File printer/build.ps1 -Architecture ARM64 -Sign
+# Alternative for a VS 2026-only host (choose one generator, not both in one cache):
+# pwsh -File printer/build.ps1 -Architecture ARM64 -VisualStudioVersion 2026 -Sign
 ```
 
 | Target | Output base | Package / certificate / probe (relative to base) |
