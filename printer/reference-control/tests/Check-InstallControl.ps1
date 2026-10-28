@@ -201,7 +201,8 @@ function Expect-Failure([scriptblock]$Action, [string]$Pattern, [int]$ExpectedAd
     throw "Expected failure matching '$Pattern'."
 }
 function Save-Evidence {
-    ConvertTo-Json -InputObject $script:evidence -Depth 8 |
+    # Serialize records, not PS5.1's extended JSON-root array wrapper.
+    $script:evidence | ConvertTo-Json -Depth 8 |
         Set-Content -LiteralPath $script:evidencePath -Encoding UTF8
 }
 function Save-Receipt {
