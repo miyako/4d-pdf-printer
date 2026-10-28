@@ -9,7 +9,7 @@ development. A successful hosted build does not close the gate.
 | Claim category | Evidence / limit |
 |---|---|
 | Confirmed by source | PSA v4 virtual printer API is introduced in 26100 / UniversalApiContract 19. Manifest supports OXPS preference, multiple endpoints and OS Save As with `OutputFileTypes`. See [sources](sources.md). |
-| Compile checked | See the **Printer Windows build** Actions run for this PR: native MSVC compile, probe argument tests and MakeAppx manifest/package validation. This is not printer installation, PDC semantic validation or service activation. |
+| Compile checked | See the **Printer Windows build** Actions run for this PR: native MSVC compile, probe argument tests, direct DLL factory smoke test and MakeAppx manifest/package validation. This is not printer installation, PDC semantic validation or service activation. |
 | Runtime observed on Windows 11 | **None.** No installed queue, actual captured job, Save As result, 4D print, worker handoff, or pre-login/sign-out execution is claimed. |
 | Still unverified | Queue/package visibility to a service identity; session-0 activation; source MIME type and ticket semantics; `DOCINFO.lpszOutput` to PSA target mapping; no-file endpoint target behavior; allowed authenticated external coordinator transport; cancellation/termination/repeated activation. |
 
@@ -39,9 +39,11 @@ are diagnostic, not atomic; failure can leave a partial user-selected file.
 Each activation gets a random folder and process ID. `job.json` stores hashed
 workflow session ID / job title, endpoint, content type, UI eligibility, source
 byte count, target availability when returned, last stage, HRESULT on failure,
-and requested completion status. It never logs account names, target paths,
-source app display names or free-text exception messages. `completion.txt` means
-`CompleteJob` returned, **not** downstream success. Pre-event activation errors
+and requested completion status. `before-target.json` preserves correlation if
+target retrieval never returns. It never logs account names, target paths,
+source app display names or free-text exception messages. `completion.txt`
+records the final status passed to a returning `CompleteJob`, **not** downstream
+success. Pre-event activation errors
 use a stage/HRESULT debug output and can leave only `activation.json`.
 No event-args `GetDeferral()` exists on this API: the task's
 `BackgroundTaskDeferral` spans capture and completion.

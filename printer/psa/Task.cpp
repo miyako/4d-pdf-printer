@@ -114,16 +114,26 @@ struct Task : implements<Task, IBackgroundTask>
     {
         instance = task;
         deferral = task.GetDeferral();
-        cancelToken = task.Canceled([weak = get_weak()](auto const&, auto const&)
+        try
         {
-            if (auto self = weak.get())
+            cancelToken = task.Canceled([weak = get_weak()](auto const&, auto const&)
             {
-                self->canceled = true;
-                State expected = Waiting;
-                if (self->state.compare_exchange_strong(expected, Finished)) self->Finish();
-            }
-        });
-        Begin();
+                if (auto self = weak.get())
+                {
+                    self->canceled = true;
+                    State expected = Waiting;
+                    if (self->state.compare_exchange_strong(expected, Finished)) self->Finish();
+                }
+            });
+            Begin();
+        }
+        catch (...)
+        {
+            DebugFailure(L"task-registration", to_hresult());
+            state = Finished;
+            Finish();
+            throw;
+        }
     }
 
     fire_and_forget Begin()

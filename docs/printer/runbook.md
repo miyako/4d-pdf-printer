@@ -96,9 +96,9 @@ user write permission to the synthetic output directory, read/execute on the
 binary, permission to print to the test queue and "Log on as a service".
 Keep the executable and service configuration non-writable by untrusted users.
 
-Use the Services management UI to create/configure an ordinary own-process
-service named **PsaPrintProbe** (or `sc.exe create` for the binary path, then set
-the named-user credentials through an approved private administrator workflow).
+Use `sc.exe create` to register an ordinary own-process service named
+**PsaPrintProbe**, then configure its named-user account in the Services
+management UI through an approved private administrator workflow.
 Never put a password into a committed script, command transcript or CI secret
 for this experiment. Suggested binary path including arguments:
 
@@ -106,9 +106,22 @@ for this experiment. Suggested binary path including arguments:
 "C:\PsaLab\bin\PrintProbe.exe" --service --noninteractive --queue "PSA Diagnostic Capture (no file UI)" --output "C:\PsaLab\evidence\synthetic-service.oxps" --job-name synthetic-service --log "C:\PsaLab\evidence\service.jsonl" --timeout-seconds 90 --delay-seconds 120
 ```
 
-Select **Automatic**, set **Log On** to the named valid user (not Local System),
-and record configuration privately. The delay supports a sign-out test; it is
-included in the watchdog's total budget. Do not enable service recovery retries.
+For example, in an elevated PowerShell session, assign the entire binary-path
+line above to `$binaryPath` as a single-quoted string, then:
+
+```powershell
+sc.exe create PsaPrintProbe type= own start= demand binPath= $binaryPath
+if ($LASTEXITCODE -ne 0) { throw 'Service registration failed' }
+services.msc
+```
+
+**Do not start it under the default Local System account.** In Services, set
+**Log On** to the named valid user, verify its credentials privately, then select
+**Automatic** for the cold-boot case and record configuration privately. The
+delay supports a sign-out test; it is included in the watchdog's total budget.
+Do not enable service recovery retries. Use `sc.exe start PsaPrintProbe` and
+`sc.exe queryex PsaPrintProbe` to start/inspect the one-shot test; distinguish
+SCM errors, the service's reported exit code and workflow evidence.
 
 | Case | Required procedure and acceptance evidence |
 |---|---|

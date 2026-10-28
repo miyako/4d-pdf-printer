@@ -18,7 +18,7 @@ int wmain(int argc, wchar_t** argv)
         winrt::hstring name = L"PsaDiagnostic.Task";
         winrt::Windows::Foundation::IActivationFactory factory{nullptr};
         winrt::check_hresult(entry(winrt::get_abi(name), winrt::put_abi(factory)));
-        auto task = factory.ActivateInstance().as<winrt::Windows::ApplicationModel::Background::IBackgroundTask>();
+        auto task = factory.ActivateInstance<winrt::Windows::ApplicationModel::Background::IBackgroundTask>();
         if (winrt::get_class_name(task) != name) throw winrt::hresult_error(E_FAIL);
         winrt::hstring invalid = L"PsaDiagnostic.Invalid";
         winrt::Windows::Foundation::IActivationFactory missing{nullptr};
