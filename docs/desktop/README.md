@@ -16,6 +16,11 @@ re-signed, uninstalled or repurposed by this separate development identity.
 [measured results and unverified gates](validation.md). No user-host execution
 or trust change is requested by these results.
 
+The resumed **milestone-A product proof** is a separate standalone target:
+[size/fidelity/lifetime harness](product-proof.md). It requires no new package
+or RPC bridge, but has not yet been compiled/exercised on Windows. The first
+usable prototype still requires both silent application destinations and Save As.
+
 ## Early gate
 
 Build on a matching native Windows machine with SDK 26100 and MSVC v143:
@@ -52,20 +57,21 @@ The PSA drains bounded OXPS bytes without saving them, calls CompleteJob(Failed)
 and acknowledges that failure completion returned. A passed gate is **not**
 conversion, successful printing, provider publication or Windows-service proof.
 
-`desktop-windows.yml` builds/tests x64 and native ARM64. Only the Windows 11 ARM64
-jobs attempt actual PSA registration/submission; the Server-based x64 build is
-not Windows 11 runtime acceptance. Runtime results must be recorded separately
-from package/PRI/factory or argument-test results.
-
-Separate disposable ARM64 jobs isolate desktop launch and the actual PSA path;
-they never reuse a coordinator started by the other experiment.
-The `-PsaBootstrapOnly` job submits one deliberately
+The current `desktop-windows.yml` is **manual-only own-code proof compile/unit
+checking**, with no activation, package, installation or signing steps.
+The historical `d58bb2f` workflow used separate disposable ARM64 jobs to isolate
+desktop launch and the actual PSA path; those attempts are preserved in
+[validation.md](validation.md), not repeated by the current workflow.
+Its `-PsaBootstrapOnly` experiment submitted one deliberately
 unprepared synthetic title, observes PSA launch/readiness, and expects
 missing-configuration rejection with no file. At best this is `partial`, never
 a complete gate pass. It is **not** a production scheme that requires dummy
 prints to start a coordinator.
 
 ## Authentication and correlation
+
+This section describes the retained historical gate code, not a requirement to
+restore its general RPC coordinator in the refocused prototype.
 
 Native `ncalrpc` is local-only, authenticated and packet-private. The server
 checks the actual RPC caller token's user SID and Windows session on every

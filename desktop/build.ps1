@@ -2,7 +2,8 @@
 param(
     [ValidateSet('x64', 'ARM64')][string]$Architecture = 'x64',
     [ValidateSet('2022', '2026')][string]$VisualStudioVersion = '2022',
-    [string]$CertificateThumbprint
+    [string]$CertificateThumbprint,
+    [ValidateSet('PrototypeGate', 'Proof')][string]$Mode = 'PrototypeGate'
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -12,6 +13,7 @@ $plan = Get-PrinterBuildPlan -Architecture $Architecture -VisualStudioVersion $V
     -HostArchitecture ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()) -Root $PSScriptRoot
 $out = Join-Path $PSScriptRoot "out/$($Architecture.ToLowerInvariant())"
 $build = Join-Path $out 'build'
+if ($Mode -ceq 'Proof') { $build = Join-Path $out 'proof-build' }
 $stage = Join-Path $out 'package'
 $sdkRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10'
 $sdk = Join-Path $sdkRoot 'bin/10.0.26100.0/x64'
@@ -25,15 +27,34 @@ function Invoke-Checked([string]$Program, [string[]]$Arguments) {
     & $Program @Arguments
     if ($LASTEXITCODE -ne 0) { throw "$([IO.Path]::GetFileName($Program)) exited $LASTEXITCODE." }
 }
-foreach ($tool in @('midl.exe', 'makeappx.exe', 'makepri.exe')) {
+if ($Mode -cne 'Proof') { foreach ($tool in @('midl.exe', 'makeappx.exe', 'makepri.exe')) {
     $file = Join-Path $sdk $tool
     Assert-PrinterPeMachine -Bytes ([IO.File]::ReadAllBytes($file)) -Architecture x64 -Name $tool
-}
+} }
 Invoke-Checked cmake @('-S', $PSScriptRoot, '-B', $build, '-G', $plan.CMakeGenerator,
     '-A', $plan.CMakePlatform, '-T', 'v143', '-DCMAKE_SYSTEM_VERSION=10.0.26100.0',
     "-DCMAKE_GENERATOR_INSTANCE=$($instances[0])", "-DDESKTOP_SDK_BIN=$sdk",
-    "-DDESKTOP_SDK_INCLUDE=$(Join-Path $sdkRoot 'Include/10.0.26100.0')")
+    "-DDESKTOP_SDK_INCLUDE=$(Join-Path $sdkRoot 'Include/10.0.26100.0')",
+    "-DDESKTOP_PROOF_ONLY=$(if ($Mode -ceq 'Proof') { 'ON' } else { 'OFF' })")
 Invoke-Checked cmake @('--build', $build, '--config', 'Release', '--parallel')
+if ($Mode -ceq 'Proof') {
+    if ($plan.TestExecution -cne 'native') { throw 'The product proof requires matching native execution.' }
+    $probe = Join-Path $build 'Release/DesktopPdfProof.exe'
+    Assert-PrinterPeMachine -Bytes ([IO.File]::ReadAllBytes($probe)) -Architecture $Architecture -Name 'DesktopPdfProof.exe'
+    Invoke-Checked ctest @('--test-dir', $build, '-C', 'Release', '--output-on-failure', '--no-tests=error')
+    Copy-Item -LiteralPath $probe -Destination (Join-Path $out 'DesktopPdfProof.exe')
+    $sourceCommit = & git -C (Split-Path -Parent $PSScriptRoot) rev-parse HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot record proof source identity.' }
+    $sourceChanges = @(& git -C (Split-Path -Parent $PSScriptRoot) status --porcelain --untracked-files=normal -- desktop printer/BuildSupport.ps1 printer/probe/Evidence.h)
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot record proof source worktree state.' }
+    [ordered]@{
+        schema = '4d-pdf-printer.desktop-proof-build'; version = 1
+        architecture = $Architecture.ToLowerInvariant(); nativeContractTest = 'passed'
+        executableSha256 = (Get-FileHash -LiteralPath $probe -Algorithm SHA256).Hash.ToLowerInvariant()
+        sourceCommit = $sourceCommit; sourceDirty = ($sourceChanges.Count -gt 0); productUsable = $false
+    } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $out 'proof-build-evidence.json') -Encoding utf8
+    return
+}
 foreach ($name in @('DesktopPdfCtl.exe', 'DesktopPdfCoordinator.exe', 'DesktopPdfApp.exe', 'DesktopPdfTask.dll')) {
     Assert-PrinterPeMachine -Bytes ([IO.File]::ReadAllBytes((Join-Path $build "Release/$name"))) `
         -Architecture $Architecture -Name $name
