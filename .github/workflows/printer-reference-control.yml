@@ -69,7 +69,7 @@ jobs:
             -ExpectedSha256 (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash `
             -OutputDirectory "$env:RUNNER_TEMP\signed-control"
       - name: Bounded static install and unfiltered queue comparison
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $certificates = @(Get-ChildItem "$env:RUNNER_TEMP\signed-control" -File -Filter *.cer)

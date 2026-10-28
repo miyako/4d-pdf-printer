@@ -82,10 +82,31 @@ function Stop-Experiment([string]$Code) {
 
 function Get-SanitizedError($Record, [string]$AtStage, [string]$Code) {
     $hex = '0x{0:X8}' -f ($Record.Exception.HResult -band 0xffffffffL)
-    # Deployment errors often wrap the actual HRESULT in a remoting exception.
-    $match = [regex]::Match($Record.Exception.Message, '\b0x[0-9a-fA-F]{8}\b')
-    if ($match.Success) { $hex = $match.Value.ToUpperInvariant().Replace('0X', '0x') }
-    return [ordered]@{ stage = $AtStage; code = $Code; hresult = $hex }
+    $messages = [Collections.Generic.List[string]]::new()
+    $exception = $Record.Exception
+    for ($i = 0; $null -ne $exception -and $i -lt 6; $i++) {
+        $messages.Add($exception.Message)
+        $exception = $exception.InnerException
+    }
+    if ($null -ne $Record.ErrorDetails) { $messages.Add($Record.ErrorDetails.Message) }
+    $messages.Add($Record.ToString())
+    $text = $messages -join "`n"
+    $codes = @([regex]::Matches($text, '\b0x[0-9a-fA-F]{8}\b') |
+        ForEach-Object { $_.Value.ToUpperInvariant().Replace('0X', '0x') } | Select-Object -Unique)
+    if ($codes.Count -ne 0) { $hex = $codes[0] }
+    $category = if ($text -match 'special profile') { 'special-profile-restriction' }
+        elseif ($text -match 'not supported|NotSupportedException') { 'operation-not-supported' }
+        elseif ($text -match 'higher version|newer version') { 'higher-version-present' }
+        elseif ($text -match 'certificate.*not trusted|untrusted root') { 'certificate-not-trusted' }
+        else { 'unclassified-error' }
+    return [ordered]@{
+        stage = $AtStage
+        code = $Code
+        hresult = $hex
+        hresults = $codes
+        exceptionType = $Record.Exception.GetType().FullName
+        diagnosticCategory = $category
+    }
 }
 
 function Get-AppxManifest([string]$Path) {

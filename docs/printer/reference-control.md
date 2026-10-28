@@ -158,7 +158,9 @@ Import-Certificate -FilePath 'C:\lab\reference-control\signed\PsaReferenceContro
   -CertStoreLocation Cert:\LocalMachine\TrustedPeople
 ```
 
-Return to the normal user's PowerShell window. Leave the existing prototype
+Return to the normal user's **Windows PowerShell 5.1** window for Appx/PrintManagement
+commands (signing above uses PowerShell 7). This uses the local Appx module, not
+a PowerShell 7 compatibility-remoting proxy. Leave the existing prototype
 installed. **Do not launch the sample's application/UI or submit a job.**
 Install once normally with its supplied framework dependencies, then enumerate.
 The selection below omits frameworks already satisfied by an installed,
@@ -167,15 +169,16 @@ healthy ARM64/neutral version; it does not try to downgrade a newer framework:
 ```powershell
 $ErrorActionPreference = 'Stop'
 Get-Printer
-$info = & {
-  . .\Sign-Control.ps1
-  Assert-ControlPackage -Path (Resolve-Path .\signed\PsaReferenceControl.arm64.msix).Path -SignatureState Signed
-}
+$receipt = Get-Content .\signed\SigningReceipt.json -Raw | ConvertFrom-Json
+if ($receipt.Identity.Name -cne 'Miyako.PsaReferenceControl' -or
+    $receipt.Identity.ProcessorArchitecture -cne 'arm64') { throw 'Unexpected signing receipt.' }
+if ((Get-FileHash .\signed\PsaReferenceControl.arm64.msix -Algorithm SHA256).Hash -ine
+    $receipt.OutputSha256) { throw 'Signed package differs from the local signing receipt.' }
 $frameworks = @(Get-Content .\architecture-evidence.json -Raw | ConvertFrom-Json |
   Where-Object name -ne 'Miyako.PsaReferenceControl')
 if ($frameworks.Count -ne 4) { throw 'Expected four supplied ARM64 frameworks.' }
 $dependencies = @(foreach ($framework in $frameworks) {
-  $declaration = @($info.Dependencies | Where-Object Name -ceq $framework.name)
+  $declaration = @($receipt.Dependencies | Where-Object Name -ceq $framework.name)
   if ($declaration.Count -ne 1) { throw 'Unexpected framework declaration.' }
   $installed = @(Get-AppxPackage -Name $framework.name | Where-Object {
     $_.Publisher -ceq $declaration[0].Publisher -and $_.IsFramework -and
@@ -212,6 +215,8 @@ disposable job. It signs a temporary copy, validates its signer against the
 generated public certificate, verifies the original Microsoft framework
 signatures, then temporarily trusts only that developer leaf certificate and
 performs a normal `Add-AppxPackage` for the job user. It never launches the app.
+Signing uses PowerShell 7; deployment/enumeration uses local Windows PowerShell
+5.1, avoiding compatibility-remoting as an extra deployment variable.
 
 The probe refuses an existing control identity or either original queue name.
 It enumerates **all** printers before installation and up to six times at

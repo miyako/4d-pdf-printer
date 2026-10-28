@@ -455,6 +455,7 @@ function Invoke-ControlSigning {
                 PublicCertificatePath = $cerPath
             }
             Identity = $signedPackageInfo.Identity
+            Dependencies = $signedPackageInfo.Dependencies
             SignToolPath = $tool
             Timestamped = $false
         }
