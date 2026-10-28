@@ -118,10 +118,53 @@ Windows CI now requests native x64 (`windows-2022`), native ARM64
 (`windows-11-arm`) and ARM64 cross-compilation on x64. The
 [GitHub runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners#standard-github-hosted-runners-for-public-repositories)
 lists `windows-11-arm` as ARM64 for public repositories; workflow execution also
-asserts the native OS architecture. Actual Windows results/artifact revision must
-be recorded separately; adding the matrix alone proves no successful build.
-The jobs do not install the package, create queues or run service/4D experiments.
-The user-run native ARM64 update/registration retest is still pending.
+asserts the native OS architecture.
+
+### Actual Windows results for 50be556
+
+Both push and PR checks passed for build-source commit
+`50be556d9beec962900a1f65e93e3113acb415bf`:
+[PR run 40657060798](https://github.com/miyako/4d-pdf-printer/actions/runs/40657060798)
+and [push run 40657054960](https://github.com/miyako/4d-pdf-printer/actions/runs/40657054960).
+
+| Target / native host | Actual result | Download from PR run |
+|---|---|---|
+| x64 / x64 | Compile, 29 portable checks, 2/2 CTests, PE/manifest checks and normal MakeAppx passed. | [unsigned x64](https://github.com/miyako/4d-pdf-printer/actions/runs/40657060798/artifacts/12801399578) |
+| ARM64 / ARM64 | Same checks passed, **including native execution of both CTests**. | [unsigned ARM64](https://github.com/miyako/4d-pdf-printer/actions/runs/40657060798/artifacts/12801289732) |
+| ARM64 / x64 (cross-compile) | Compile, portable checks, PE/manifest checks and MakeAppx passed; native CTests explicitly **not run**. | [unsigned ARM64 cross-build](https://github.com/miyako/4d-pdf-printer/actions/runs/40657060798/artifacts/12801284914) |
+
+The genuine ARM64 runner reported Windows 11 Enterprise/build 26200,
+image `windows-11-vs2026-arm64` / `20261022.194.1`, PowerShell process Arm64,
+MSVC `19.44.35229.0` with explicit v143 and SDK `10.0.26100.0`.
+MakeAppx's x64 host tool ran under emulation; the generated shell, task DLL,
+submission probe and factory test were verified ARM64. The x64 native/cross
+jobs use Windows Server only as a build host, not as a claimed runtime target.
+The native CTests are the 20-case argument/timing self-test and direct DLL
+factory test; neither invokes the PSA task's `Run`.
+
+All three downloaded artifacts were rechecked on macOS: staged and actual MSIX
+architectures/versions matched the target; the submission probe PE matched;
+independent `file` inspection identified the native ARM64 shell/DLL/probe as
+Aarch64. The ARM64 artifact's `build-evidence.json` reports native/passed; the
+cross-build reports not-run-cross-compile/not-run. Both manifests use 0.1.1.0.
+Artifact content is relative to the selected output base (`PsaDiagnostic.msix`,
+`package/`, `build/Release/PrintProbe.exe`, `build/Release/ActivationProbe.exe`,
+`build-evidence.json`).
+
+Downloaded **native ARM64 job** SHA256 (unsigned; local rebuilding/signing can
+change hashes):
+
+```text
+PsaDiagnostic.msix: 8eb42a89542bc4d51819f6625148bd26064f94fb6950bb8c3f982b64bc74bd60
+PrintProbe.exe:     8a83df3a70a2070e98f7082702093ffcf1a94d764eab3448eba649afa930007c
+```
+
+The subsequent documentation-only revision records this historical build source,
+not a newer binary fix. CI artifacts have retention limits.
+The jobs did not sign/install the package, create queues, submit jobs or run
+service/4D experiments. **The user-run native ARM64 update/registration retest is
+still pending**, and the original x64-on-ARM64 registration failure remains
+unexplained.
 
 ## Still not run / not proven
 
