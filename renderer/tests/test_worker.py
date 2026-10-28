@@ -7,6 +7,8 @@ import signal
 import subprocess
 import tempfile
 import unittest
+import zipfile
+from xml.etree import ElementTree
 
 import jsonschema
 from pypdf import PdfReader
@@ -109,6 +111,27 @@ class WorkerTests(unittest.TestCase):
                                      "bytes_per_page": size / 2})
         print("SYNTHETIC_MEASUREMENTS=" + json.dumps(measurements), flush=True)
 
+    def test_synthetic_fixtures_are_reproducible(self):
+        for oxps in (False, True):
+            first = self.root / "first.package"
+            second = self.root / "second.package"
+            package(first, oxps=oxps)
+            package(second, oxps=oxps)
+            self.assertEqual(first.read_bytes(), second.read_bytes())
+            with zipfile.ZipFile(first) as archive:
+                types = ElementTree.fromstring(archive.read("[Content_Types].xml"))
+                self.assertEqual(
+                    {part.attrib["ContentType"] for part in types if part.tag.endswith("Override")},
+                    {"application/vnd.ms-package.xps-fixedpage+xml",
+                     "application/vnd.ms-package.xps-fixeddocument+xml",
+                     "application/vnd.ms-package.xps-fixeddocumentsequence+xml"})
+                relationship = ElementTree.fromstring(archive.read("_rels/.rels"))[0]
+                namespace = ("http://schemas.openxps.org/oxps/v1.0" if oxps
+                             else "http://schemas.microsoft.com/xps/2005/06")
+                self.assertEqual(relationship.attrib["Type"], namespace + "/fixedrepresentation")
+                page = ElementTree.fromstring(archive.read("Documents/1/Pages/1.fpage"))
+                self.assertEqual(page.tag, "{" + namespace + "}FixedPage")
+
     def test_multiple_documents(self):
         package(self.input, documents=2)
         status = self.invoke()
@@ -162,6 +185,52 @@ class WorkerTests(unittest.TestCase):
     def test_encrypted_rejected(self):
         package(self.input, encrypted=True)
         self.invoke(expected=12)
+        self.assertFalse(self.output.exists())
+
+    def test_crc_and_unsupported_compression(self):
+        original = self.input.read_bytes()
+        with zipfile.ZipFile(self.input) as archive:
+            position = archive.start_dir
+        data = bytearray(original)
+        # A central-directory CRC mismatch must not be accepted as a valid package.
+        data[position + 16] ^= 0xFF
+        self.input.write_bytes(data)
+        self.invoke(expected=11)
+        data = bytearray(original)
+        for signature, offset in ((b"PK\x03\x04", 8), (b"PK\x01\x02", 10)):
+            position = 0
+            while (position := data.find(signature, position)) >= 0:
+                data[position + offset:position + offset + 2] = b"\xff\xff"
+                position += 4
+        self.input.write_bytes(data)
+        self.invoke(expected=11)
+        self.assertFalse(self.output.exists())
+
+    def test_entry_limit_boundary(self):
+        with zipfile.ZipFile(self.input, "a", compression=zipfile.ZIP_DEFLATED) as archive:
+            count = len(archive.infolist())
+            for i in range(16384 - count):
+                archive.writestr(f"Unused/{i}", b"")
+        self.invoke()
+        self.assert_pdf(self.output)
+        self.output.unlink()
+        with zipfile.ZipFile(self.input, "a") as archive:
+            archive.writestr("Unused/over-limit", b"")
+        self.invoke(expected=13)
+        self.assertFalse(self.output.exists())
+
+    def test_page_limit_rejected_before_render(self):
+        with zipfile.ZipFile(self.input) as archive:
+            parts = {info.filename: archive.read(info) for info in archive.infolist()}
+        ns = "http://schemas.microsoft.com/xps/2005/06"
+        parts["Documents/1/FixedDocument.fdoc"] = (
+            f'<FixedDocument xmlns="{ns}">' + '<PageContent Source="Pages/1.fpage"/>' * 10001
+            + '</FixedDocument>').encode("utf-8")
+        with zipfile.ZipFile(self.input, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for name, value in parts.items():
+                archive.writestr(name, value)
+        status = self.invoke(expected=13)
+        self.assertEqual(status["pages_completed"], 0)
         self.assertFalse(self.output.exists())
 
     def test_bad_relationship(self):

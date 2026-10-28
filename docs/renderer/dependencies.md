@@ -156,3 +156,12 @@ own-code licensing still undecided. FontTools generates font tables (MIT);
 pypdf inspects PDF structure/text (BSD-3-Clause); jsonschema validates the status
 (MIT). Their pinned test-only dependencies have their own installed notices.
 No Ghostscript, MuPDF, qpdf, PDF-Writer or Microsoft XpsToPdf dependency is added.
+
+The generated OpenXPS case uses ECMA-388 first edition Annex E Table E.1
+part content types and Table E.2's
+`http://schemas.openxps.org/oxps/v1.0/fixedrepresentation`, with the OpenXPS
+page namespace. These identifiers are checked independently of libgxps,
+which does not validate the content-type table. They are synthetic standards
+cases, not evidence that a Windows-generated package was exercised.
+[Primary standard](https://ecma-international.org/wp-content/uploads/ECMA-388_1st_edition_june_2009.pdf),
+PDF pages 418-419.

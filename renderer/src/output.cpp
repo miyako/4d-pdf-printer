@@ -120,7 +120,8 @@ bool Output::publish() {
 #ifdef _WIN32
     if (!MoveFileExW(temporary_.c_str(), destination_.c_str(), MOVEFILE_WRITE_THROUGH)) {
         native_error_ = static_cast<int>(GetLastError());
-        collision_ = native_error_ == ERROR_ALREADY_EXISTS || native_error_ == ERROR_FILE_EXISTS;
+        collision_ = native_error_ == ERROR_ALREADY_EXISTS || native_error_ == ERROR_FILE_EXISTS ||
+                     GetFileAttributesW(destination_.c_str()) != INVALID_FILE_ATTRIBUTES;
         return false;
     }
 #else

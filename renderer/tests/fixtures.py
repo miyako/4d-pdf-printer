@@ -42,8 +42,9 @@ def font():
     builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200)
     builder.setupPost()
     builder.setupMaxp()
-    builder.font["head"].created = 0
-    builder.font["head"].modified = 0
+    builder.font["head"].created = 3029529600  # 2000-01-01 in the font epoch.
+    builder.font["head"].modified = 3029529600
+    builder.font.recalcTimestamp = False
     data = io.BytesIO()
     builder.save(data)
     return data.getvalue()
@@ -66,8 +67,9 @@ def package(path, *, oxps=False, pages=2, documents=1, broken=None, encrypted=Fa
              "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
              "<Default Extension=\"ttf\" ContentType=\"application/vnd.ms-opentype\"/>"
              "<Default Extension=\"png\" ContentType=\"image/png\"/>")
-    suffix = "oxps" if oxps else "ms-package.xps"
-    types += f'<Override PartName="/FixedDocumentSequence.fdseq" ContentType="application/vnd.{suffix}-fixeddocumentsequence+xml"/>'
+    # ECMA-388 first edition, Annex E Table E.1 retains these part MIME types.
+    mime = "application/vnd.ms-package.xps"
+    types += f'<Override PartName="/FixedDocumentSequence.fdseq" ContentType="{mime}-fixeddocumentsequence+xml"/>'
     sequence = f'<FixedDocumentSequence xmlns="{ns}">'
     parts = {
         "_rels/.rels": f'<Relationships xmlns="{opc}"><Relationship Id="r1" Type="{ns}/fixedrepresentation" Target="/FixedDocumentSequence.fdseq"/></Relationships>',
@@ -77,10 +79,10 @@ def package(path, *, oxps=False, pages=2, documents=1, broken=None, encrypted=Fa
     for d in range(1, documents + 1):
         sequence += f'<DocumentReference Source="/Documents/{d}/FixedDocument.fdoc"/>'
         document = f'<FixedDocument xmlns="{ns}">'
-        types += f'<Override PartName="/Documents/{d}/FixedDocument.fdoc" ContentType="application/vnd.{suffix}-fixeddocument+xml"/>'
+        types += f'<Override PartName="/Documents/{d}/FixedDocument.fdoc" ContentType="{mime}-fixeddocument+xml"/>'
         for p in range(1, pages + 1):
             document += f'<PageContent Source="Pages/{p}.fpage"/>'
-            types += f'<Override PartName="/Documents/{d}/Pages/{p}.fpage" ContentType="application/vnd.{suffix}-fixedpage+xml"/>'
+            types += f'<Override PartName="/Documents/{d}/Pages/{p}.fpage" ContentType="{mime}-fixedpage+xml"/>'
             width, height = (384, 288) if p % 2 else (192, 384)
             content = (f'<FixedPage xmlns="{ns}" Width="{width}" Height="{height}" xml:lang="en-US">'
                        '<Path Fill="#FFFF0000" Data="M 20,20 L 120,20 120,80 20,80 Z"/>'

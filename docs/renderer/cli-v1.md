@@ -68,7 +68,7 @@ diagnostics and are **not stable across platforms/dependency versions**.
 Example:
 
 ```json
-{"schema":"4d-pdf-printer.worker-status","version":1,"worker_version":"0.1.0","result":"ok","exit_code":0,"stage":"complete","error":null,"document":null,"page":null,"documents":1,"pages_completed":2,"output_bytes":6103,"output_published":true,"cleanup_complete":true}
+{"schema":"4d-pdf-printer.worker-status","version":1,"worker_version":"0.1.0","result":"ok","exit_code":0,"stage":"complete","error":null,"document":null,"page":null,"documents":1,"pages_completed":2,"output_bytes":6115,"output_published":true,"cleanup_complete":true}
 ```
 
 ## Stable exits and `error.code`

@@ -105,12 +105,14 @@ The synthetic generator contains original page XML, a generated six-glyph font
 and a generated 2x2 PNG, not third-party documents/fonts. It covers legacy XPS,
 OXPS, two fixed documents, mixed-size multipage output, Unicode/CJK extraction,
 embedded fonts, clipping/transparency/vector/image resources, invalid input,
-encryption markers, collision/race/permission paths, output write/finalization,
-post-publication failures and 20 sequential fresh processes.
+encryption markers, CRC/compression errors, exact ZIP-entry count and page-count
+guards, collision/race/permission paths, output write/finalization,
+post-publication failures and 20 sequential fresh processes. The fixture font
+timestamps and ZIP metadata are fixed; repeated generation is byte-checked.
 
 On the initial macOS arm64 development run (patched libgxps 0.3.2, Cairo 1.18.4,
 GLib 2.88.3, libarchive 3.8.10), each generated two-page XPS and OXPS produced
-**6,103 bytes / 3,051.5 bytes per page**. Input ZIP sizes were 3,600 and 3,560
+**6,115 bytes / 3,057.5 bytes per page**. Input ZIP sizes were 3,611 and 3,574
 bytes. These are measurements, not size-reduction claims or acceptance targets.
 Tests inspect PDF structure, text and resources; **no pixel-reference comparison,
 real 4D corpus, accessibility/PDF-A/print-ticket validation, WDP validation or
