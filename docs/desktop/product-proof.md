@@ -48,7 +48,7 @@ units and the existing 36 build-support cases also passed.
 
 Not executed: original Windows GDI/EMF fixture generation/replay, old diagnostic
 control, Microsoft PDF baseline, actual worker launch/repetitions/faults through
-this supervisor, resource thresholds, manual fidelity review or either new
+this supervisor, resource observations, manual fidelity review or either new
 printing endpoint. Compiling Job Object code is not execution evidence for its
 worker lifecycle. No result here closes the historical activation/service gates.
 
@@ -69,8 +69,37 @@ violations remain failures. Only actually safe, complete repetitions permit
 bounded fault observations and downstream comparison. A missed numeric reference
 does not stop them. Native units exercise that same continuation decision;
 Python and subprocess units distinguish reference misses from real errors.
-The follow-up compile/unit checkpoint will identify its own tested source;
-the historical `6cf816e` receipts remain unchanged.
+The follow-up below tests its own source; historical `6cf816e` receipts remain
+unchanged.
+
+### Exact follow-up compile/unit checkpoint
+
+The **one** authorized reporting-correction follow-up
+[40737957800](https://github.com/miyako/4d-pdf-printer/actions/runs/40737957800)
+passed at source **`312e1c830e0a775656db89fa7096349b357bcb1d`**:
+
+| Native target | Actual observations |
+|---|---|
+| x64, job122991497652 | Own-code MSVC/SDK26100 build and PE check; one native CTest covering protocol/framing/hash and reference-versus-safety continuation; seven consent/subprocess tests; 48 Python tests discovered, 47 passed/one actual-Poppler smoke skipped. |
+| ARM64, job122991498268 | Same own-code compile/native PE and native CTest/helper checks on Windows ARM64; same Python 47 passed/one skipped. |
+
+[x64 receipt](evidence/40737957800-x64.json) and
+[ARM64 receipt](evidence/40737957800-arm64.json) preserve exact executable hashes
+and clean tested source identity. Local macOS ran all 48 comparator tests,
+including real Poppler identical-PDF interoperability: ratio1.0, **no size
+improvement**, completed measurement requiring review, `productUsable:false`.
+Seven local consent/subprocess cases also passed. Larger output/pixel-reference
+misses complete measurements; missing content, invalid raster/tool output,
+protocol/safety failures and real subprocess errors/deadlines remain nonzero.
+
+Exactly one manual workflow ran for this corrected source, with the same
+automatic-CI skip guard. No rerun, runtime/dependency/MSIX build or upload,
+GDI/PSA action, signing/trust/install or user-host execution occurred. The final
+checkpoint is documentation/evidence only relative to this tested source;
+it is not another green run. Actual desktop comparison, real worker
+repetitions/faults/resource behavior and manual fidelity remain **unexecuted**.
+No size/lifecycle claim, product acceptance, milestone-B progression or host-run
+permission follows from these compile/unit results.
 
 ## What this measures
 

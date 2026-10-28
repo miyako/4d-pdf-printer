@@ -18,9 +18,14 @@ or trust change is requested by these results.
 
 The resumed **milestone-A product proof** is a separate standalone target:
 [size/fidelity/lifetime harness](product-proof.md). It requires no new package
-or RPC bridge. Its single x64/native-ARM64 compile/unit batch passed; actual
+or RPC bridge. Its initial x64/native-ARM64 compile/unit batch and one narrow
+reporting-correction follow-up passed; actual
 desktop comparison and worker/resource measurements remain unexecuted. The first
 usable prototype still requires both silent application destinations and Save As.
+Size/raster/observer-growth references are unapproved observations, not product
+pass/fail gates; completed measurements still require manual review and report
+`productUsable:false`. Exact tested sources and preserved receipts are linked
+from the harness document.
 
 ## Early gate
 
