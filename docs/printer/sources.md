@@ -123,6 +123,54 @@ collect runtime evidence on the actual 26100+ lab build.
     its versioned v143 ARM64 component is separate from the default toolset.
     The [VS 2026 CMake generator](https://cmake.org/cmake/help/latest/generator/Visual%20Studio%2018%202026.html)
     defaults to v145; this build explicitly selects v143 with `-T`.
+18. [Service user accounts](https://learn.microsoft.com/en-us/windows/win32/services/service-user-accounts)
+    explicitly says SCM **automatically loads the user profile**, logs on the
+    configured account and attaches its access token to the service process.
+    A service account matching the signed-in desktop account does not make
+    those logons or Terminal Services sessions identical.
+    [SECURITY_LOGON_SESSION_DATA](https://learn.microsoft.com/en-us/windows/win32/api/ntsecapi/ns-ntsecapi-security_logon_session_data)
+    separates the authentication LUID, logon type and Terminal Services session.
+    [LsaGetLogonSessionData](https://learn.microsoft.com/en-us/windows/win32/api/ntsecapi/nf-ntsecapi-lsagetlogonsessiondata)
+    permits the session owner to query it; diagnostics retain only status/type,
+    not private user/domain/SID/LUID/profile fields. No `LoadUserProfile` fix is
+    justified by the observed generic StartDoc error.
+19. [Per-user services](https://learn.microsoft.com/en-us/windows/application-management/per-user-services-in-windows)
+    are created when a user signs in and stopped/deleted at sign-out. The table
+    lists **PrintWorkflowUserSvc**, Manual, supporting Print Workflow apps.
+    Instance names have a user-context LUID suffix. This is a relevant platform
+    boundary, not a documented complete PSA v4 internal activation path,
+    exact AuthenticationId-to-suffix algorithm, or proof that this host's 3003
+    is caused by that service. No startup-type/registry/policy/service changes
+    are prescribed.
+20. [StartDocW](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-startdocw)
+    documents positive job ID on success, nonpositive return on failure and
+    synchronous/blocking behavior. It does **not** document a
+    `CoInitialize[Ex]` prerequisite or guarantee a uniquely causal LastError.
+    [System errors 1700-3999](https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--1700-3999-)
+    define 3003 / ERROR_SPL_NO_STARTDOC as "A StartDocPrinter call was not issued."
+    This does not instruct a GDI caller to insert `StartDocPrinter` before
+    `StartDocW`. It does not prove a task factory failure or universal service
+    prohibition. Capture raw return/error before any diagnostics or cleanup.
+    Managed `System.Drawing.Printing` / `System.Printing` service warnings are
+    not a diagnosis of this native GDI submitter.
+21. [FindPackagesByPackageFamily](https://learn.microsoft.com/en-us/windows/win32/api/appmodel/nf-appmodel-findpackagesbypackagefamily)
+    queries packages for the **current user** and returns numeric Win32 codes.
+    [PackageFamilyNameFromId](https://learn.microsoft.com/en-us/windows/win32/api/appmodel/nf-appmodel-packagefamilynamefromid)
+    derives the family from the authored name/publisher without another user's
+    environment/registration. A positive HEAD count is not activation readiness.
+    [RegOpenCurrentUser](https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regopencurrentuser)
+    can return the default key if the profile is not loaded; therefore the
+    diagnostic checks the own-token SID's exact mounted HKEY_USERS key instead
+    and retains the numeric result, not a false "profile loaded" inference.
+22. The pinned Microsoft
+    [native WinAppSDK virtual-printer task](https://github.com/microsoft/print-oem-samples/blob/652343e4980cc962fb099496125cf749aee51c71/PSASamples/WinAppSdk/C%2B%2B/BackgroundTasks/VirtualPrinterBgTask.cpp)
+    takes a background deferral, extracts the virtual-printer trigger/session,
+    subscribes to data, then starts the session, matching our public-contract
+    ordering. Its cloud branch does not request a target file; PDF code requests
+    UI. This source is not a named-user SCM/session-0 submission sample or
+    proof of no-login support. Our desktop positive control already exercises
+    the product factory/Run/data path. The current native probe calls only GDI;
+    it does not activate this WinRT task itself.
 
 **Decision:** retain the PSA architecture as a candidate, but do not integrate a
 production worker/4D plugin until the named-user session-0 activation and permitted
@@ -131,3 +179,9 @@ pre-login/sign-out runs. No legacy driver or logged-in helper fallback is author
 The best source-supported transport candidate is **activated PSA task -> ACL-
 protected local RPC -> named-user coordinator service -> fresh external worker**.
 The end-to-end activation/deployment gate is unresolved, not proven impossible.
+The [actual session-0 failure](validation.md#named-user-session-0-submission-gate)
+now puts implementation on **HOLD**. Primary sources reviewed here do not close
+the gap between current-user package registration and a supported background
+activation from a type-5/session-0 print caller before login/after sign-out.
+Do not label the architecture supported or categorically unsupported without
+that platform evidence.

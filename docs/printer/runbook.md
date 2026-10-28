@@ -1,8 +1,10 @@
 # Windows 11 runtime evidence runbook
 
-**Neither the first user-run install nor the native ARM64 update created either
-diagnostic queue. The Microsoft reference has both queues on that same host.**
-The printing/service rows below remain unexecuted; see [observed evidence](validation.md).
+**Current gate: product 0.1.2.0 has both queues and desktop capture works, but
+native named-user session-0 `StartDocW` fails (3003) while inbox XPS submission
+works.** See [observed evidence](validation.md#named-user-session-0-submission-gate).
+Do not repeat registration, certificate or old service-control experiments.
+Pre-login, sign-out and 4D tests remain on HOLD.
 Use synthetic pages only. Do not
 upload account names, paths, private print tickets/documents, credentials or full
 Windows event logs to this public repository.
@@ -289,6 +291,86 @@ not by itself identify why activation failed. Correlate sanitized
 PrintService/AppModel diagnostics privately with the timestamps.
 
 ## Real named-user service probe
+
+The setup and acceptance matrix below describe the eventual gate, **not the
+next action on the reported host**. Its existing one-shot service is stopped,
+Manual, and last targeted the **inbox XPS control**, not the product. Preserve
+that account/configuration and use only the bounded diagnostic test below after
+review. Do not configure Automatic, reboot, sign out, or repeat Save As tests now.
+
+### One instrumented service submission
+
+This follow-up changes the **standalone probe only**; product identity/version,
+MSIX, task DLL, PDC, PRI and queues are unchanged. No package update, development
+certificate/trust change, SDK upgrade, service recreation or password handling
+is needed. Use the reviewed CI native ARM64 `build/Release/PrintProbe.exe`, or
+build just that target from the existing configured ARM64 build directory:
+
+```powershell
+cmake --build .\printer\out\arm64\build --config Release --target PrintProbe
+if ($LASTEXITCODE -ne 0) { throw 'Probe build failed; stop.' }
+```
+
+An authorized administrator can replace only the stopped service's protected
+probe executable. Privately verify its SHA256 against the selected artifact or
+new local build, then run `PrintProbe.exe --version` (must report
+`PrintProbe 2 (arm64); evidence schema psa-probe-v2`). A new local build has its
+own hash; filenames/version alone do not identify the bytes.
+Do not execute the service command directly in a console and call it SCM evidence.
+
+**One next test:** keep the same existing named-user SCM account and signed-in
+desktop state. Change **PathName only** through the approved private workflow
+(for example `Invoke-CimMethod Win32_Service.Change` with only `PathName`).
+Use the no-file product queue, **omit `--output`**, new synthetic title/log,
+delay 0 and timeout 90. The generic binary-path shape is:
+
+```text
+"C:\PsaLab\bin\PrintProbe.exe" --service --noninteractive --diagnose-context --queue "PSA Diagnostic Capture (no file UI)" --job-name synthetic-service-context-04 --log "C:\PsaLab\evidence\service-context-04.jsonl" --timeout-seconds 90
+```
+
+Paths are examples, not the user's private locations. Check that the log does
+not already exist. Preserve the existing account, Manual startup and recovery
+Take No Action. Start **once through SCM**, wait for the stopped state, inspect
+its reported exit code, and retain the complete new JSONL privately. Do not
+repeat the already successful inbox control. No logged-in helper is introduced.
+
+Schema **`psa-probe-v2`** deliberately distinguishes:
+
+| Evidence | Meaning / limit |
+|---|---|
+| `probeVersion`, `processArchitecture`, `executableSha256`, `jobTitleSha256` | Exact executable and UTF-8 title-hash correlation on every record. Title hash must match task `job.json` if one exists; it is not authentication. Startup hashing failure/early watchdog can leave empty hashes and a failed run. |
+| `serviceMode`, process/session/time | Requested SCM mode and actual submitter session. `serviceMode` alone is not proof of service logon. |
+| `submission-context.tokenSessionId`, `logonType`, `logonQueryNtStatus` | Own process token/LSA query, taken after delay immediately before queue access. Service logon type is 5, distinct from interactive 2 / remote-interactive 10. A nonzero NTSTATUS or null type is an unknown/failed query, not "interactive false." No SID, account name or authentication LUID is emitted. |
+| `profileHiveOpenWin32Error` | Read-only open of `HKEY_USERS\<own token SID>`; 0 means accessible mounted hive, 2 means absent at this observation, 5 means access denied/unknown. Does not read profile contents or establish AppContainer LocalState access. It never loads/repairs a profile. |
+| `packageQueryWin32Error`, `currentUserPackageCount` | Native `FindPackagesByPackageFamily` HEAD sizing query for the product's public name/publisher under the service process's current user. 122 is the expected sizing response when space is needed; 0 can mean no matches. Other codes produce null count. Count is registration visibility, **not** package health/activation/broker availability. No cross-user install, WinRT initialization or desktop-token impersonation occurs. |
+| `startDocReturn`, `startDocLastError` | Raw signed return and immediately captured error, before logging/cleanup. LastError is cleared before the call; nonzero error on success is not failure, zero error on nonpositive return is not success. No job ID is invented from a negative return. |
+| `probe-failed.win32Error` | Preserves a captured API failure; uses ERROR_GEN_FAILURE (31) if no nonzero code exists. Unlike v1's generic terminal error 0, this cannot look like success. The detailed preceding stage remains authoritative. |
+
+Within the same private time window, retain any **already-enabled** relevant
+PrintService, AppModel-Runtime and TWinUI events with ActivityId/RelatedActivityId.
+Do not enable channels, change policies or export full machine logs publicly.
+Read-only inspection of `PrintWorkflowUserSvc*` state can accompany this one
+test; do not start/reconfigure it. An instance for an interactive logon is not
+evidence of an instance available to the service logon. The documented suffix
+identifies a user context; do not invent an exact token-LUID/suffix mapping.
+Inspect fresh `activation.json` as well as exact-title-hash `job.json` privately;
+no matching job is not proof that `Run` was never entered. Earlier activation
+can fail before either file exists.
+
+**Stop/decision:** if the service token sees no product registration or cannot
+access its hive, report that precise boundary without auto-provisioning,
+loading a hive, impersonating a desktop user or changing capabilities. If those
+queries succeed but `StartDocW` still fails without an exact capture, the
+remaining gap is inside the Windows submission/workflow activation boundary.
+Stop with these records and request Microsoft-supported activation semantics
+and a correlated internal error/trace for a type-5/session-0 caller. Neither
+3003 nor a stopped per-user service proves universal PSA prohibition.
+Do not construct a file-queue reference service test: its Save As dependency is
+a confounder. No faithful independently identified no-file reference variant
+was built in this follow-up. Hosted CI has no authorized runner-user service
+password; LocalSystem and manufactured-account provisioning are not substitutes.
+
+### Eventual setup and acceptance matrix (on HOLD)
 
 `PrintProbe.exe --service` implements the SCM service entry point itself; do not
 register an ordinary console program and call that a working service.

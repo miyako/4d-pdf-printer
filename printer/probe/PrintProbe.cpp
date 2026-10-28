@@ -6,18 +6,20 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
+#include "Evidence.h"
 
 namespace
 {
     struct Options
     {
         std::wstring queue, output, job, log;
-        bool interactive = false, noninteractive = false, service = false;
+        bool interactive = false, noninteractive = false, service = false, diagnoseContext = false;
         unsigned timeout = 60, delay = 0;
     };
 
@@ -53,6 +55,7 @@ namespace
             if (arg == L"--interactive") result.interactive = true;
             else if (arg == L"--noninteractive") result.noninteractive = true;
             else if (arg == L"--service") result.service = true;
+            else if (arg == L"--diagnose-context") result.diagnoseContext = true;
             else
             {
                 if (i + 1 == args.size()) throw std::invalid_argument("missing option value");
@@ -97,9 +100,17 @@ namespace
     std::atomic<bool> stopRequested{false};
     std::atomic<bool> done{false};
     SERVICE_STATUS_HANDLE serviceHandle = nullptr;
+    std::string executableHash, jobHash;
+    std::mutex logMutex;
 
-    void Log(char const* event, DWORD error = 0, int jobId = 0)
+    void Log(char const* event, DWORD error = 0, int jobId = 0, std::string const& fields = {})
     {
+        std::string binary, title;
+        {
+            std::scoped_lock guard(logMutex);
+            binary = executableHash;
+            title = jobHash;
+        }
         DWORD sessionId = MAXDWORD;
         ProcessIdToSessionId(GetCurrentProcessId(), &sessionId);
         FILETIME now{};
@@ -107,7 +118,11 @@ namespace
         ULARGE_INTEGER timestamp{};
         timestamp.LowPart = now.dwLowDateTime;
         timestamp.HighPart = now.dwHighDateTime;
-        std::string line = "{\"schema\":\"psa-probe-v1\",\"event\":\"" + std::string(event) +
+        std::string line = "{\"schema\":\"psa-probe-v2\",\"probeVersion\":\"" +
+            std::string(evidence::Version) + "\",\"processArchitecture\":\"" + evidence::Architecture +
+            "\",\"executableSha256\":\"" + binary + "\",\"jobTitleSha256\":\"" + title +
+            "\",\"serviceMode\":" + (options.service ? "true" : "false") +
+            ",\"event\":\"" + std::string(event) +
             "\",\"win32Error\":" + std::to_string(error) + ",\"spoolerJobId\":" +
             std::to_string(jobId) + ",\"processId\":" + std::to_string(GetCurrentProcessId()) +
             ",\"windowsSessionId\":" + std::to_string(sessionId) +
@@ -115,7 +130,7 @@ namespace
             ",\"timeoutSeconds\":" + std::to_string(options.timeout) +
             ",\"delaySeconds\":" + std::to_string(options.delay) +
             ",\"watchdogBudgetSeconds\":" + std::to_string(WatchdogBudget(options).count()) +
-            ",\"outputSupplied\":" + (options.output.empty() ? "false" : "true") + "}\n";
+            ",\"outputSupplied\":" + (options.output.empty() ? "false" : "true") + fields + "}\n";
         if (options.log.empty()) std::fputs(line.c_str(), stdout);
         else
         {
@@ -132,7 +147,7 @@ namespace
         {
             DWORD error = GetLastError();
             Log(stage, error);
-            throw std::runtime_error(stage);
+            throw evidence::Failure(stage, error);
         }
     }
 
@@ -151,7 +166,6 @@ namespace
 
     int Print()
     {
-        Log("probe-started");
         // A separate watchdog bounds synchronous GDI/driver calls that may ignore AbortProc.
         auto limit = std::chrono::steady_clock::now() + WatchdogBudget(options);
         std::thread watchdog([limit]
@@ -178,8 +192,17 @@ namespace
         bool started = false;
         try
         {
+            auto binary = evidence::ExecutableHash();
+            auto title = evidence::JobHash(options.job);
+            {
+                std::scoped_lock guard(logMutex);
+                executableHash = std::move(binary);
+                jobHash = std::move(title);
+            }
+            Log("probe-started");
             for (unsigned i = 0; i < options.delay * 10 && !stopRequested; ++i)
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            if (options.diagnoseContext) Log("submission-context", 0, 0, evidence::Context());
             if (!options.output.empty() && std::filesystem::exists(options.output))
                 throw std::runtime_error("refuse existing diagnostic destination");
             HANDLE printer = nullptr;
@@ -193,10 +216,15 @@ namespace
             doc.lpszDocName = options.job.c_str();
             doc.lpszOutput = options.output.empty() ? nullptr : options.output.c_str();
             Log("startdoc-enter");
-            int job = StartDocW(dc, &doc);
-            Check(job > 0, "startdoc-failed");
+            auto start = evidence::CallStartDoc([&] { return StartDocW(dc, &doc); });
+            if (!start.Succeeded())
+            {
+                Log("startdoc-failed", start.lastError, 0, start.Fields());
+                throw evidence::Failure("startdoc-failed", start.lastError);
+            }
+            int job = start.rawReturn;
             started = true;
-            Log("startdoc-returned", 0, job);
+            Log("startdoc-returned", 0, job, start.Fields());
             Check(StartPage(dc) > 0, "startpage-failed");
             std::wstring text = L"Synthetic PSA feasibility page; no customer data.";
             Check(TextOutW(dc, 120, 120, text.c_str(), static_cast<int>(text.size())) != FALSE, "textout-failed");
@@ -209,7 +237,9 @@ namespace
         catch (std::exception const& error)
         {
             std::fprintf(stderr, "PrintProbe: %s\n", error.what());
-            try { Log("probe-failed"); }
+            auto failure = dynamic_cast<evidence::Failure const*>(&error);
+            DWORD code = failure && failure->code ? failure->code : ERROR_GEN_FAILURE;
+            try { Log("probe-failed", code); }
             catch (...) { std::fputs("PrintProbe: evidence log failed\n", stderr); }
             result = 1;
         }
@@ -314,6 +344,33 @@ namespace
                 throw std::runtime_error("delay must be added to, not deducted from, submission allowance");
         }
         std::puts("20 argument/timing cases passed; service delay 120 + timeout 90 = budget 210; no printer accessed.");
+        auto diagnostic = Parse({L"--queue", L"q", L"--noninteractive", L"--diagnose-context"});
+        if (!diagnostic.diagnoseContext || valid.diagnoseContext)
+            throw std::runtime_error("context must be opt-in");
+        for (auto raw : {-1, 0, 42})
+        {
+            SetLastError(ERROR_ACCESS_DENIED);
+            auto startDoc = evidence::CallStartDoc([raw]
+            {
+                if (GetLastError() != ERROR_SUCCESS)
+                    throw std::runtime_error("stale LastError not cleared");
+                SetLastError(ERROR_SPL_NO_STARTDOC);
+                return raw;
+            });
+            if (startDoc.rawReturn != raw || startDoc.lastError != ERROR_SPL_NO_STARTDOC ||
+                startDoc.Succeeded() != (raw > 0) ||
+                startDoc.Fields().find("\"startDocReturn\":" + std::to_string(raw)) == std::string::npos)
+                throw std::runtime_error("raw StartDoc evidence changed");
+        }
+        auto noError = evidence::CallStartDoc([] { return -1; });
+        if (noError.lastError != 0 || noError.Succeeded())
+            throw std::runtime_error("missing LastError must remain an unsuccessful raw return");
+        if (evidence::JobHash(L"synthetic-service-01") !=
+            "d42fd077c5d93441b33f956cd37cced22a406c9bfd04107402d2bab07de35737" ||
+            evidence::JobHash(L"\u00e9") !=
+            "4a99557e4033c3539de2eb65472017cad5f9557f7a0625a09f1c3f6e2ba69c4c")
+            throw std::runtime_error("job hash must match task UTF-8 SHA256");
+        std::puts("Context opt-in, 4 raw StartDoc/error cases and 2 UTF-8 SHA256 vectors passed; no printer accessed.");
         return 0;
     }
 }
@@ -323,6 +380,12 @@ int wmain(int argc, wchar_t** argv)
     try
     {
         if (argc == 2 && std::wstring(argv[1]) == L"--self-test") return SelfTest();
+        if (argc == 2 && std::wstring(argv[1]) == L"--version")
+        {
+            std::printf("PrintProbe %s (%s); evidence schema psa-probe-v2\n",
+                evidence::Version, evidence::Architecture);
+            return 0;
+        }
         options = Parse(std::vector<std::wstring>(argv + 1, argv + argc));
         if (options.service)
         {
@@ -342,7 +405,8 @@ int wmain(int argc, wchar_t** argv)
         std::fprintf(stderr, "PrintProbe: %s\n"
             "Usage: PrintProbe --queue NAME (--interactive | --noninteractive)"
             " [--output ABSOLUTE.oxps] [--job-name TOKEN] [--timeout-seconds 1..300]"
-            " [--log ABSOLUTE.jsonl] [--service] [--delay-seconds 0..86400]\n"
+            " [--log ABSOLUTE.jsonl] [--service] [--delay-seconds 0..86400] [--diagnose-context]\n"
+            "PrintProbe --version | --self-test\n"
             "Watchdog budget = delay + timeout; timeout is not reduced by the startup delay.\n", error.what());
         return 2;
     }

@@ -7,6 +7,9 @@ $ns.AddNamespace('m', 'http://schemas.microsoft.com/appx/manifest/foundation/win
 $ns.AddNamespace('psa', 'http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2')
 $ns.AddNamespace('uap10', 'http://schemas.microsoft.com/appx/manifest/uap/windows10/10')
 $identity = $manifest.SelectSingleNode('/m:Package/m:Identity', $ns)
+if ($identity.Name -cne 'Miyako.PsaFeasibility' -or $identity.Publisher -cne 'CN=PsaFeasibilityDev') {
+    throw 'Update the read-only PrintProbe context identity when changing the product identity.'
+}
 if ($identity.Version -ne '0.1.2.0' -or $identity.ProcessorArchitecture -ne 'x64') {
     throw 'Expected version 0.1.2.0 x64 source template; build generates the selected target.'
 }
