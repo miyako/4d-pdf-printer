@@ -143,6 +143,15 @@ Require actual background activation/source evidence in each state and a
 supported authenticated coordinator handoff. No tray/helper session may be
 introduced to make a failing test pass.
 
+Microsoft documents logoff as a background-task cancellation reason. Test both
+an active job interrupted by sign-out and a **new** job submitted after sign-out;
+these are different cases. A deferral does not guarantee survival or unlimited
+runtime. Preserve ambiguous publication evidence and do not retry automatically.
+If activation passes, separately validate the [local-RPC service candidate](handoff.md):
+correct package/user ACLs, wrong-user/package rejection, endpoint absent,
+disconnect/timeout/cancel, worker crash with no JSON, and abandoned job-local files.
+The documented generic RPC pattern is not already wired into this package.
+
 ## Repeated jobs and later 4D checks
 
 Initially submit serially and wait for workflow completion/evidence, not only

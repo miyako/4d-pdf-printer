@@ -8,7 +8,7 @@ development. A successful hosted build does not close the gate.
 
 | Claim category | Evidence / limit |
 |---|---|
-| Confirmed by source | PSA v4 virtual printer API is introduced in 26100 / UniversalApiContract 19. Manifest supports OXPS preference, multiple endpoints and OS Save As with `OutputFileTypes`. See [sources](sources.md). |
+| Confirmed by source | PSA v4 API is introduced in 26100 / UniversalApiContract 19. Manifest supports OXPS, multiple endpoints and OS Save As. Packaged-app-to-Win32-service RPC is a documented transport pattern; logoff is a task cancellation reason. See [sources](sources.md). |
 | Compile checked | [Actual successful Windows run and artifact evidence](validation.md): native MSVC compile, probe argument tests, direct DLL factory smoke test and MakeAppx manifest/package validation. This is not printer installation, PDC semantic validation or service activation. |
 | Runtime observed on Windows 11 | **None.** No installed queue, actual captured job, Save As result, 4D print, worker handoff, or pre-login/sign-out execution is claimed. |
 | Still unverified | Queue/package visibility to a service identity; session-0 activation; source MIME type and ticket semantics; `DOCINFO.lpszOutput` to PSA target mapping; no-file endpoint target behavior; allowed authenticated external coordinator transport; cancellation/termination/repeated activation. |

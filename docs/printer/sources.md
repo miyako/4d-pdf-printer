@@ -44,8 +44,50 @@ collect runtime evidence on the actual 26100+ lab build.
 9. [4D Server as a service](https://developer.4d.com/docs/server/service)
    is the user's service-account setup reference, not evidence that PSA activation
    works from that account or that 4D Server implies Windows Server OS support.
+10. [UWP interprocess communication](https://learn.microsoft.com/en-us/windows/uwp/communication/interprocess-communication)
+    explicitly supports a packaged application connecting to a Win32 RPC endpoint
+    with appropriate ACLs. The endpoint can be ACLed to the package SID derived
+    using `DeriveAppContainerSidFromAppContainerName`, without custom-capability
+    management. Microsoft's
+    [CustomCapability sample](https://github.com/microsoft/Windows-universal-samples/tree/main/Samples/CustomCapability)
+    includes an `ncalrpc` client and an actual Windows-service RPC server (the
+    sample defaults to LocalSystem). This supports investigating PSA-to-service
+    RPC once PSA activates; it does not demonstrate named-user PSA activation
+    before login, after sign-out, or this renderer integration.
+11. [FullTrustProcessLauncher](https://learn.microsoft.com/en-us/uwp/api/windows.applicationmodel.fulltrustprocesslauncher?view=winrt-26100)
+    activates a declared Win32 component in the **same package** and requires
+    `runFullTrust`. It is not an arbitrary external `Process.Start` contract.
+    The reviewed documentation neither guarantees PSA-task/no-login use nor
+    states that background use is categorically forbidden. The WinAppSDK PSA
+    sample declares `runFullTrust` and an `IBackgroundTask` DLL, but its PDF path
+    requests UI and uses the inbox converter; it is not an external-worker
+    handoff example. No claim is made that desktop/full-trust PSA is unsupported.
+12. [BackgroundTaskCancellationReason](https://learn.microsoft.com/en-us/uwp/api/windows.applicationmodel.background.backgroundtaskcancellationreason?view=winrt-26100)
+    defines `LoggingOff` as cancellation because the user logged off. Existing
+    tasks must not be assumed to survive sign-out; this does not prove that a
+    later print cannot activate another task.
+    [BackgroundTaskDeferral](https://learn.microsoft.com/en-us/uwp/api/windows.applicationmodel.background.backgroundtaskdeferral?view=winrt-26100)
+    says most tasks time out regardless of pending deferrals. The exact PSA v4
+    trigger budget is not established by generic background-task quotas.
+13. The same [IPC guide](https://learn.microsoft.com/en-us/windows/uwp/communication/interprocess-communication)
+    documents named-pipe package/security constraints and `\\.\pipe\LOCAL\`
+    naming, not an unrestricted cross-session pipe recipe.
+    [App-service guidance](https://learn.microsoft.com/en-us/windows/uwp/launch-resume/how-to-create-and-consume-an-app-service)
+    describes background-caller time limits (normally 30 seconds plus a one-time
+    5-second deferral extension). Those are app-service rules, not a proven PSA
+    virtual-printer timeout, and neither mechanism closes the no-login gate.
+14. [MSIX package behavior](https://learn.microsoft.com/en-us/windows/msix/desktop/desktop-to-uwp-behind-the-scenes)
+    documents per-user installation. Generic package scope alone does not prove
+    a queue's visibility or activation for a session-0 service.
+    [CreateProcessW](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw)
+    uses the caller process's security context, not a thread impersonation token.
+    A permitted service coordinator can therefore own ordinary Win32 worker
+    creation; the UWP task does not need to spawn the executable itself.
 
 **Decision:** retain the PSA architecture as a candidate, but do not integrate a
 production worker/4D plugin until the named-user session-0 activation and permitted
 coordinator transport gates are closed with authoritative support plus observed
 pre-login/sign-out runs. No legacy driver or logged-in helper fallback is authorized.
+The best source-supported transport candidate is **activated PSA task -> ACL-
+protected local RPC -> named-user coordinator service -> fresh external worker**.
+The end-to-end activation/deployment gate is unresolved, not proven impossible.

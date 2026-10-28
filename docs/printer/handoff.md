@@ -67,9 +67,35 @@ watching the user's package storage.
 ## Gate before choosing transport
 
 Prove PSA activation for the registered service identity before interactive login
-and after sign-out. Identify an officially allowed IPC/handoff topology, deployment
-and ACL model that survives those states. A FullTrustProcessLauncher API, app
-service example, generic manifest scope flag, localhost permission, or ordinary
-background activation by itself does not prove a session-0 service arrangement.
+and after sign-out. Microsoft documents a supported packaged-app-to-Win32 RPC
+pattern, including package-SID endpoint ACLs, and supplies a UWP client / actual
+Windows-service `ncalrpc` example. The concrete candidate is:
+
+```text
+activated PSA task
+  -> authenticated, package-SID-ACL-protected local RPC
+  -> dedicated named-user coordinator Windows service
+  -> fresh disposable pdf-render-worker.exe
+```
+
+See [source findings 10-14](sources.md). This is a source-supported **transport
+pattern**, not an implemented or observed PSA/service integration. The Microsoft
+sample's service defaults to LocalSystem; it does not prove our named-user setup.
+The coordinator is a separately installed service, not an assumed RPC facility in
+4D Server, a tray app, or a proposed named-user service embedded in this MSIX.
+No custom capability or broad all-AppContainer endpoint permission is proposed.
+Package SID access alone is insufficient job authorization: also authenticate
+the expected user/service principal and bind the unguessable exact-job token to
+that identity. Fail closed on missing identity or stale/mismatched job records.
+Cross-session binding, endpoint ACLs, payload limits, cancellation/disconnect,
+deployment and recovery all need target-host validation.
+
+`FullTrustProcessLauncher` is a same-package declared-component mechanism
+requiring `runFullTrust`, not arbitrary process creation. Its existence neither
+proves this PSA/background/no-login use nor establishes a blanket prohibition.
+Likewise app services, generic manifest scope flags, localhost permission or
+ordinary background activation do not prove a session-0 arrangement.
+Logoff is a documented task cancellation reason; a deferral is not an unlimited
+lease. Do not retry a possibly published conversion just because PSA disconnected.
 If the platform cannot support this, stop and present the incompatibility. Do not
 replace it silently with a tray app, legacy driver or in-spooler renderer.
