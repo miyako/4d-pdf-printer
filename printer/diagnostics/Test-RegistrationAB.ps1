@@ -2,6 +2,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$ProductDirectory,
+    [string]$UpdateDirectory,
     [Parameter(Mandatory)][string]$OutputDirectory
 )
 Set-StrictMode -Version Latest
@@ -54,6 +55,7 @@ $report = [ordered]@{
     error = $null
     trustRemoved = $false
     keyRemoved = $false
+    updateWithoutRemoval = $false
 }
 $certificate = $null
 $trustCreated = $false
@@ -67,12 +69,21 @@ function Invoke-Tool([string]$Tool, [string[]]$Arguments) {
     if ($LASTEXITCODE -ne 0) { throw "SDK tool failed with exit code $LASTEXITCODE" }
 }
 
-function Invoke-Variant([string]$Label, [string]$Directory, [string]$Package) {
+function Invoke-Variant([string]$Label, [string]$Directory, [string]$Package,
+    [switch]$KeepInstalled, [version]$PreviousVersion) {
     [xml]$manifest = Get-Content -LiteralPath (Join-Path $Directory 'AppxManifest.xml') -Raw
     $identity = $manifest.Package.Identity
     if ($identity.Name -cnotin $identities -or $identity.Publisher -cne $publisher -or
         $identity.ProcessorArchitecture -cne 'arm64') { throw 'Unexpected diagnostic identity.' }
-    if (@(Get-AppxPackage -AllUsers -Name $identity.Name).Count) { throw 'Variant identity is not clean.' }
+    $previous = @(Get-AppxPackage -AllUsers -Name $identity.Name)
+    if ($PreviousVersion) {
+        if ($identity.Name -cne 'Miyako.PsaFeasibility' -or
+            $PreviousVersion -ne [version]'0.1.1.0' -or $identity.Version -cne '0.1.2.0' -or
+            $previous.Count -ne 1 -or $previous[0].Publisher -cne $publisher -or
+            [version]$previous[0].Version -ne $PreviousVersion -or
+            $previous[0].Architecture.ToString() -ine 'Arm64' -or
+            $previous[0].Status.ToString() -ine 'Ok') { throw 'Expected owned healthy 0.1.1.0 product before normal update.' }
+    } elseif ($previous.Count) { throw 'Variant identity is not clean.' }
     $before = @(Get-Printer | ForEach-Object Name)
     if (@($before | Where-Object { $_ -cin $names }).Count) { throw 'Stale diagnostic queues before variant.' }
     $result = [ordered]@{
@@ -103,11 +114,13 @@ function Invoke-Variant([string]$Label, [string]$Directory, [string]$Package) {
     }
     $report.variants += $result
     $attempted = $false
+    $completed = $false
     try {
         $attempted = $true
         $result.registration = 'attempted'
         Save-Report
         Add-AppxPackage -Path $Package -ErrorAction Stop
+        if ($PreviousVersion) { $report.updateWithoutRemoval = $true }
         $registered = @(Get-AppxPackage -Name $identity.Name)
         if ($registered.Count -ne 1 -or $registered[0].Publisher -cne $publisher -or
             [version]$registered[0].Version -ne [version]$identity.Version -or
@@ -135,16 +148,21 @@ function Invoke-Variant([string]$Label, [string]$Directory, [string]$Package) {
         }
         $count = @($names | Where-Object { $_ -cin $result.after }).Count
         $result.queues = @('absent', 'some', 'present')[$count]
+        $completed = $true
         Save-Report
     } finally {
-        if ($attempted) {
+        if ($attempted -and $KeepInstalled -and $completed) {
+            $result.cleanup = 'retained-for-normal-same-family-update'
+            Save-Report
+        } elseif ($attempted) {
             $result.cleanup = 'attempted'
             Save-Report
             # Absence was checked globally before deployment. Never remove by wildcard or name alone.
             $owned = @(Get-AppxPackage -AllUsers -Name $identity.Name)
             foreach ($packageInfo in $owned) {
                 if ($packageInfo.Name -cne $identity.Name -or $packageInfo.Publisher -cne $publisher -or
-                    [version]$packageInfo.Version -ne [version]$identity.Version -or
+                    ([version]$packageInfo.Version -ne [version]$identity.Version -and
+                        (-not $PreviousVersion -or [version]$packageInfo.Version -ne $PreviousVersion)) -or
                     $packageInfo.Architecture.ToString() -ine 'Arm64') { throw 'Cleanup identity mismatch.' }
                 Remove-AppxPackage -Package $packageInfo.PackageFullName -AllUsers -ErrorAction Stop
             }
@@ -170,8 +188,19 @@ try {
     $baseline = Join-Path $output 'product.msix'
     Copy-Item -LiteralPath (Join-Path $ProductDirectory 'PsaDiagnostic.msix') -Destination $baseline
     Invoke-Tool $signtool @('sign', '/fd', 'SHA256', '/sha1', $certificate.Thumbprint, '/s', 'My', $baseline)
-    Invoke-Variant 'product-baseline' (Join-Path $ProductDirectory 'package') $baseline
-    if ($report.variants[0].queues -ne 'absent') {
+    Invoke-Variant 'product-baseline' (Join-Path $ProductDirectory 'package') $baseline -KeepInstalled:([bool]$UpdateDirectory)
+    if ($UpdateDirectory) {
+        if ($report.variants[0].version -cne '0.1.1.0' -or $report.variants[0].queues -cne 'absent') {
+            throw 'Historical product baseline did not reproduce absent queues; update causation test stopped.'
+        }
+        $updated = Join-Path $output 'product-update.msix'
+        Copy-Item -LiteralPath (Join-Path $UpdateDirectory 'PsaDiagnostic.msix') -Destination $updated
+        Invoke-Tool $signtool @('sign', '/fd', 'SHA256', '/sha1', $certificate.Thumbprint, '/s', 'My', $updated)
+        Invoke-Variant 'product-update' (Join-Path $UpdateDirectory 'package') $updated -PreviousVersion ([version]'0.1.1.0')
+        $report.variants[0].cleanup = 'superseded-by-normal-update-then-exact-owned-cleanup'
+        if ($report.variants[1].queues -cne 'present') { throw 'Corrected product update did not register both queues.' }
+        $report.conclusion = 'normal-product-0.1.1-to-0.1.2-update-both-queues-present'
+    } elseif ($report.variants[0].queues -ne 'absent') {
         $report.conclusion = 'product-baseline-registers-here-no-variant-causation-test'
     } else {
         $stage = Join-Path $output 'isolated-stage'
@@ -249,7 +278,7 @@ try {
             }
         }
     }
-    if ($report.variants.Count -gt 1) {
+    if (-not $UpdateDirectory -and $report.variants.Count -gt 1) {
         $payloads = @($report.variants | ForEach-Object { ConvertTo-Json -InputObject $_.otherPayload -Depth 4 -Compress } |
             Select-Object -Unique)
         if ($payloads.Count -ne 1) { throw 'Non-PDC payload changed between variants.' }
@@ -262,16 +291,30 @@ try {
     throw
 } finally {
     try {
-        if ($null -ne $certificate) {
-            if ($trustCreated -and (Test-Path -LiteralPath $trustPath)) {
-                Remove-Item -LiteralPath $trustPath
+        if ($UpdateDirectory -and $report.variants.Count -gt 0) {
+            # A failure before the update must still remove the baseline this job retained.
+            foreach ($packageInfo in @(Get-AppxPackage -AllUsers -Name 'Miyako.PsaFeasibility')) {
+                if ($packageInfo.Publisher -cne $publisher -or
+                    $packageInfo.Architecture.ToString() -ine 'Arm64' -or
+                    $packageInfo.Version.ToString() -cnotin @('0.1.1.0', '0.1.2.0')) { throw 'Refusing ambiguous retained-baseline cleanup.' }
+                Remove-AppxPackage -Package $packageInfo.PackageFullName -AllUsers -ErrorAction Stop
             }
-            $report.trustRemoved = -not (Test-Path -LiteralPath $trustPath)
-            $keyPath = "Cert:\CurrentUser\My\$($certificate.Thumbprint)"
-            if (Test-Path -LiteralPath $keyPath) { Remove-Item -LiteralPath $keyPath -DeleteKey }
-            $report.keyRemoved = -not (Test-Path -LiteralPath $keyPath)
+            if (@(Get-AppxPackage -AllUsers -Name 'Miyako.PsaFeasibility').Count -or
+                @((Get-Printer | ForEach-Object Name) | Where-Object { $_ -cin $names }).Count) {
+                throw 'Retained product package or queues remain after update experiment.'
+            }
         }
     } finally {
-        Save-Report
+        try {
+            if ($null -ne $certificate) {
+                if ($trustCreated -and (Test-Path -LiteralPath $trustPath)) {
+                    Remove-Item -LiteralPath $trustPath
+                }
+                $report.trustRemoved = -not (Test-Path -LiteralPath $trustPath)
+                $keyPath = "Cert:\CurrentUser\My\$($certificate.Thumbprint)"
+                if (Test-Path -LiteralPath $keyPath) { Remove-Item -LiteralPath $keyPath -DeleteKey }
+                $report.keyRemoved = -not (Test-Path -LiteralPath $keyPath)
+            }
+        } finally { Save-Report }
     }
 }

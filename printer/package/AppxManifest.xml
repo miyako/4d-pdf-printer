@@ -5,7 +5,7 @@
          xmlns:psa="http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2"
          IgnorableNamespaces="uap uap10 psa">
   <Identity Name="Miyako.PsaFeasibility" Publisher="CN=PsaFeasibilityDev"
-            Version="0.1.1.0" ProcessorArchitecture="x64"/>
+            Version="0.1.2.0" ProcessorArchitecture="x64"/>
   <Properties>
     <DisplayName>PSA feasibility - diagnostic only</DisplayName>
     <PublisherDisplayName>PSA feasibility development</PublisherDisplayName>
@@ -26,12 +26,12 @@
       </uap:VisualElements>
       <Extensions>
         <psa:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PsaDiagnostic.Task">
-          <psa:PrintSupportVirtualPrinter DisplayName="PSA Diagnostic OXPS (Save As)"
+          <psa:PrintSupportVirtualPrinter DisplayName="ms-resource:InteractiveDisplayName"
               PrinterUri="psa-diagnostic:interactive" PreferredInputFormat="application/oxps"
               OutputFileTypes="oxps" PdcFile="Config\DiagnosticPdc.xml"/>
         </psa:Extension>
         <psa:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="PsaDiagnostic.Task">
-          <psa:PrintSupportVirtualPrinter DisplayName="PSA Diagnostic Capture (no file UI)"
+          <psa:PrintSupportVirtualPrinter DisplayName="ms-resource:CaptureDisplayName"
               PrinterUri="psa-diagnostic:automation" PreferredInputFormat="application/oxps"
               PdcFile="Config\DiagnosticPdc.xml"/>
         </psa:Extension>

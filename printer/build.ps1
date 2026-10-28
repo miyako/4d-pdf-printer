@@ -21,13 +21,18 @@ $stage = $plan.Stage
 # SDK tools run on the build host, independently of the requested package target.
 $sdk = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin\$SdkVersion\$($plan.SdkToolArchitecture)"
 $makeappx = Join-Path $sdk 'makeappx.exe'
+$makepri = Join-Path $sdk 'makepri.exe'
 if (-not (Test-Path -LiteralPath $makeappx)) {
     throw "Install Windows SDK $SdkVersion including x64 MakeAppx host tools (also used under Windows 11 ARM64 emulation)."
+}
+if (-not (Test-Path -LiteralPath $makepri)) {
+    throw "Install Windows SDK $SdkVersion including x64 MakePri resource tools."
 }
 if ($Sign -and -not (Test-Path -LiteralPath (Join-Path $sdk 'signtool.exe'))) {
     throw "Install Windows SDK $SdkVersion including x64 SignTool host tools."
 }
 Assert-PrinterPeMachine -Bytes ([IO.File]::ReadAllBytes($makeappx)) -Architecture x64 -Name 'MakeAppx host tool'
+Assert-PrinterPeMachine -Bytes ([IO.File]::ReadAllBytes($makepri)) -Architecture x64 -Name 'MakePri host tool'
 $component = $plan.RequiredComponent
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 if (-not (Test-Path -LiteralPath $vswhere)) { throw "Install Visual Studio $VisualStudioVersion C++ tools and vswhere." }
@@ -91,6 +96,20 @@ foreach ($name in $sizes.Keys) {
         $image.Save((Join-Path $stage "Assets\$name.png"), [System.Drawing.Imaging.ImageFormat]::Png)
     } finally { $graphics.Dispose(); $image.Dispose() }
 }
+$strings = Join-Path $stage 'Strings/en-US'
+New-Item $strings -ItemType Directory -Force | Out-Null
+$resw = Join-Path $strings 'Resources.resw'
+Copy-Item -LiteralPath (Join-Path $root 'package/Strings/en-US/Resources.resw') -Destination $resw
+$pri = Join-Path $stage 'resources.pri'
+$config = Join-Path $out 'priconfig.xml'
+$dump = Join-Path $out 'resource-evidence.xml'
+Invoke-Checked $makepri @('createconfig', '/cf', $config, '/dq', 'lang-en-US', '/o')
+Invoke-Checked $makepri @('new', '/pr', $stage, '/cf', $config, '/of', $pri, '/o')
+Invoke-Checked $makepri @('dump', '/if', $pri, '/of', $dump, '/o')
+Assert-PrinterResourceDump -Dump ([xml](Get-Content -LiteralPath $dump -Raw))
+Remove-Item -LiteralPath $resw
+Remove-Item -LiteralPath $strings
+Remove-Item -LiteralPath (Join-Path $stage 'Strings')
 $package = $plan.Package
 Assert-PrinterPackage -Path $stage -Architecture $Architecture
 Invoke-Checked $makeappx @('pack', '/d', $stage, '/p', $package, '/o')
@@ -118,6 +137,8 @@ if ($Sign) {
     testExecution = $plan.TestExecution
     ctests = $(if ($plan.TestExecution -eq 'not-run-cross-compile') { 'not-run' } else { 'passed' })
     peAndManifestChecks = 'passed'
-    packageVersion = '0.1.1.0'
+    packageVersion = '0.1.2.0'
+    queueNameResources = 'MakePri dump verified; resources.pri required in stage and MSIX'
+    resourcesPriSha256 = (Get-FileHash -LiteralPath $pri -Algorithm SHA256).Hash.ToLowerInvariant()
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $out 'build-evidence.json') -Encoding utf8
 Write-Host "Diagnostic package: $package (not a PDF converter)"

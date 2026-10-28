@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="InteractiveDisplayName" xml:space="preserve"><value>PSA Diagnostic OXPS (Save As)</value></data>
+  <data name="CaptureDisplayName" xml:space="preserve"><value>PSA Diagnostic Capture (no file UI)</value></data>
+</root>
