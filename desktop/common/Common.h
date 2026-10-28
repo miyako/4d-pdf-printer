@@ -24,7 +24,8 @@ namespace desktop
     enum Operation : unsigned long
     {
         Ping = 1, PrepareGate = 2, StatusGate = 3, CancelGate = 4,
-        ClaimGate = 5, FinishGate = 6, WorkflowPing = 7, StallGate = 8
+        ClaimGate = 5, FinishGate = 6, WorkflowPing = 7, StallGate = 8,
+        WorkflowStallGate = 9
     };
 
     struct CloseHandleDeleter

@@ -9,7 +9,7 @@ This is a diagnostic Windows 11 24H2+ (build 26100) PSA application, not a legac
 v4 driver, PDF implementation, finished installer, or 4D plugin. It deliberately
 does not launch a renderer. See the [current service evidence and source
 trace](validation.md#named-user-session-0-submission-gate) and
-[one bounded next test](runbook.md#one-instrumented-service-submission).
+[historical bounded service procedure](runbook.md#one-instrumented-service-submission).
 
 Desktop-first development is now authorized independently under
 [`desktop/` and its separate package](../desktop/README.md). Its early
@@ -23,7 +23,7 @@ queues and their LocalState remain unchanged.
 | Confirmed by source | PSA v4 API is introduced in 26100 / UniversalApiContract 19. Manifest supports OXPS, multiple endpoints and OS Save As. Packaged-app-to-Win32-service RPC is a documented transport pattern; logoff is a task cancellation reason. See [sources](sources.md). |
 | Compile checked | [Recorded Windows run and artifact evidence](validation.md): MSVC compile, probe argument tests, direct DLL factory smoke test and MakeAppx validation. Architecture/PE/build-host evidence is separate from queue registration, PDC semantic acceptance and service activation. |
 | Runtime observed on Windows 11 | Native ARM64 / 26200.9711, product 0.1.2.0 / Ok, both queues. Desktop Save As writes diagnostic OXPS; desktop no-file endpoint captures OXPS but `GetTargetFileAsync` returns 0x80070490. Named-user session-0 product submission fails; inbox XPS service submission returns job 6. |
-| Still unverified | Service-token package/profile visibility and actual PSA task activation; platform cause/supportability of the service failure; pre-login/post-sign-out operation; ticket semantics, authenticated destination/coordinator transport, cancellation/repeated-job resilience, PDF generation and 4D. |
+| Still unverified | Actual service-context PSA task activation and platform cause/supportability of its failure; pre-login/post-sign-out operation; ticket semantics, authenticated destination/coordinator transport, cancellation/repeated-job resilience, PDF generation and 4D. Probe2 observed type-5 package/profile visibility; that does not establish activation. |
 
 ## Implemented boundaries
 

@@ -161,6 +161,19 @@ struct Task : implements<Task, IBackgroundTask>
                 if (error.code() != E_ACCESSDENIED) throw;
                 evidence.Insert(L"desktopMethodDenied", JsonValue::CreateBooleanValue(true));
             }
+            Text(evidence, L"stage", L"appcontainer-in-flight-timeout");
+            JsonObject stall;
+            stall.Insert(L"milliseconds", JsonValue::CreateNumberValue(5000));
+            auto start = std::chrono::steady_clock::now();
+            try { Call(WorkflowStallGate, stall); throw hresult_error(E_UNEXPECTED); }
+            catch (hresult_error const& error)
+            {
+                if (error.code() != HRESULT_FROM_WIN32(ERROR_TIMEOUT)) throw;
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - start).count();
+                evidence.Insert(L"inFlightTimeoutMilliseconds", JsonValue::CreateNumberValue(static_cast<double>(elapsed)));
+                evidence.Insert(L"appContainerRpcTimedOut", JsonValue::CreateBooleanValue(true));
+            }
             Text(evidence, L"stage", L"one-time-claim");
             auto response = Call(ClaimGate, claim);
             Text(claim, L"lease", std::wstring(response.GetNamedString(L"lease")));

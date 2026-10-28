@@ -164,9 +164,10 @@ extern "C" void DesktopGateRequest(PRPC_ASYNC_STATE async, handle_t binding, uns
         if (end == std::end(input->json)) throw winrt::hresult_invalid_argument();
         auto request = JsonObject::Parse(winrt::hstring(input->json, static_cast<uint32_t>(end - input->json)));
         JsonObject result{nullptr};
-        if (operation == StallGate)
+        if (operation == StallGate || operation == WorkflowStallGate)
         {
-            if (caller.appContainer) throw winrt::hresult_error(E_ACCESSDENIED);
+            if (caller.appContainer != (operation == WorkflowStallGate))
+                throw winrt::hresult_error(E_ACCESSDENIED);
             auto delay = request.GetNamedNumber(L"milliseconds");
             if (!std::isfinite(delay) || delay < 0 || delay > 5000 || delay != std::floor(delay))
                 throw winrt::hresult_invalid_argument();
