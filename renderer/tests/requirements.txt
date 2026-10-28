@@ -1,0 +1,4 @@
+# Test-only packages: MIT (fonttools/jsonschema), BSD-3-Clause (pypdf).
+fonttools==4.60.1
+jsonschema==4.25.1
+pypdf==6.1.1

@@ -1,0 +1,176 @@
+Subject: Reject observed silent rendering loss and invalid path assertions
+
+Changes to LGPL-2.1-or-later libgxps 0.3.2, 2026-10-28.
+Keep the library API/ABI unchanged. The worker treats warnings as failure.
+This is not a complete XPS feature/conformance audit.
+
+--- a/libgxps/meson.build
++++ b/libgxps/meson.build
+@@ -100,6 +100,7 @@
+ 
+ pkgg.generate(libraries: [gxps, cairo_dep_libs],
+               version: gxps_version,
++              variables: ['worker_fail_closed=1'],
+               name: 'libgxps',
+               description: 'XPS Documents library',
+               requires: 'gobject-2.0 >= ' + glib_req + ', gio-2.0 >= ' + glib_req + ', libarchive >= ' + archive_req + cairo_dep_str)
+--- a/libgxps/gxps-brush.c
++++ b/libgxps/gxps-brush.c
+@@ -245,7 +245,7 @@
+                         p += strlen ("ContextColor");
+                         return gxps_color_icc_parse (++p, zip, color);
+                 }
+-                GXPS_DEBUG (g_debug ("Unsupported color %s", data));
++                g_warning ("Unsupported color");
+ 
+                 return FALSE;
+         }
+@@ -256,7 +256,7 @@
+         if (strncmp (data, "sc", 2) == 0 && p == data + 2)
+                 return gxps_color_sc_rgb_parse (++p, color);
+ 
+-        GXPS_DEBUG (g_debug ("Unsupported color %s", data));
++        g_warning ("Unsupported color");
+ 
+         return FALSE;
+ }
+@@ -307,11 +307,11 @@
+         if (strcmp (tile, "Tile") == 0)
+                 return CAIRO_EXTEND_REPEAT;
+         else if (strcmp (tile, "FlipX") == 0)
+-                GXPS_DEBUG (g_debug ("Unsupported tile mode FlipX"));
++                g_warning ("Unsupported tile mode FlipX");
+         else if (strcmp (tile, "FlipY") == 0)
+-                GXPS_DEBUG (g_debug ("Unsupported tile mode FlipY"));
++                g_warning ("Unsupported tile mode FlipY");
+         else if (strcmp (tile, "FlipXY") == 0)
+-                GXPS_DEBUG (g_debug ("Unsupported tile mode FlipXY"));
++                g_warning ("Unsupported tile mode FlipXY");
+ 
+         return CAIRO_EXTEND_NONE;
+ }
+@@ -731,7 +731,7 @@
+                                         return;
+                                 }
+                         } else if (strcmp (names[i], "ColorInterpolationMode") == 0) {
+-                                GXPS_DEBUG (g_debug ("Unsupported %s attribute: ColorInterpolationMode", element_name));
++                                g_warning ("Unsupported ColorInterpolationMode");
+                         } else {
+                                 gxps_parse_error (context,
+                                                   brush->ctx->page->priv->source,
+@@ -826,7 +826,7 @@
+                                         return;
+                                 }
+                         } else if (strcmp (names[i], "ColorInterpolationMode") == 0) {
+-                                GXPS_DEBUG (g_debug ("Unsupported %s attribute: ColorInterpolationMode", element_name));
++                                g_warning ("Unsupported ColorInterpolationMode");
+                         } else {
+                                 gxps_parse_error (context,
+                                                   brush->ctx->page->priv->source,
+@@ -905,9 +905,9 @@
+                                 }
+                         } else if (strcmp (names[i], "ViewboxUnits") == 0) {
+                         } else if (strcmp (names[i], "Opacity") == 0) {
+-                                GXPS_DEBUG (g_debug ("Unsupported %s attribute: Opacity", element_name));
++                                g_warning ("Unsupported VisualBrush Opacity");
+                         } else if (strcmp (names[i], "Visual") == 0) {
+-                                GXPS_DEBUG (g_debug ("Unsupported %s attribute: Visual", element_name));
++                                g_warning ("Unsupported VisualBrush Visual");
+                         } else {
+                                 gxps_parse_error (context,
+                                                   brush->ctx->page->priv->source,
+@@ -1011,9 +1011,11 @@
+                                 brush_image->brush->pattern = NULL;
+                         }
+                         cairo_surface_destroy (clip_surface);
+-                } else if (err) {
+-                        GXPS_DEBUG (g_debug ("%s", err->message));
+-                        g_error_free (err);
++                } else {
++                        if (err)
++                                g_propagate_error (error, err);
++                        else
++                                g_set_error (error, GXPS_PAGE_ERROR, GXPS_PAGE_ERROR_RENDER, "Image decode failed");
+                 }
+                 gxps_brush_image_free (brush_image);
+         } else if (strcmp (element_name, "VisualBrush") == 0) {
+--- a/libgxps/gxps-images.c
++++ b/libgxps/gxps-images.c
+@@ -1196,7 +1196,7 @@
+ #ifdef G_OS_WIN32
+ 		image = gxps_images_create_from_wdp (zip, image_uri, error);
+ #else
+-		GXPS_DEBUG (g_message ("Unsupported image format windows media photo"));
++		g_set_error (error, GXPS_ERROR, GXPS_ERROR_IMAGE, "Windows Media Photo requires Windows");
+ 		g_free (image_uri_lower);
+ 		return NULL;
+ #endif
+@@ -1217,7 +1217,7 @@
+ 		} else if (g_strcmp0 (mime_type, "image/tiff") == 0) {
+ 			image = gxps_images_create_from_tiff (zip, image_uri, error);
+ 		} else {
+-			GXPS_DEBUG (g_message ("Unsupported image format: %s", mime_type));
++			g_set_error (error, GXPS_ERROR, GXPS_ERROR_IMAGE, "Unsupported image format");
+ 		}
+ 		g_free (mime_type);
+ 	}
+--- a/libgxps/gxps-path.c
++++ b/libgxps/gxps-path.c
+@@ -477,6 +477,7 @@
+                 case 'a':
+                         is_rel = TRUE;
+                 case 'A':
++                        g_warning ("Unsupported elliptical path command");
+                         while (token.type == PD_TOKEN_NUMBER) {
+                                 gdouble xr, yr, x, y;
+ #ifdef GXPS_ENABLE_DEBUG
+@@ -558,7 +559,8 @@
+                         control_point_x = control_point_y = 0;
+                         break;
+                 default:
+-                        g_assert_not_reached ();
++                        g_set_error (error, GXPS_PAGE_ERROR, GXPS_PAGE_ERROR_RENDER, "Invalid path command");
++                        return FALSE;
+                 }
+         } while (token.type == PD_TOKEN_COMMAND);
+ 
+@@ -850,7 +852,7 @@
+ 
+                 g_free (points);
+         } else if (strcmp (element_name, "ArcSegment") == 0) {
+-                GXPS_DEBUG (g_debug ("Unsupported PathGeometry: ArcSegment"));
++                g_warning ("Unsupported PathGeometry ArcSegment");
+ 	}
+ }
+ 
+@@ -1014,7 +1016,7 @@
+ 		brush = gxps_brush_new (path->ctx);
+ 		gxps_brush_parser_push (context, brush);
+ 	} else {
+-		GXPS_DEBUG (g_debug ("Unsupported path child %s", element_name));
++		g_warning ("Unsupported path child");
+ 	}
+ }
+ 
+--- a/libgxps/gxps-page.c
++++ b/libgxps/gxps-page.c
+@@ -252,7 +252,7 @@
+ 	else if (strcmp (cap, "Square") == 0)
+ 		return CAIRO_LINE_CAP_SQUARE;
+ 	else if (strcmp (cap, "Triangle") == 0)
+-		GXPS_DEBUG (g_debug ("Unsupported dash cap Triangle"));
++		g_warning ("Unsupported dash cap Triangle");
+ 
+ 	return CAIRO_LINE_CAP_BUTT;
+ }
+--- a/libgxps/gxps-color.c
++++ b/libgxps/gxps-color.c
+@@ -156,7 +156,7 @@
+                 return FALSE;
+ 
+         if (cmsGetColorSpace (profile) != cmsSigCmykData) {
+-                GXPS_DEBUG (g_debug ("Unsupported color space %s", get_color_space_string (cmsGetColorSpace (profile))));
++                g_warning ("Unsupported color space");
+ 
+                 return FALSE;
+         }

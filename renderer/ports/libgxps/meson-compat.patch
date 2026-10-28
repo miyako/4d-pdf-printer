@@ -1,0 +1,34 @@
+From a18e12604d2cab13146a357c7fd3b80909b65efd
+Subject: Fix Meson warnings (upstream / pinned vcpkg patch)
+
+Upstream authorship: Wolfgang Stoeggl, 2021-09-09.
+https://gitlab.gnome.org/GNOME/libgxps/-/commit/a18e12604d2cab13146a357c7fd3b80909b65efd
+
+--- a/libgxps/meson.build
++++ b/libgxps/meson.build
+@@ -98,12 +98,11 @@
+ cairo_dep_str = cairo_pc_found ? ', cairo >= ' + cairo_req : ''
+ cairo_dep_libs = cairo_pc_found ? [] : cairo_dep
+ 
+-pkgg.generate(libraries: gxps,
++pkgg.generate(libraries: [gxps, cairo_dep_libs],
+               version: gxps_version,
+               name: 'libgxps',
+               description: 'XPS Documents library',
+-              requires: 'gobject-2.0 >= ' + glib_req + ', gio-2.0 >= ' + glib_req + ', libarchive >= ' + archive_req + cairo_dep_str,
+-              libraries: [gxps, cairo_dep_libs])
++              requires: 'gobject-2.0 >= ' + glib_req + ', gio-2.0 >= ' + glib_req + ', libarchive >= ' + archive_req + cairo_dep_str)
+ 
+ if build_gir
+   gir_extra_args = [
+--- a/meson.build
++++ b/meson.build
+@@ -4,7 +4,7 @@
+           'buildtype=debugoptimized'
+         ],
+         license: 'LGPL2+',
+-        meson_version: '>= 0.43.0')
++        meson_version: '>= 0.50.0')
+ 
+ gxps_version = meson.project_version()
+ version_array = gxps_version.split('.')
