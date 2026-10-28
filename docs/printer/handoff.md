@@ -40,6 +40,10 @@ schema rather than recreating a competing status definition here.
    hard deadline, process-tree termination and reaping. Worker code must never
    load into 4D, spoolsv, or the long-lived coordinator. CWD and executable path
    are coordinator-controlled; use correct Unicode argument quoting, not a shell.
+   The independent renderer investigation has observed upstream libgxps process
+   aborts on malformed paths and incomplete-content error propagation. Missing
+   JSON on process death and abandoned job-local files are concrete supervisor
+   requirements, not reasons to retry implicitly or move conversion in-process.
 4. The worker takes only staged source/output paths. The current CLI does **not**
    apply arbitrary PrintTicket options: decide and test whether upstream OXPS
    already materializes each option (copies, N-up, page selection, orientation).

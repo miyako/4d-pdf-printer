@@ -1,3 +1,4 @@
+#include <windows.h>
 #include <atomic>
 #include <chrono>
 #include <mutex>
@@ -5,6 +6,8 @@
 #include <winrt/Windows.Data.Json.h>
 #include <winrt/Windows.Data.Xml.Dom.h>
 #include <winrt/Windows.Devices.Printers.h>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Graphics.Printing.PrintTicket.h>
 #include <winrt/Windows.Graphics.Printing.Workflow.h>
 #include <winrt/Windows.Security.Cryptography.h>
@@ -135,6 +138,7 @@ struct Task : implements<Task, IBackgroundTask>
             JsonObject info;
             Text(info, L"schema", L"psa-activation-v1");
             Text(info, L"activationId", activationId);
+            Text(info, L"utcFileTime", std::to_wstring(clock::now().time_since_epoch().count()));
             info.Insert(L"processId", JsonValue::CreateNumberValue(GetCurrentProcessId()));
             auto log = co_await activation.CreateFileAsync(L"activation.json", CreationCollisionOption::FailIfExists);
             co_await FileIO::WriteTextAsync(log, info.Stringify());
@@ -169,10 +173,36 @@ struct Task : implements<Task, IBackgroundTask>
             co_return;
         }
         auto status = PrintWorkflowSubmittedStatus::Failed;
+        try { co_await Capture(args, &status); }
+        catch (...)
+        {
+            DebugFailure(L"capture-boundary", to_hresult());
+            status = canceled ? PrintWorkflowSubmittedStatus::Canceled : PrintWorkflowSubmittedStatus::Failed;
+        }
+        if (canceled) status = PrintWorkflowSubmittedStatus::Canceled;
+        try
+        {
+            args.CompleteJob(status);
+            auto completed = co_await activation.CreateFileAsync(L"completion.txt", CreationCollisionOption::FailIfExists);
+            co_await FileIO::WriteTextAsync(completed,
+                status == PrintWorkflowSubmittedStatus::Succeeded ? L"CompleteJob returned: succeeded (diagnostic OXPS only)" :
+                status == PrintWorkflowSubmittedStatus::Canceled ? L"CompleteJob returned: canceled" :
+                L"CompleteJob returned: failed");
+        }
+        catch (...) { DebugFailure(L"job-completion", to_hresult()); }
+        state = Finished;
+        Finish();
+    }
+
+    IAsyncAction Capture(PrintWorkflowVirtualPrinterDataAvailableEventArgs args,
+        PrintWorkflowSubmittedStatus* requested)
+    {
+        auto& status = *requested;
         StorageFolder lock{nullptr};
         JsonObject record;
         Text(record, L"schema", L"psa-capture-v1");
         Text(record, L"activationId", activationId);
+        Text(record, L"utcFileTime", std::to_wstring(clock::now().time_since_epoch().count()));
         Text(record, L"result", L"failed");
         hstring stage = L"metadata";
         try
@@ -207,6 +237,7 @@ struct Task : implements<Task, IBackgroundTask>
             }
             co_await file.RenameAsync(L"source.oxps", NameCollisionOption::FailIfExists);
             stage = L"target-file";
+            Text(record, L"lastStage", stage);
             auto pending = co_await activation.CreateFileAsync(L"before-target.json",
                 CreationCollisionOption::FailIfExists);
             co_await FileIO::WriteTextAsync(pending, record.Stringify());
@@ -262,15 +293,6 @@ struct Task : implements<Task, IBackgroundTask>
                 status = PrintWorkflowSubmittedStatus::Failed;
             }
         }
-        try
-        {
-            args.CompleteJob(status);
-            auto completed = co_await activation.CreateFileAsync(L"completion.txt", CreationCollisionOption::FailIfExists);
-            co_await FileIO::WriteTextAsync(completed, L"CompleteJob returned; not proof of spooler or PDF success.");
-        }
-        catch (...) { DebugFailure(L"job-completion", to_hresult()); }
-        state = Finished;
-        Finish();
     }
 };
 
