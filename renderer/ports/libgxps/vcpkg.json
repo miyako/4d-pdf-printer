@@ -1,0 +1,13 @@
+{
+  "name": "libgxps",
+  "version": "0.3.2",
+  "port-version": 6,
+  "description": "Pinned upstream libgxps with renderer fail-closed diagnostics patch",
+  "homepage": "https://gitlab.gnome.org/GNOME/libgxps",
+  "license": "LGPL-2.1-or-later",
+  "dependencies": [
+    "cairo", "glib", "lcms", "libarchive", "libjpeg-turbo", "libpng", "libxslt",
+    { "name": "tiff", "default-features": false },
+    { "name": "vcpkg-tool-meson", "host": true }
+  ]
+}

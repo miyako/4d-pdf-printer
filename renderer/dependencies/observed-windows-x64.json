@@ -1,0 +1,569 @@
+{
+  "schema": "4d-pdf-printer.pe-inventory",
+  "version": 1,
+  "scope": "Recursive PE imports only; dynamic loads, fonts/config and redistribution clearance require review",
+  "source": {
+    "repository": "miyako/4d-pdf-printer",
+    "commit": "ade0bd06ce97d3f5233b351cfb8ec5fa2274b67a",
+    "run_url": "https://github.com/miyako/4d-pdf-printer/actions/runs/40645829062",
+    "artifact": "renderer-windows-x64-evidence",
+    "vcpkg_baseline": "866e9e258a76437074a5cf02d4c2d71b53bff2f8",
+    "ownership": "Exact x64-windows/bin path matched against uploaded package file lists, excluding tool/debug copies"
+  },
+  "files": [
+    {
+      "file": "pdf-render-worker.exe",
+      "sha256": "2adaf60c865db210b4437d972be16dfe1020266d51828a94c879a3256add1722",
+      "bytes": 61952,
+      "package_file_lists": [],
+      "imports": [
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-locale-l1-1-0.dll",
+        "api-ms-win-crt-math-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "archive.dll",
+        "cairo-2.dll",
+        "gio-2.0-0.dll",
+        "glib-2.0-0.dll",
+        "gobject-2.0-0.dll",
+        "gxps-2.dll",
+        "KERNEL32.dll",
+        "MSVCP140.dll",
+        "VCRUNTIME140_1.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "archive.dll",
+      "sha256": "12f71963e990a0b6066332a021a08c448ce58585c3798bb5e2535876a58df527",
+      "bytes": 790016,
+      "package_file_lists": [
+        "libarchive_3.8.9_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-environment-l1-1-0.dll",
+        "api-ms-win-crt-filesystem-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-locale-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "api-ms-win-crt-time-l1-1-0.dll",
+        "api-ms-win-crt-utility-l1-1-0.dll",
+        "bcrypt.dll",
+        "bz2.dll",
+        "KERNEL32.dll",
+        "liblzma.dll",
+        "lz4.dll",
+        "ole32.dll",
+        "VCRUNTIME140.dll",
+        "XmlLite.dll",
+        "z.dll",
+        "zstd.dll"
+      ]
+    },
+    {
+      "file": "cairo-2.dll",
+      "sha256": "655376c88d6a0e2a61c5a167ac08718d603f17f02ed18a7ee9dc93917d31ef7d",
+      "bytes": 997888,
+      "package_file_lists": [
+        "cairo_1.18.6_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-environment-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-locale-l1-1-0.dll",
+        "api-ms-win-crt-math-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "api-ms-win-crt-time-l1-1-0.dll",
+        "api-ms-win-crt-utility-l1-1-0.dll",
+        "fontconfig-1.dll",
+        "freetype.dll",
+        "GDI32.dll",
+        "KERNEL32.dll",
+        "libpng16.dll",
+        "MSIMG32.dll",
+        "ole32.dll",
+        "pixman-1-0.dll",
+        "USER32.dll",
+        "VCRUNTIME140_1.dll",
+        "VCRUNTIME140.dll",
+        "z.dll"
+      ]
+    },
+    {
+      "file": "gio-2.0-0.dll",
+      "sha256": "2cebfe2d4b89f1536c0b30c5730d0fb38f3c4859f9afc783bb6e661987e477d4",
+      "bytes": 1674240,
+      "package_file_lists": [
+        "glib_2.90.1_x64-windows"
+      ],
+      "imports": [
+        "ADVAPI32.dll",
+        "api-ms-win-crt-conio-l1-1-0.dll",
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "DNSAPI.dll",
+        "glib-2.0-0.dll",
+        "gmodule-2.0-0.dll",
+        "gobject-2.0-0.dll",
+        "intl-8.dll",
+        "IPHLPAPI.DLL",
+        "KERNEL32.dll",
+        "ole32.dll",
+        "SHELL32.dll",
+        "SHLWAPI.dll",
+        "USER32.dll",
+        "VCRUNTIME140.dll",
+        "WS2_32.dll",
+        "z.dll"
+      ]
+    },
+    {
+      "file": "glib-2.0-0.dll",
+      "sha256": "700fecc60dc84140b04b83fd23c59d51096d94316d16aa7aa9f5311a22ddcc86",
+      "bytes": 1366016,
+      "package_file_lists": [
+        "glib_2.90.1_x64-windows"
+      ],
+      "imports": [
+        "ADVAPI32.dll",
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-environment-l1-1-0.dll",
+        "api-ms-win-crt-filesystem-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-locale-l1-1-0.dll",
+        "api-ms-win-crt-math-l1-1-0.dll",
+        "api-ms-win-crt-process-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "api-ms-win-crt-time-l1-1-0.dll",
+        "api-ms-win-crt-utility-l1-1-0.dll",
+        "iconv-2.dll",
+        "intl-8.dll",
+        "KERNEL32.dll",
+        "ole32.dll",
+        "pcre2-8.dll",
+        "SHELL32.dll",
+        "USER32.dll",
+        "VCRUNTIME140.dll",
+        "WS2_32.dll"
+      ]
+    },
+    {
+      "file": "gobject-2.0-0.dll",
+      "sha256": "a8f1890373b8713cc1e3fce3723370e097ed26689155d461027867e770508367",
+      "bytes": 336384,
+      "package_file_lists": [
+        "glib_2.90.1_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "api-ms-win-crt-utility-l1-1-0.dll",
+        "ffi-8.dll",
+        "glib-2.0-0.dll",
+        "KERNEL32.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "gxps-2.dll",
+      "sha256": "3a4947be7defa780d8672a41d3dd4328b00d9df5e6fd31c5f2305ffd4bd77f09",
+      "bytes": 119808,
+      "package_file_lists": [
+        "libgxps_0.3.2_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-math-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "api-ms-win-crt-time-l1-1-0.dll",
+        "archive.dll",
+        "cairo-2.dll",
+        "freetype.dll",
+        "gio-2.0-0.dll",
+        "glib-2.0-0.dll",
+        "gobject-2.0-0.dll",
+        "jpeg62.dll",
+        "KERNEL32.dll",
+        "lcms2-2.dll",
+        "libpng16.dll",
+        "ole32.dll",
+        "tiff.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "bz2.dll",
+      "sha256": "dda4326c94e498bb6d4822dbf83251684b0a668bffb17c58266dada75dad3950",
+      "bytes": 76800,
+      "package_file_lists": [
+        "bzip2_1.0.8_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-math-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "KERNEL32.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "liblzma.dll",
+      "sha256": "ef6dd901d87aa1ad81f1449b413bfedb0e6c319720598b6dc612ea2e2f5b8fbd",
+      "bytes": 189440,
+      "package_file_lists": [
+        "liblzma_5.8.4_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "KERNEL32.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "lz4.dll",
+      "sha256": "d52add5ca68f40052258d88f1570b5307198d37dcbd5e6e7cdd7e931b016b2ea",
+      "bytes": 126976,
+      "package_file_lists": [
+        "lz4_1.10.0_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "KERNEL32.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "z.dll",
+      "sha256": "ab7f26f2fc2ed6796ccde69678ed6d44fab34c7f877e6bffbb897f7b5379b335",
+      "bytes": 91136,
+      "package_file_lists": [
+        "zlib_1.3.2_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "KERNEL32.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "zstd.dll",
+      "sha256": "010de2ced418366ebb7f20467d76a349812c72dc889370353873fc8d79657bd0",
+      "bytes": 657920,
+      "package_file_lists": [
+        "zstd_1.5.7_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-time-l1-1-0.dll",
+        "api-ms-win-crt-utility-l1-1-0.dll",
+        "KERNEL32.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "fontconfig-1.dll",
+      "sha256": "621d7d300003f04c5d96211274dfc91ae8bb6c9845ad5452f28d0b2103cd12d4",
+      "bytes": 1521152,
+      "package_file_lists": [
+        "fontconfig_2.17.1_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-environment-l1-1-0.dll",
+        "api-ms-win-crt-filesystem-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-locale-l1-1-0.dll",
+        "api-ms-win-crt-math-l1-1-0.dll",
+        "api-ms-win-crt-multibyte-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "api-ms-win-crt-time-l1-1-0.dll",
+        "api-ms-win-crt-utility-l1-1-0.dll",
+        "freetype.dll",
+        "KERNEL32.dll",
+        "libexpat.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "freetype.dll",
+      "sha256": "76b500f97fc0f0a843627946c1545d4f87b2dbe2757c7101050f6c5b0157586a",
+      "bytes": 701440,
+      "package_file_lists": [
+        "freetype_2.14.3_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-environment-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "api-ms-win-crt-utility-l1-1-0.dll",
+        "brotlidec.dll",
+        "bz2.dll",
+        "KERNEL32.dll",
+        "libpng16.dll",
+        "VCRUNTIME140.dll",
+        "z.dll"
+      ]
+    },
+    {
+      "file": "libpng16.dll",
+      "sha256": "f9f499803622eaa362d2b5881786ab7dfee00377de5b6d6c7cc5134e1d1ae15e",
+      "bytes": 198656,
+      "package_file_lists": [
+        "libpng_1.6.59_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-filesystem-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-math-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "api-ms-win-crt-time-l1-1-0.dll",
+        "KERNEL32.dll",
+        "VCRUNTIME140.dll",
+        "z.dll"
+      ]
+    },
+    {
+      "file": "pixman-1-0.dll",
+      "sha256": "27beaf32bfe7055b64073e318d193a5daea5e4c313bbad89a7b877cd08412ec0",
+      "bytes": 598016,
+      "package_file_lists": [
+        "pixman_0.46.4_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-environment-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-math-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "KERNEL32.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "gmodule-2.0-0.dll",
+      "sha256": "1925df60fbda0c5c2e3a450bdb9e5f1b7e23e1978f453ec17fb65b91f9642566",
+      "bytes": 19968,
+      "package_file_lists": [
+        "glib_2.90.1_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "glib-2.0-0.dll",
+        "KERNEL32.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "intl-8.dll",
+      "sha256": "08d797f7bb98ce6ec7853b1960cf0d7873e310e142a71d6f3fa0ed4d0862fc08",
+      "bytes": 95232,
+      "package_file_lists": [
+        "gettext-libintl_0.22.5_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-environment-l1-1-0.dll",
+        "api-ms-win-crt-filesystem-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-locale-l1-1-0.dll",
+        "api-ms-win-crt-math-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "api-ms-win-crt-utility-l1-1-0.dll",
+        "iconv-2.dll",
+        "KERNEL32.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "iconv-2.dll",
+      "sha256": "f81454475121d77bd7d3a76413ff84a83adf3329deec74785276de54b01975bc",
+      "bytes": 1090560,
+      "package_file_lists": [
+        "libiconv_1.19_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-locale-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "api-ms-win-crt-utility-l1-1-0.dll",
+        "KERNEL32.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "pcre2-8.dll",
+      "sha256": "cc81a59d6eef560fcaf33e7f6288d5fe82d67e6f799b88405b5edca3a7e52197",
+      "bytes": 607232,
+      "package_file_lists": [
+        "pcre2_10.49_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "KERNEL32.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "ffi-8.dll",
+      "sha256": "a73fe3dd447c58694f3e18ab53b8aa5f9865ff1ea512082bce8878ebc361b901",
+      "bytes": 33792,
+      "package_file_lists": [
+        "libffi_3.8.0_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "KERNEL32.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "jpeg62.dll",
+      "sha256": "d959a3b85152096d2b209fb14428b3b2bc7630d6a55946502509186c1605d636",
+      "bytes": 694784,
+      "package_file_lists": [
+        "libjpeg-turbo_3.2.0_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-environment-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "KERNEL32.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "lcms2-2.dll",
+      "sha256": "3ae664e3c8f41f8e488cee9a6c0ac99bc0cd9bab036f199b9856095d2c8897ab",
+      "bytes": 377344,
+      "package_file_lists": [
+        "lcms_2.19.1_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-filesystem-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-math-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "api-ms-win-crt-time-l1-1-0.dll",
+        "KERNEL32.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "tiff.dll",
+      "sha256": "bda7f7aa8280c4747294daf3c9f8548c5b153d06b5d3f015154659ab5804ce18",
+      "bytes": 489984,
+      "package_file_lists": [
+        "tiff_4.7.2_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-environment-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-math-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "api-ms-win-crt-time-l1-1-0.dll",
+        "api-ms-win-crt-utility-l1-1-0.dll",
+        "jpeg62.dll",
+        "KERNEL32.dll",
+        "liblzma.dll",
+        "VCRUNTIME140.dll",
+        "z.dll"
+      ]
+    },
+    {
+      "file": "libexpat.dll",
+      "sha256": "07997eb1b33e266e27c01b9a47cb96eed816c323b140797f91a9f853e49790ff",
+      "bytes": 170496,
+      "package_file_lists": [
+        "expat_2.9.0_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-environment-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "api-ms-win-crt-utility-l1-1-0.dll",
+        "KERNEL32.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "brotlidec.dll",
+      "sha256": "07214ae22e6f5681917e3220846b4e3f069c32d006c9e7c05b9a36dbe8ee550c",
+      "bytes": 52224,
+      "package_file_lists": [
+        "brotli_1.2.1_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "brotlicommon.dll",
+        "KERNEL32.dll",
+        "VCRUNTIME140.dll"
+      ]
+    },
+    {
+      "file": "brotlicommon.dll",
+      "sha256": "7aae7d1c05fd774a434ec93e3d01b19b5e17108c1875f11fa514b7607dcf2a09",
+      "bytes": 138240,
+      "package_file_lists": [
+        "brotli_1.2.1_x64-windows"
+      ],
+      "imports": [
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "KERNEL32.dll",
+        "VCRUNTIME140.dll"
+      ]
+    }
+  ]
+}

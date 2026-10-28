@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:4d-pdf-printer:worker-status:1",
+  "title": "Standalone renderer status v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "version", "worker_version", "result", "exit_code", "stage",
+    "error", "document", "page", "documents", "pages_completed", "output_bytes",
+    "output_published", "cleanup_complete"
+  ],
+  "properties": {
+    "schema": { "const": "4d-pdf-printer.worker-status" },
+    "version": { "const": 1 },
+    "worker_version": { "type": "string" },
+    "result": { "enum": ["ok", "error", "info"] },
+    "exit_code": { "enum": [0, 2, 10, 11, 12, 13, 20, 21, 22, 23, 24, 30, 31, 32, 33, 70] },
+    "stage": {
+      "enum": ["arguments", "help", "version", "input", "document", "page", "output",
+               "render", "finalize", "publish", "cleanup", "complete"]
+    },
+    "error": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message", "domain", "native_code"],
+          "properties": {
+            "code": { "enum": ["invalid_arguments", "input_io", "invalid_package", "unsupported_input",
+                              "resource_limit", "output_exists", "output_io", "finalize", "publish",
+                              "cleanup", "document", "page", "render", "backend_warning", "internal"] },
+            "message": { "type": "string", "minLength": 1 },
+            "domain": { "type": ["string", "null"] },
+            "native_code": { "type": "integer" }
+          }
+        }
+      ]
+    },
+    "document": { "type": ["integer", "null"], "minimum": 1 },
+    "page": { "type": ["integer", "null"], "minimum": 1 },
+    "documents": { "type": "integer", "minimum": 0 },
+    "pages_completed": { "type": "integer", "minimum": 0 },
+    "output_bytes": { "type": "integer", "minimum": 0 },
+    "output_published": { "type": "boolean" },
+    "cleanup_complete": { "type": "boolean" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "result": { "const": "error" } } },
+      "then": { "properties": { "exit_code": { "not": { "const": 0 } }, "error": { "type": "object" } } },
+      "else": { "properties": { "exit_code": { "const": 0 }, "error": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "result": { "const": "ok" } } },
+      "then": {
+        "properties": {
+          "stage": { "const": "complete" },
+          "output_published": { "const": true },
+          "cleanup_complete": { "const": true },
+          "pages_completed": { "minimum": 1 },
+          "output_bytes": { "minimum": 1 }
+        }
+      }
+    }
+  ]
+}
