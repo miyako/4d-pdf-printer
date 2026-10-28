@@ -1,23 +1,22 @@
 # PSA v4 feasibility prototype
 
-**Queue-name resource packaging is corrected in 0.1.2.0; user-host retest remains
-pending after the failed 0.1.1.0 ARM64 update.
-Named-user service activation remains untested.**
-The isolated [Microsoft reference control](reference-control.md) registers both
-queues on the same user host. This rules out a generic host inability to install
-static virtual printers, not a particular product-package cause.
+**Architecture HOLD: native named-user SCM/session-0 submission fails at
+`StartDocW` on the reported host, with or without `lpszOutput` (error 3003, no job
+ID). The same service submits to inbox XPS.** Both product queues now exist after
+the normal ARM64 0.1.2.0 update, and desktop PSA activation/capture is observed.
+Neither desktop success nor inbox submission establishes PSA service support.
 This is a diagnostic Windows 11 24H2+ (build 26100) PSA application, not a legacy
 v4 driver, PDF implementation, finished installer, or 4D plugin. It deliberately
-does not launch a renderer. The first user-run package installation reported
-success, but neither diagnostic queue appeared. A successful hosted build does
-not close this earlier registration gate. See [runtime evidence](validation.md).
+does not launch a renderer. See the [current service evidence and source
+trace](validation.md#named-user-session-0-submission-gate) and
+[one bounded next test](runbook.md#one-instrumented-service-submission).
 
 | Claim category | Evidence / limit |
 |---|---|
 | Confirmed by source | PSA v4 API is introduced in 26100 / UniversalApiContract 19. Manifest supports OXPS, multiple endpoints and OS Save As. Packaged-app-to-Win32-service RPC is a documented transport pattern; logoff is a task cancellation reason. See [sources](sources.md). |
 | Compile checked | [Recorded Windows run and artifact evidence](validation.md): MSVC compile, probe argument tests, direct DLL factory smoke test and MakeAppx validation. Architecture/PE/build-host evidence is separate from queue registration, PDC semantic acceptance and service activation. |
-| Runtime observed on Windows 11 | On confirmed native ARM64 (CPU Architecture 12), both the original x64 0.1.0.0 install and normal ARM64 0.1.1.0 update reported Status Ok, but **neither product queue exists**. The separately identified Microsoft reference 1.1.14.0 ARM64 has both static queues on that same host. No architecture causation, job, service, 4D or renderer result is claimed. |
-| Still unverified | Queue/package visibility to a service identity; session-0 activation; source MIME type and ticket semantics; `DOCINFO.lpszOutput` to PSA target mapping; no-file endpoint target behavior; allowed authenticated external coordinator transport; cancellation/termination/repeated activation. |
+| Runtime observed on Windows 11 | Native ARM64 / 26200.9711, product 0.1.2.0 / Ok, both queues. Desktop Save As writes diagnostic OXPS; desktop no-file endpoint captures OXPS but `GetTargetFileAsync` returns 0x80070490. Named-user session-0 product submission fails; inbox XPS service submission returns job 6. |
+| Still unverified | Service-token package/profile visibility and actual PSA task activation; platform cause/supportability of the service failure; pre-login/post-sign-out operation; ticket semantics, authenticated destination/coordinator transport, cancellation/repeated-job resilience, PDF generation and 4D. |
 
 ## Implemented boundaries
 
@@ -29,10 +28,10 @@ prototype. PSA activation is entirely the platform's print contract.
 There are no NuGet/runtime framework packages, full-trust capability, network
 capability, broad filesystem capability, tray app, or process-spawning code.
 
-The manifest declares two clearly diagnostic queues. Their creation has **not**
-been observed on the user's host. A controlled hosted ARM64 comparison now
-registers both names with PRI-backed resources while unchanged literal-name
-baselines do not; see [the actual comparison](validation.md#generated-artifact-comparison-and-bounded-discriminator).
+The manifest declares two clearly diagnostic queues. Both are now observed on
+the user's host. The earlier controlled ARM64 comparison isolated equivalent
+PRI-backed names as the registration correction; do not reopen PDC, trust or
+console-architecture experiments.
 
 | Queue | Manifest | Behavior |
 |---|---|---|
@@ -133,14 +132,16 @@ SDK tool paths always end in `bin/10.0.26100.0/x64`, **not** the target folder;
 these x64 tools use Windows 11 emulation on an ARM64 host. A shell change never
 changes the requested target. See [primary sources](sources.md).
 
-Portable architecture/negative packaging tests run for every build. The two
+Portable architecture/negative packaging tests run for every build. The three
 native CTests run when target equals native host; x64-on-ARM64 execution is
 explicitly labeled emulated. ARM64-on-x64 builds explicitly report CTests
 **not run** rather than attempting unsupported execution; run them on ARM64.
 `build-evidence.json` records that distinction. CI includes native x64,
 native ARM64 (`windows-11-arm`) and ARM64-on-x64 cross-compilation, with separate
-architecture-named artifacts. Native factory/parser tests still do not call
-`Run`, install a printer, submit a job or exercise session-0 activation.
+architecture-named artifacts. The additional native CLI evidence test checks
+read-only context, binary/job hashes and a deliberately nonexistent queue's
+failure. These tests do not call `Run`, install a printer, submit a job or
+exercise SCM/session-0 activation.
 
 Generated solid-color PNGs are original diagnostic assets.
 `MakeAppx pack` uses normal validation (no `/nv`).

@@ -1,5 +1,10 @@
 # Actual validation evidence
 
+**Latest architecture decision: HOLD.** Both product queues and desktop capture
+are now observed, but native named-user SCM/session-0 product submission fails.
+See [the current gate](#named-user-session-0-submission-gate); the earlier build
+and registration history below is retained chronologically.
+
 Recorded 2026-10-28 for commit
 `380bf166ef0a4ccbab76e063e170c31b38c68c4b`.
 
@@ -289,9 +294,8 @@ updated the same `Miyako.PsaFeasibility` family to **0.1.2.0 / Arm64 / Ok**.
 Both original diagnostic queue names appeared at **10 seconds**. The report
 confirms `updateWithoutRemoval=true`, unchanged original PDC hash, successful
 exact-owned package/queue cleanup, and removal of ephemeral trust/key.
-This validates the intended non-destructive update path on the hosted runner;
-the user's own host still needs only the
-[short normal update retest](runbook.md#resource-packaging-correction-update).
+This validates the intended non-destructive update path on the hosted runner.
+The later user-host update also succeeded, as recorded below; do not repeat it.
 
 [Build run 40675303817](https://github.com/miyako/4d-pdf-printer/actions/runs/40675303817)
 passed the same revision's native x64, native ARM64 and ARM64-on-x64 builds.
@@ -353,15 +357,110 @@ the successful helper tests and sample build. Developer leaf trust was removed,
 the signing-key cleanup step succeeded, and framework residue remains unruled
 out. No cleanup workaround or user-host reference reinstall is part of this fix.
 
+## Named-user session-0 submission gate
+
+User-reported lab evidence on **2026-10-28**, not remotely executed by this
+follow-up. OS: Windows 11 Enterprise 25H2, **26200.9711**, native ARM64 (processor
+architecture 12). Product **0.1.2.0 / Arm64 / Ok**, both exact product queues.
+Normal same-family 0.1.1.0 -> 0.1.2.0 update succeeded without package removal.
+Microsoft reference **1.1.14.0 / Arm64 / Ok** also retains both reference queues.
+No registration/certificate/PDC/console change is needed for this gate.
+
+| Observed case | Actual evidence / boundary |
+|---|---|
+| Native ARM64 desktop Save As | OS dialog selected a real 94,691-byte, one-page OpenXPS. Task activation, source capture and OS target copy observed; `CompleteJob` returned Succeeded for diagnostic OXPS only. No PDF/spooler-final-state claim. |
+| Desktop file queue with explicit `lpszOutput` | Still displayed Save As; user canceled; probe exit 1. This is not an unattended route. |
+| Desktop no-file queue with explicit `lpszOutput` | No dialog; task received 94,699 bytes OXPS. Exact `synthetic-no-ui-route` title hash `8563249e3808f751cc540eaa6865f0f25da5434eb959e54e8a39463c48a3acbe` matched. `GetTargetFileAsync` failed 0x80070490 / ERROR_NOT_FOUND, `lastStage=target-file`, `CompleteJob` returned Failed as intended. No OS target bound to the supplied path was observed. |
+| SCM service 01, product no-file queue, with output | Same named Windows account as desktop/package owner, **process 1376 / Windows session 0**. Start FILETIME 134376648845856407. `StartDoc` failed in about 0.265 seconds, recorded Win32 3003, no positive job ID. No exact title-hash job record among captures inspected by the user. |
+| SCM service 02, product no-file queue, output omitted | Same account/service/binary, **process 7544 / session 0**, `outputSupplied=false`, start FILETIME 134376652046421692. Same `StartDoc` failure 3003 / job 0. `lpszOutput` is not a sufficient explanation. |
+| Corrected SCM control 03, inbox Microsoft XPS Document Writer, explicit output | Same account/service/binary, **process 14176 / session 0**, `outputSupplied=true`. Start FILETIME 134376656102589317; StartDoc enter 134376656103538804; returned 134376656104855075 with **job 6**; submitted-not-workflow-success 134376656107192652. Service stopped. This is GDI submission evidence only, not verified destination bytes or final workflow success. An initial pasted repeat of case 02 was explicitly corrected; it is not the control result. |
+
+The desktop remained signed in throughout all service cases. The native probe
+is a real own-process SCM `ServiceMain`, not a console impersonation or managed
+printing wrapper. The named-user account/password was configured privately;
+no credentials, SIDs, account names, private paths, tickets, documents or fonts
+are retained here. The service is now stopped/Manual, last targeting the inbox
+control, with recovery Take No Action. No 4D Server configuration was performed.
+
+**What is localized:** queue open/DC creation/abort-proc registration did not
+report failure; product `StartDocW` returns failure before a positive GDI job ID.
+Removing the destination does not fix it; the same session-0 submitter can
+submit to inbox XPS. This is a product/PSA-specific submission-or-activation
+boundary on this host, not evidence that native service GDI printing generally
+fails. Desktop product success excludes a universally broken task factory or
+missing queue. It does not exclude context-dependent package activation/data
+access failures.
+
+**What is not localized:** v1 logs did not retain the raw signed StartDoc return,
+the service token's logon type/current-user package query, or a causally
+correlated Windows internal failure. Error **3003** is a generic observed
+symptom, not root-cause attribution. No matching `job.json` does not prove
+`IBackgroundTask::Run` was never entered; activation or storage can fail before
+persisting a record. V1's final `probe-failed` error 0 was a generic catch record,
+not success or the actual StartDoc error.
+
+### Source trace and bounded correction
+
+Investigated from fresh main **62f128ac4a81e1388c63e0b9bc85c75367796653**
+(PR #4 merged), separately from the prior queue-registration failure:
+
+1. Native caller uses `OpenPrinterW` / `CreateDCW` / `SetAbortProc` /
+   `StartDocW` / page APIs / `EndDoc`. Public StartDoc documentation supplies
+   no COM-initialization prerequisite or session-0-specific workaround.
+   Adding `StartDocPrinter`, `CoInitialize`, changing service account, or
+   enabling arbitrary capabilities is not a demonstrated root correction.
+2. PSA v4's public contract describes the OS starting a packaged background
+   task, providing trigger details/session, then delivering source data after
+   handler registration/`Start`. Our ordering matches the pinned native
+   Microsoft sample and works on desktop. The public source does not expose
+   the OS's session-0 broker/token routing or a causal mapping for error 3003.
+3. Microsoft explicitly documents that SCM loads the named account's profile.
+   Thus "services have no profile; call LoadUserProfile" is not justified.
+   Check actual mounted-hive access and current-user package visibility
+   read-only; these are not proof that the background broker can activate.
+4. Microsoft documents PrintWorkflowUserSvc as a per-user service, with
+   sign-in creation and sign-out deletion. This makes the separate logon
+   context important even while the desktop account is signed in, but does
+   not prove this particular failure is caused by it or categorically
+   prohibit every PSA v4 session-0 path.
+
+Primary references and their exact inference limits are in
+[sources 18-22](sources.md). No supported narrow behavioral fix was established.
+The correction is diagnostic: **PrintProbe 2 / psa-probe-v2**, raw StartDoc
+return/error captured before logging, nonzero terminal failure, exact executable
+SHA256/architecture/version and task-compatible UTF-8 job-title SHA256, plus
+opt-in own-token logon/profile/package context. No caller impersonation, app
+activation, profile loading, queue/package/service mutation, UI helper or broker
+is added. The default printing sequence and package 0.1.2.0 remain unchanged.
+
+The focused tests cover stale/zero LastError and negative/zero/positive raw
+returns using a fake call, UTF-8 hashes, real executable fingerprint/version,
+native read-only context and nonexistent-queue CLI failure. Fake-call and
+CLI tests **do not execute StartDoc against a real queue or run SCM/PSA**.
+Actual Windows follow-up build results belong to the associated PR/Actions
+run; no host service rerun is claimed by this document.
+
+**One next discriminator** is [the instrumented no-output product SCM
+submission](runbook.md#one-instrumented-service-submission), keeping the desktop
+and existing named account unchanged. If registration/hive visibility succeeds
+but StartDoc still fails without an exact capture, stop and escalate the
+session-0 submission/activation trace and support contract to Microsoft.
+Existing Microsoft reference queues are file printers: their Save As behavior
+would confound a naive service control. A faithful independently identified
+no-file reference variant was not implemented or tested here.
+Hosted runner-user credentials are not available for a genuine equivalent
+named-user SCM run; LocalSystem is not equivalent. No account/provisioning or
+credential-retrieval project was started just to label CI "service passed."
+
 ## Still not run / not proven
 
-Product queue creation on the user host has not succeeded; reference queue
-creation has. Isolated native product-payload queue registration has succeeded
-with resource-backed names on hosted ARM64. Real
-XPS/OXPS capture, Save As, native output-path mapping, named-service account
-registration/activation, pre-login execution, post-sign-out execution, 4D printing,
-external coordinator IPC and PDF rendering remain unobserved in this printer PR.
+Pre-login execution, post-sign-out execution, actual session-0 PSA activation,
+source delivery/completion for that service caller, 4D printing, authenticated
+external coordinator IPC and PDF rendering remain unproven. Desktop target
+behavior is observed above, not a supported service destination handoff.
 No PDF size or repeated-job reliability metric has been measured.
 
-Use the [runtime runbook](runbook.md) to close those gaps. Build or direct COM
-factory success is not a substitute for the required session-0 activation gate.
+The required before-login/after-sign-out behavior is **not relaxed**. Keep
+renderer/plugin/broker integration on HOLD. Neither the public sources nor
+these observations justify declaring Windows PSA universally unsupported;
+equally, neither establishes this product's required service operation.

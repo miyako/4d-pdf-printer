@@ -1,6 +1,9 @@
 # Conditional exact-job worker handoff
 
 **Not implemented and not yet proven permissible from the PSA/service combination.**
+The [actual named-user session-0 submission failure](validation.md#named-user-session-0-submission-gate)
+keeps this architecture on **HOLD**, even with the desktop signed in. Do not
+implement this broker/renderer/plugin to bypass the unresolved activation gate.
 This document proposes a boundary, not a functioning broker. The independent
 renderer owns the authoritative CLI/status documentation under `docs/renderer/`
 and `renderer/status-v1.schema.json` (those files may land in a separate PR).
