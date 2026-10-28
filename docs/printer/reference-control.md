@@ -6,10 +6,14 @@ renderer selection, or proof of service/4D support. Do not remove or reinstall
 a printer manually to make this comparison pass.
 
 **Observed:** both original Microsoft sample queues appeared on the native ARM64
-hosted runner. **The overall job is red because bounded cleanup failed**, not
-because installation or queue observation failed. The reference has **not** yet
-been run on the user's own host. Use the exact [recorded artifact below](#recorded-results-and-downloads),
-not a later automatic rebuild with a different hash.
+hosted runner **and on the user's own host**. On the user's host, the ARM64
+reference **1.1.14.0, Status Ok** has both queues while the ARM64 product
+**0.1.1.0, Status Ok** has neither diagnostic queue. **Do not reinstall the
+already-successful user reference.** Its first-install queue timing was not
+observed. The hosted job remains red because bounded cleanup failed, not
+because installation or queue observation failed. Use the exact
+[recorded artifact below](#recorded-results-and-downloads), not a later automatic
+rebuild with a different hash.
 
 ## Preserved user baseline
 
@@ -35,6 +39,20 @@ with result 0. Later 471/493 concerned unrelated deleted StorePurchaseApp /
 WindowsAppRuntime leftovers, not a demonstrated printer cause. Do not delete
 WindowsApps files. No print, Save As, service, renderer, or 4D job was run.
 This control does not request another dump of those unchanged facts.
+
+The current **same-host** reference comparison is:
+
+| User-host package | Version / architecture / status | Unfiltered queue observation |
+|---|---|---|
+| `Miyako.PsaReferenceControl` | `1.1.14.0` / ARM64 / Ok | **VirtualPdfPrinter** and **VirtualPostScriptPrinter** present |
+| `Miyako.PsaFeasibility` | `0.1.1.0` / ARM64 / Ok | Neither diagnostic queue present |
+
+The reference main remains installed and its queues are present. **It must not be
+reinstalled to repair the install-snippet error.** First-install queue timing
+on the user's host was not observed; the hosted first-10-second observation
+below must not be attributed to the user-host run. This positive static
+registration control does not establish a product root cause or print/Save As,
+service, renderer or 4D behavior.
 
 ## Exact source and isolation
 
@@ -124,6 +142,11 @@ is implied merely by adding this recipe.
 
 ## Local sign-only and side-by-side installation
 
+**The user's existing reference control is already successful: skip this entire
+sign/trust/install section. Do not rebuild, re-sign or reinstall it.** The
+instructions below are retained for a first installation on a separate lab host,
+not as repair steps for that working control.
+
 Use the **unsigned ARM64 control artifact**, not a CI-signed test copy. Extract
 it to a new lab directory. It includes the single main MSIX, four unmodified
 ARM64 Microsoft framework APPXs, source/build evidence, public notices, and the
@@ -169,43 +192,54 @@ commands (signing above uses PowerShell 7). This uses the local Appx module, not
 a PowerShell 7 compatibility-remoting proxy. Leave the existing prototype
 installed. **Do not launch the sample's application/UI or submit a job.**
 Install once normally with its supplied framework dependencies, then enumerate.
-The selection below omits frameworks already satisfied by an installed,
-healthy ARM64/neutral version; it does not try to downgrade a newer framework:
+Use the reviewed repository's
+[`Install-Control.ps1`](../../printer/reference-control/Install-Control.ps1);
+run **40668170711**'s recorded artifact predates this helper and **does not
+contain it**, so invoke it from the checkout against the existing extraction
+and signing-output paths, not an assumed copy inside that artifact. No rebuild
+or new signing run is needed to obtain the helper. Future developer builds
+copy it into `delivery` before generating `SHA256SUMS.json`; this does not alter
+the preserved artifact or its published input hash. Keep the complete
+artifact/notices and the local signing output in place. The helper validates
+every architecture evidence record and the schema-1 signing receipt, exact main identity, all four
+framework declarations/publishers/manifests, paths, hashes, public certificate,
+and package signatures/trust with SDK 26100 x64 SignTool **before** any deployment.
+It then uses local Appx cmdlets, passing only supplied dependencies not already
+satisfied by a healthy same/newer ARM64 or neutral framework. It never imports
+trust, downgrades a framework, or removes/reinstalls an existing control.
+
+**If the reference control is already installed and its queues appeared, stop
+here: do not run installation again to repair this documentation handoff.**
+Read its status and enumerate queues instead. An existing reference registration
+or either expected queue name blocks this helper without changes.
+
+For a first installation only, in Windows PowerShell 5.1:
 
 ```powershell
 $ErrorActionPreference = 'Stop'
 Get-Printer
-$receipt = Get-Content .\signed\SigningReceipt.json -Raw | ConvertFrom-Json
-if ($receipt.Identity.Name -cne 'Miyako.PsaReferenceControl' -or
-    $receipt.Identity.ProcessorArchitecture -cne 'arm64') { throw 'Unexpected signing receipt.' }
-if ((Get-FileHash .\signed\PsaReferenceControl.arm64.msix -Algorithm SHA256).Hash -ine
-    $receipt.OutputSha256) { throw 'Signed package differs from the local signing receipt.' }
-$frameworks = @(Get-Content .\architecture-evidence.json -Raw | ConvertFrom-Json |
-  Where-Object name -ne 'Miyako.PsaReferenceControl')
-if ($frameworks.Count -ne 4) { throw 'Expected four supplied ARM64 frameworks.' }
-$dependencies = @(foreach ($framework in $frameworks) {
-  $declaration = @($receipt.Dependencies | Where-Object Name -ceq $framework.name)
-  if ($declaration.Count -ne 1) { throw 'Unexpected framework declaration.' }
-  $installed = @(Get-AppxPackage -Name $framework.name | Where-Object {
-    $_.Publisher -ceq $declaration[0].Publisher -and $_.IsFramework -and
-    [version]$_.Version -ge [version]$declaration[0].MinVersion -and
-    $_.Architecture.ToString() -iin @('arm64', 'neutral') -and $_.Status.ToString() -ieq 'Ok'
-  })
-  if ($installed.Count -eq 0) { (Resolve-Path ".\Dependencies\arm64\$($framework.file)").Path }
-})
-$install = @{ Path = (Resolve-Path .\signed\PsaReferenceControl.arm64.msix).Path }
-if ($dependencies.Count -ne 0) { $install.DependencyPath = $dependencies }
-Add-AppxPackage @install
-$control = @(Get-AppxPackage -Name Miyako.PsaReferenceControl)
-if ($control.Count -ne 1 -or $control[0].Architecture.ToString() -ine 'Arm64' -or
-    $control[0].Status.ToString() -ine 'Ok') { throw 'Reference package is not healthy/registered as ARM64.' }
-$control |
-  Select-Object Name, Version, Architecture, Status
+# Substitute the actual reviewed checkout and existing lab paths; do not move/re-sign the artifact.
+& 'C:\src\4d-pdf-printer\printer\reference-control\Install-Control.ps1' `
+  -ArtifactDirectory 'C:\lab\reference-control' `
+  -SignedDirectory 'C:\lab\reference-control\signed' `
+  -ExpectedUnsignedSha256 'e780082071c909bbf677ad60a78109a67af725742c093530d91c297189e9f52f'
 Get-AppxPackage -Name Miyako.PsaFeasibility |
   Select-Object Name, Version, Architecture, Status
 Start-Sleep -Seconds 10
 Get-Printer
 ```
+
+The old inline `ConvertFrom-Json | Where-Object` selection treated the root JSON
+array as one pipeline record in Windows PowerShell 5.1, so a valid artifact
+failed the count check. The helper assigns the parsed root first, checks that
+it is a five-record array, then enumerates records explicitly. This was an
+installation-handoff bug, not evidence that the installed main package or its
+working queues need repair. The mocked regression runs under **Windows
+PowerShell 5.1** (`shell: powershell`) in the reference-control build workflow;
+portable PowerShell 7 runs alone do not establish that compatibility.
+CI also downloads the exact recorded artifact to exercise its unchanged JSON,
+all five real package hashes and manifests against the receipt schema; only
+Appx/PrintManagement and the signature-verification boundary are mocked.
 
 Expected new names are **VirtualPdfPrinter** and **VirtualPostScriptPrinter**.
 If either was present before installation, the comparison has a collision: stop,
@@ -291,7 +325,7 @@ Spooler was observed Running before and after, without changing it.
 The installed CI-signed copy had SHA256
 `202f9f363b595c90638b06a8cc1db4a5522355f288d48802ef161d719819eb60`;
 that is **not the unsigned input hash** and is not a distributable signing
-identity. The user's local signature will create another output hash.
+identity. The user's local signature produces a different output hash.
 GitHub Actions artifact retention applies; the pinned source/build recipe and
 committed evidence summary remain available if a later rebuild is needed.
 
@@ -305,10 +339,13 @@ reported rather than worked around.
 
 ## Registration comparison inventory, not a diagnosis
 
-**Run this exact reference on the user's own host before attributing the
-prototype's failure to any PDC/resource/manifest difference.** The prototype was
-not installed on this hosted runner, and the reference has not been installed
-on the user's lab host. This is not yet a same-host A/B result.
+**The same-host control is now positive:** reference 1.1.14.0 ARM64 Status Ok
+has both original queues on the user's lab host; product 0.1.1.0 ARM64 Status Ok
+has neither diagnostic queue. Keep the successful reference installed; do not
+repeat its installation or infer its unobserved first-install queue timing.
+The prototype was not installed in the historical reference job, so that job's
+result is not itself a same-host A/B comparison. These observations do not
+attribute the product's failure to a specific PDC/resource/manifest difference.
 
 | Registration-relevant surface | Prototype | Reference control |
 |---|---|---|
@@ -320,14 +357,18 @@ on the user's lab host. This is not yet a same-host A/B result.
 | Endpoints / formats | Two OXPS diagnostic endpoints: `.oxps` Save As and no-file-UI | Original PDF/OXPS endpoint with PDF 1.7 passthrough and original PostScript endpoint, `.pdf` / `.ps` output |
 | Other extensions / capabilities | Only virtual-printer workflow; no network/account capabilities | Original four other print-support extensions plus private-network, internet and user-account capabilities; not proven queue-install requirements |
 
-No product changes are made from this inventory. If the reference also creates
-queues on the user's host, isolate one demonstrated difference at a time rather
-than bulk-copying a PDC, capabilities, resources or application into the product.
+This inventory alone did not justify a product change. The subsequent
+[controlled hosted comparison](validation.md#generated-artifact-comparison-and-bounded-discriminator)
+isolates equivalent PRI-backed queue names, not a PDC/capability/app transplant.
+Product 0.1.2.0 implements that observed compatibility correction and has
+separately demonstrated the normal same-family update on hosted ARM64.
+The user's existing reference still needs no reinstall or printing test.
 
 ## Interpretation matrix
 
-Compare **unfiltered** `Get-Printer` after one normal reference installation
-with the already-established prototype-absent result. Do not submit a job yet.
+The user's existing **unfiltered** `Get-Printer` observation matches the first
+row below: both reference queues present, both prototype queues absent. Use
+that successful installed control without reinstalling it. Do not submit a job yet.
 
 | Reference queues | Prototype queues | What this supports / does not establish |
 |---|---|---|

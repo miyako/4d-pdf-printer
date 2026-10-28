@@ -299,6 +299,36 @@ All ran the 36 portable build/resource cases and normal MakeAppx validation;
 native targets ran both CTests, while cross-compiled native execution was
 explicitly not run. These remain factory/parser tests, not background-task `Run`.
 
+### Verified 0.1.2.0 delivery revision
+
+Product build source **`1de4c285eac81211279d129697547a52cc613b57`** also
+validates the PRI extracted from the **final MSIX**, checks its hash against
+staging, and verifies both exact key/value mappings with MakePri. It removes
+only the previous generated staging PRI before rebuilding, avoiding stale
+resource indexing on repeated builds.
+
+All three targets passed [run 40675880219](https://github.com/miyako/4d-pdf-printer/actions/runs/40675880219).
+Downloaded native ARM64 and x64 artifacts were independently rechecked:
+actual manifest 0.1.2.0/target architecture, all packaged native PE machines,
+original CRLF PDC hash, final PRI/build-evidence hash agreement, and exact
+resource dump mappings. These downloads are **unsigned**, not the hosted
+experiment's ephemeral signed copy:
+
+| Target | Artifact | Actual unsigned MSIX SHA256 |
+|---|---|---|
+| Native ARM64 | [printer-feasibility-unsigned-arm64](https://github.com/miyako/4d-pdf-printer/actions/runs/40675880219/artifacts/12810053569) | `297c1abdcccec8f7e3393d69e6e4c0c182802a5e294c74f3cb93b9f1bdceaa6a` |
+| Native x64 | [printer-feasibility-unsigned-x64](https://github.com/miyako/4d-pdf-printer/actions/runs/40675880219/artifacts/12809819717) | `e5b4ee4a8bfe928b8d9b0867ef06a3861c84b1927522a3119779f2c099c8637a` |
+
+The same revision again passed the normal retained-baseline update in
+[run 40675879862](https://github.com/miyako/4d-pdf-printer/actions/runs/40675879862):
+0.1.1.0 absent for 60 seconds, 0.1.2.0 Arm64 / Ok and both queues at 10 seconds,
+without pre-removal, followed by successful exact cleanup.
+[Actual report and installed manifests](https://github.com/miyako/4d-pdf-printer/actions/runs/40675879862/artifacts/12809569794).
+The [local build/sign/update retest](runbook.md#resource-packaging-correction-update)
+uses the existing VS2022/v143/SDK26100 environment. New local builds/signatures
+will have different package hashes; no byte-reproducible binary claim is made.
+Do not install an unsigned download directly or trust an unrelated certificate.
+
 ## Still not run / not proven
 
 Product queue creation on the user host has not succeeded; reference queue

@@ -83,6 +83,7 @@ foreach ($name in @('Microsoft-LICENSE.txt', 'upstream.json', 'source-comparison
 Copy-Item -LiteralPath (Join-Path $out 'resources/resource-evidence.json') -Destination $delivery
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'THIRD-PARTY-NOTICES.txt') -Destination $delivery
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Sign-Control.ps1') -Destination $delivery
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Install-Control.ps1') -Destination $delivery
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../../docs/printer/reference-control.md') -Destination $delivery
 [ordered]@{
     hostOSArchitecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
