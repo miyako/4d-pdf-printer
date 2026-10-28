@@ -138,7 +138,7 @@ struct Task : implements<Task, IBackgroundTask>
             JsonObject info;
             Text(info, L"schema", L"psa-activation-v1");
             Text(info, L"activationId", activationId);
-            Text(info, L"utcFileTime", std::to_wstring(clock::now().time_since_epoch().count()));
+            Text(info, L"utcFileTime", hstring{std::to_wstring(winrt::clock::now().time_since_epoch().count())});
             info.Insert(L"processId", JsonValue::CreateNumberValue(GetCurrentProcessId()));
             auto log = co_await activation.CreateFileAsync(L"activation.json", CreationCollisionOption::FailIfExists);
             co_await FileIO::WriteTextAsync(log, info.Stringify());
@@ -202,7 +202,7 @@ struct Task : implements<Task, IBackgroundTask>
         JsonObject record;
         Text(record, L"schema", L"psa-capture-v1");
         Text(record, L"activationId", activationId);
-        Text(record, L"utcFileTime", std::to_wstring(clock::now().time_since_epoch().count()));
+        Text(record, L"utcFileTime", hstring{std::to_wstring(winrt::clock::now().time_since_epoch().count())});
         Text(record, L"result", L"failed");
         hstring stage = L"metadata";
         try
@@ -301,12 +301,14 @@ struct Factory : implements<Factory, IActivationFactory>
     IInspectable ActivateInstance() { return make<Task>(); }
 };
 
-extern "C" HRESULT __stdcall DllGetActivationFactory(HSTRING name, void** factory) noexcept
+extern "C" HRESULT __stdcall DllGetActivationFactory(void* name, void** factory) noexcept
 {
     try
     {
         *factory = nullptr;
-        if (hstring(name, copy_from_abi) != L"PsaDiagnostic.Task") return CLASS_E_CLASSNOTAVAILABLE;
+        hstring className;
+        copy_from_abi(className, name);
+        if (className != L"PsaDiagnostic.Task") return CLASS_E_CLASSNOTAVAILABLE;
         *factory = detach_abi(make<Factory>());
         return S_OK;
     }
