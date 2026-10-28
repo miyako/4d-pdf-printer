@@ -128,6 +128,8 @@ SCM errors, the service's reported exit code and workflow evidence.
 | Service with desktop present | Start through SCM. Log must show service submission in Windows session 0, not a console impersonation. Compare package/queue visibility, PSA identity/session privately and target behavior. |
 | Before first desktop login | Configure Automatic, cold reboot, **do not log in**. Observe remotely through an independently authorized admin channel, or retrieve evidence later while verifying timestamps precede first login. Delayed startup/activation requiring login is a failure. |
 | After sign-out | Start delayed one-shot service; fully sign out (not lock or disconnect), leave no user helper/session, let delay elapse. Retrieve timestamped evidence later. Also test a service start initiated remotely while signed out. |
+| Sign-out during active capture (this PR) | Submit a synthetic job and sign out while PSA capture/output is active. Observe task cancellation/completion, the exact spooler job's final state, and any complete/partial OXPS destination independently. No helper may preserve the desktop session. |
+| Sign-out during active conversion (later integration; not executable in this PR) | Once a permitted coordinator/worker exists, sign out after the worker starts but before publication. Separately record PSA task cancellation/`CompleteJob` result, spooler job completion/cancellation, coordinator and worker process lifetime/deadline/cleanup, and exact destination publication (absent, partial, valid complete). A surviving service or a completed PDF alone is not proof the required PSA job finished successfully. Do not retry an uncertain publication automatically. |
 | File queue `lpszOutput` | Repeat service cases with Save As queue and fresh `.oxps` destinations. Any blocked UI, timeout, absent activation or wrong target fails the unattended case. |
 | Registration/profile/permission negative cases | Missing package for service user, unavailable profile, queue denied, destination denied, missing target and UI-ineligible states must fail explicitly, not hang indefinitely or report PDF success. |
 
@@ -151,6 +153,12 @@ If activation passes, separately validate the [local-RPC service candidate](hand
 correct package/user ACLs, wrong-user/package rejection, endpoint absent,
 disconnect/timeout/cancel, worker crash with no JSON, and abandoned job-local files.
 The documented generic RPC pattern is not already wired into this package.
+Do not copy the CustomCapability sample's capability identity, signing or
+provisioning assumptions. General package-SID RPC ACL guidance does not establish
+restricted/custom-capability approval or an SCCD deployment for our package.
+No such approvals/descriptors were obtained. Validate independent package trust
+and service authorization, including correct-user/package and wrong-user/package
+cases, before treating the transport as usable in this distribution.
 
 ## Repeated jobs and later 4D checks
 

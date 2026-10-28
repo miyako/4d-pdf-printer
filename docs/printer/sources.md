@@ -54,6 +54,18 @@ collect runtime evidence on the actual 26100+ lab build.
     sample defaults to LocalSystem). This supports investigating PSA-to-service
     RPC once PSA activates; it does not demonstrate named-user PSA activation
     before login, after sign-out, or this renderer integration.
+    **Separate the two authorization models:** the general IPC guide explicitly
+    offers package-SID ACLs as an alternative to custom-capability management.
+    The CustomCapability sample illustrates a custom-capability path, whose
+    capability declarations, SCCD (signed custom capability descriptor),
+    provisioning/authorization and signing instructions must be assessed
+    separately. Sample existence does not grant a restricted/custom capability
+    approval or make that deployment path available to our independently
+    distributed package. No such approval, SCCD, provisioning or custom-capability
+    deployment was performed. Our candidate uses the general package-SID ACL
+    guidance, not the sample's capability identity or assumed entitlements;
+    independent package identity/signing/trust and service deployment remain
+    required validation gates.
 11. [FullTrustProcessLauncher](https://learn.microsoft.com/en-us/uwp/api/windows.applicationmodel.fulltrustprocesslauncher?view=winrt-26100)
     activates a declared Win32 component in the **same package** and requires
     `runFullTrust`. It is not an arbitrary external `Process.Start` contract.

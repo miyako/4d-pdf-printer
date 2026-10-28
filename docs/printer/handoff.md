@@ -84,6 +84,13 @@ sample's service defaults to LocalSystem; it does not prove our named-user setup
 The coordinator is a separately installed service, not an assumed RPC facility in
 4D Server, a tray app, or a proposed named-user service embedded in this MSIX.
 No custom capability or broad all-AppContainer endpoint permission is proposed.
+The general package-SID ACL guidance is distinct from the CustomCapability
+sample's custom-capability authorization model. The latter can involve capability
+approval, an SCCD, provisioning and specific signing/deployment prerequisites;
+none have been established, performed or inherited by this independent package.
+The sample is transport implementation evidence, **not** our deployment recipe
+or permission grant. Validate our own package family/SID, signing/trust,
+installation scope and service ACLs on the target system.
 Package SID access alone is insufficient job authorization: also authenticate
 the expected user/service principal and bind the unguessable exact-job token to
 that identity. Fail closed on missing identity or stale/mismatched job records.
@@ -97,5 +104,12 @@ Likewise app services, generic manifest scope flags, localhost permission or
 ordinary background activation do not prove a session-0 arrangement.
 Logoff is a documented task cancellation reason; a deferral is not an unlimited
 lease. Do not retry a possibly published conversion just because PSA disconnected.
+Test sign-out **during** an active conversion independently of submitting a new
+job after sign-out: observe PSA cancellation/completion, spooler final state,
+coordinator and worker lifetime, and exact destination publication as separate
+outcomes. A service or worker surviving sign-out does not prove that the PSA job
+finished, that publication was authorized, or that the caller received success.
+The current PR cannot execute that conversion test because no broker/worker
+integration exists; it is an explicit gate for the later integration.
 If the platform cannot support this, stop and present the incompatibility. Do not
 replace it silently with a tray app, legacy driver or in-spooler renderer.
