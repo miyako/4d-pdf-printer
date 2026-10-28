@@ -233,7 +233,7 @@ extern "C" HRESULT __stdcall DllGetActivationFactory(void* name, void** factory)
     catch (...) { return to_hresult(); }
 }
 
-extern "C" HRESULT __stdcall DllCanUnloadNow() noexcept
+extern "C" HRESULT __stdcall DllCanUnloadNow()
 {
     return get_module_lock() ? S_FALSE : S_OK;
 }

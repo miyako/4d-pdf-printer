@@ -135,6 +135,7 @@ int wmain(int argc, wchar_t** argv)
             Require(IsTitle(TitlePrefix + std::wstring(64, L'a')));
             Require(!IsTitle(TitlePrefix + std::wstring(63, L'a')));
             Require(!IsTitle(TitlePrefix + std::wstring(64, L'G')));
+            Require(IsToken(RandomToken()));
             Text(report, L"stage", L"self-test-passed");
         }
         else

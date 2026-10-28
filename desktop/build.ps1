@@ -68,6 +68,7 @@ foreach ($name in $sizes.Keys) {
 $config = Join-Path $out 'priconfig.xml'
 $pri = Join-Path $stage 'resources.pri'
 $dump = Join-Path $out 'resource-evidence.xml'
+if (Test-Path -LiteralPath $pri) { Remove-Item -LiteralPath $pri }
 Invoke-Checked (Join-Path $sdk 'makepri.exe') @('createconfig', '/cf', $config, '/dq', 'lang-en-US', '/o')
 Invoke-Checked (Join-Path $sdk 'makepri.exe') @('new', '/pr', $stage, '/cf', $config, '/of', $pri, '/o')
 Invoke-Checked (Join-Path $sdk 'makepri.exe') @('dump', '/if', $pri, '/of', $dump, '/o')
@@ -82,6 +83,30 @@ Remove-Item -LiteralPath (Join-Path $stage 'Strings/en-US')
 Remove-Item -LiteralPath (Join-Path $stage 'Strings')
 $package = Join-Path $out 'DesktopPdfPrototype.msix'
 Invoke-Checked (Join-Path $sdk 'makeappx.exe') @('pack', '/d', $stage, '/p', $package, '/o')
+$archive = [IO.Compression.ZipFile]::OpenRead($package)
+try {
+    $reader = [IO.StreamReader]::new($archive.GetEntry('AppxManifest.xml').Open())
+    try { [xml]$packagedManifest = $reader.ReadToEnd() } finally { $reader.Dispose() }
+    if ($packagedManifest.Package.Identity.Name -cne 'Miyako.DesktopPdfPrototype' -or
+        $packagedManifest.Package.Identity.Publisher -cne 'CN=DesktopPdfPrototypeDev' -or
+        $packagedManifest.Package.Identity.ProcessorArchitecture -cne $Architecture.ToLowerInvariant()) {
+        throw 'Actual MSIX manifest identity/architecture mismatch.'
+    }
+    foreach ($entry in $archive.Entries) {
+        if ([IO.Path]::GetExtension($entry.FullName) -notin @('.exe', '.dll')) { continue }
+        $input = $entry.Open()
+        $memory = [IO.MemoryStream]::new()
+        try {
+            $input.CopyTo($memory)
+            Assert-PrinterPeMachine -Bytes $memory.ToArray() -Architecture $Architecture -Name $entry.FullName
+        } finally { $input.Dispose(); $memory.Dispose() }
+    }
+    $packagedPri = Join-Path $out 'packaged-resources.pri'
+    [IO.Compression.ZipFileExtensions]::ExtractToFile($archive.GetEntry('resources.pri'), $packagedPri, $true)
+} finally { $archive.Dispose() }
+if ((Get-FileHash -LiteralPath $packagedPri -Algorithm SHA256).Hash -cne
+    (Get-FileHash -LiteralPath $pri -Algorithm SHA256).Hash) { throw 'Actual MSIX PRI hash mismatch.' }
+Invoke-Checked (Join-Path $sdk 'makepri.exe') @('dump', '/if', $packagedPri, '/of', $dump, '/o')
 if ($CertificateThumbprint) {
     $certificate = Get-Item -LiteralPath "Cert:/CurrentUser/My/$CertificateThumbprint"
     if ($certificate.Subject -cne 'CN=DesktopPdfPrototypeDev' -or -not $certificate.HasPrivateKey) {

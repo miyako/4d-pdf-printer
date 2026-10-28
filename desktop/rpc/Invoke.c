@@ -107,11 +107,12 @@ unsigned long InvokeDesktopGate(handle_t binding, unsigned long operation,
     waited = WaitForSingleObjectEx(call->event, 2000, FALSE);
     if (waited != WAIT_OBJECT_0)
     {
+        DWORD waitError = waited == WAIT_FAILED ? GetLastError() : ERROR_TIMEOUT;
         /* ncalrpc ignores RPC_C_OPT_CALL_TIMEOUT. Abort without retry; the
            server may already have committed, and owns its separate buffers. */
         code = RpcAsyncCancelCall(&call->async, TRUE);
         SetThreadpoolWait(call->wait, call->event, NULL);
-        return code == ERROR_SUCCESS ? ERROR_TIMEOUT : code;
+        return code == ERROR_SUCCESS ? waitError : code;
     }
     code = RpcAsyncCompleteCall(&call->async, NULL);
     if (code == ERROR_IO_PENDING)

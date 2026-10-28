@@ -106,7 +106,12 @@ namespace desktop
     inline std::wstring RandomToken()
     {
         using namespace winrt::Windows::Security::Cryptography;
-        return std::wstring(CryptographicBuffer::EncodeToHexString(CryptographicBuffer::GenerateRandom(32)));
+        auto value = std::wstring(CryptographicBuffer::EncodeToHexString(CryptographicBuffer::GenerateRandom(32)));
+        std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch)
+        {
+            return ch >= L'A' && ch <= L'F' ? static_cast<wchar_t>(ch + (L'a' - L'A')) : ch;
+        });
+        return value;
     }
 
     inline std::wstring Hash(std::wstring const& text)
