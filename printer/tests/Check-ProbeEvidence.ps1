@@ -37,8 +37,9 @@ try {
             }
         }
         if ($records[-1].win32Error -eq 0 -or
-            $records[-1].win32Error -ne $records[-2].win32Error) {
-            throw 'Terminal failure must preserve the queue error, not report zero.'
+            $records[-1].win32Error -ne $records[-2].win32Error -or
+            $records[-1].failureStage -cne 'queue-open-failed') {
+            throw 'Terminal failure must preserve the API stage/error, not report zero.'
         }
         if ($context) {
             $record = $records[1]

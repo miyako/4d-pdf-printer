@@ -239,7 +239,12 @@ namespace
             std::fprintf(stderr, "PrintProbe: %s\n", error.what());
             auto failure = dynamic_cast<evidence::Failure const*>(&error);
             DWORD code = failure && failure->code ? failure->code : ERROR_GEN_FAILURE;
-            try { Log("probe-failed", code); }
+            try
+            {
+                std::string fields = failure ?
+                    ",\"failureStage\":\"" + std::string(failure->what()) + "\"" : "";
+                Log("probe-failed", code, 0, fields);
+            }
             catch (...) { std::fputs("PrintProbe: evidence log failed\n", stderr); }
             result = 1;
         }
