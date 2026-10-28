@@ -22,7 +22,8 @@ try {
         $files += [ordered]@{ path = $name; sha256 = $actual.ToLowerInvariant(); upstreamBytes = 'identical' }
     }
     $reader = [IO.StreamReader]::new($zip.GetEntry('AppxManifest.xml').Open())
-    try { [xml]$manifest = $reader.ReadToEnd() } finally { $reader.Dispose() }
+    try { $manifestText = $reader.ReadToEnd(); [xml]$manifest = $manifestText } finally { $reader.Dispose() }
+    [IO.File]::WriteAllText((Join-Path $OutputDirectory 'packaged-AppxManifest.xml'), $manifestText)
     [xml]$original = Get-Content -LiteralPath (Join-Path $app 'Package.appxmanifest') -Raw
     $xpath = '//*[local-name()="Extension" and @Category="windows.printSupportVirtualPrinterWorkflow"]'
     $expectedNodes = @($original.SelectNodes($xpath))

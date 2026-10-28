@@ -58,6 +58,7 @@ distributed sample artifact. This does not select a license for our own product.
 | PDC / PDR / assets / resources / code | Preserve upstream bytes; use the original UWP XAML/PRI build, not placeholder logos/resources or a rewritten task |
 | Packaging flags | Single ARM64 MSIX, no x86/x64 bundle; unsigned; disable auto version increment and generated test installer; redirect upstream hard-coded `D:\PSASample\` output |
 | Build baseline | SDK `10.0.26100.0`, VS2022/v143, Release ARM64 with upstream .NET Native enabled |
+| Generated header | Upstream MIDL regenerates its checked-in, automatically generated `XpsUtil.h` from unchanged `XpsUtil.idl`; before/after hashes are reported separately, not called an authored-source adaptation |
 
 These are **identity-adapted Microsoft sample sources**, not an unmodified
 Microsoft-signed distribution. A locally trusted development signature proves

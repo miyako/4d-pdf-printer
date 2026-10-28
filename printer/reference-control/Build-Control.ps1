@@ -14,6 +14,11 @@ if ($out.Length -gt 40) { throw 'Use a short output path (at most 40 characters)
     runnerImage = $env:ImageVersion
     targetArchitecture = 'arm64'
     sdk = '10.0.26100.0'
+    sdkTools = @(foreach ($name in @('makeappx.exe', 'makepri.exe', 'signtool.exe')) {
+        $tool = Join-Path ${env:ProgramFiles(x86)} "Windows Kits/10/bin/10.0.26100.0/x64/$name"
+        $info = Get-Item -LiteralPath $tool
+        [ordered]@{ name = $name; hostArchitecture = 'x64'; fileVersion = $info.VersionInfo.FileVersion }
+    })
     runtime = 'not-tested'
 } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $out 'host-evidence.json') -Encoding utf8
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'upstream.json') -Destination $out
@@ -53,7 +58,7 @@ $arguments = @($project, '/restore', '/m', '/v:minimal', '/nologo',
     "/p:AppxPackageDir=$packageOut\", "/flp:logfile=$out/build.log;verbosity=normal")
 Invoke-Checked $msbuild $arguments
 & (Join-Path $PSScriptRoot 'Check-Provenance.ps1') -SourceRoot $source `
-    -InventoryPath (Join-Path $out 'source/original-files.json') -ReportPath (Join-Path $out 'source-comparison.json')
+    -InventoryPath (Join-Path $out 'source/original-files.json') -ReportPath (Join-Path $out 'source-comparison.json') -AfterBuild
 $packages = @(Get-ChildItem -LiteralPath $packageOut -Recurse -File |
     Where-Object { $_.Extension -in @('.appx', '.msix') -and $_.DirectoryName -notmatch '[\\/]Dependencies([\\/]|$)' })
 if ($packages.Count -ne 1) { throw "Expected one ARM64 main package; found $($packages.Count)." }
@@ -73,6 +78,7 @@ foreach ($name in @('Microsoft-LICENSE.txt', 'upstream.json', 'source-comparison
     Copy-Item -LiteralPath (Join-Path $out $name) -Destination $delivery
 }
 Copy-Item -LiteralPath (Join-Path $out 'resources/resource-evidence.json') -Destination $delivery
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'THIRD-PARTY-NOTICES.txt') -Destination $delivery
 [ordered]@{
     hostOSArchitecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
     processArchitecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
@@ -84,3 +90,10 @@ Copy-Item -LiteralPath (Join-Path $out 'resources/resource-evidence.json') -Dest
     runtime = 'not-tested'
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $out 'build-evidence.json') -Encoding utf8
 Copy-Item -LiteralPath (Join-Path $out 'build-evidence.json') -Destination $delivery
+$hashes = @(Get-ChildItem -LiteralPath $delivery -Recurse -File | Sort-Object FullName | ForEach-Object {
+    [ordered]@{
+        path = [IO.Path]::GetRelativePath($delivery, $_.FullName).Replace('\', '/')
+        sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+})
+$hashes | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $delivery 'SHA256SUMS.json') -Encoding utf8
