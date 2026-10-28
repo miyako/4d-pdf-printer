@@ -118,6 +118,16 @@ Tests inspect PDF structure, text and resources; **no pixel-reference comparison
 real 4D corpus, accessibility/PDF-A/print-ticket validation, WDP validation or
 Microsoft failure reproduction has been performed**.
 
+The renderer code at `ade0bd0` also passed the
+[Windows Server 2022/x64/MSVC build and execution run](https://github.com/miyako/4d-pdf-printer/actions/runs/40645829062):
+30 Python cases registered, 25 passed / 5 POSIX-only cases skipped, plus native
+transaction tests. It produced the same 6,115-byte PDFs and validated Unicode
+Windows paths, direct conversion, error/status shapes, collisions and repeated
+fresh invocations. macOS passes all 30 cases and native tests; worker
+AddressSanitizer/UndefinedBehaviorSanitizer checks also pass. Installed DLL,
+feature and license evidence is distinguished from the manifest assumptions in
+[the observed runtime inventory](dependencies.md#observed-windows-pe-runtime-closure).
+
 Runtime DLL/notice inventory, LGPL replacement/relinking, immutable MSIX,
 current font/rendering fidelity and unattended service execution must be
 reviewed before distribution. See [dependencies and licensing](dependencies.md).

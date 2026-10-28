@@ -44,7 +44,8 @@ while ($queue.Count) {
         }
     }
     $owners = @(Get-ChildItem "$InstalledRoot\vcpkg\info\*.list" | Where-Object {
-        Select-String -Quiet -SimpleMatch "/bin/$([IO.Path]::GetFileName($file))" $_.FullName
+        Select-String -Quiet -Pattern "^x64-windows/bin/$([regex]::Escape([IO.Path]::GetFileName($file)))$" `
+            -LiteralPath $_.FullName
     } | Select-Object -ExpandProperty BaseName)
     $records += [ordered]@{
         file = [IO.Path]::GetFileName($file)

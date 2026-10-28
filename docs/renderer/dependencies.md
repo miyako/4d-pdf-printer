@@ -16,13 +16,15 @@ upstream commit `693b1b74fce64fa3d340ee9fcf29db60ce2c3551` was useful research,
 but the build uses the release archive, not that moving-source assumption.
 
 The Windows triplet is `x64-windows`: dynamic libraries and dynamic CRT. Cairo
-uses its default fontconfig/freetype features. TIFF, FreeType and libxml2
-incoming dependencies disable their default features. libarchive defaults
-select bzip2/crypto/lz4/lzma/xar/zstd. On Windows, xar uses XmlLite and libarchive
-also uses CNG/bcrypt; libxml2 arrives separately through libxslt.
+uses its default fontconfig/freetype features. Do not infer the final feature
+set from one incoming dependency edge: the observed Windows installed status
+includes FreeType[brotli,bzip2,png,zlib], TIFF[jpeg,lzma,zip] and
+libxml2[iconv,zlib]. libarchive defaults select bzip2/crypto/lz4/lzma/xar/zstd.
+On Windows, xar uses XmlLite and the observed archive DLL uses CNG/bcrypt;
+libxml2 is installed through libxslt but is not in the observed PE closure.
 
-The following is the **pinned manifest graph**, not a fabricated list of
-observed DLLs. Each port's exact manifest/recipe/notices lives under
+The following describes the **pinned installed/build graph**, not a list of
+shipped DLLs. Each port's exact manifest/recipe/notices lives under
 `ports/<name>/` at the registry commit. Null/absent license metadata was
 checked against source notices where noted.
 
@@ -36,9 +38,10 @@ checked against source notices where noted.
 | libjpeg-turbo | 3.2.0#1 | BSD-3-Clause AND IJG |
 | libpng | 1.6.59 | libpng-2.0 |
 | libxslt | 1.1.45 | Permissive MIT/X11-style libxslt/libexslt notices, name-use conditions; manifest null |
-| tiff | 4.7.2 | libtiff; core only |
+| tiff | 4.7.2 | libtiff; observed jpeg/lzma/zip features |
 | fontconfig | 2.17.1#2 | MIT |
-| freetype | 2.14.3 | FTL OR GPL-2.0-or-later; use/review FTL route |
+| freetype | 2.14.3 | FTL OR GPL-2.0-or-later; use/review FTL route; observed codec features above |
+| brotli | 1.2.1 | MIT; observed through FreeType |
 | pixman | 0.46.4#1 | MIT AND BSD-2-Clause |
 | pthread | 3.0.0#2 | Empty forwarding port, not a separate DLL |
 | pthreads | 3.0.0#14 | Apache-2.0 (do not assume historical LGPL) |
@@ -49,7 +52,7 @@ checked against source notices where noted.
 | libiconv | 1.19#1 | LGPL-2.1-or-later library; libcharset LGPL-2.0-or-later; **GPL-3.0-or-later utility** |
 | pcre2 | 10.49#2 | BSD-3-Clause WITH PCRE2-exception; JIT adds BSD-2-Clause |
 | libspng | 0.7.4#1 | BSD-2-Clause AND libpng-2.0 |
-| libxml2 | 2.15.4 | MIT; core only |
+| libxml2 | 2.15.4 | MIT; observed iconv/zlib features |
 | zlib | 1.3.2#2 | Zlib |
 | bzip2 | 1.0.8#6 | bzip2-1.0.6; default tool feature selected, not needed in worker package |
 | lz4 | 1.10.0 | BSD-2-Clause; GPL tools not selected |
@@ -73,6 +76,39 @@ from merely installed ports, but **delay/dynamic loads, font/config/data files,
 representative rendering module traces, VC runtime redistribution and final
 shipped-file allowlisting still require release review**. CI does not upload
 executables/DLLs as a product.
+
+### Observed Windows PE runtime closure
+
+The final renderer-code Windows Server 2022/x64/MSVC run,
+[40645829062](https://github.com/miyako/4d-pdf-printer/actions/runs/40645829062),
+built commit `ade0bd06ce97d3f5233b351cfb8ec5fa2274b67a` and observed **26
+third-party DLLs, totaling 13,215,744 bytes**, in addition to the worker:
+
+| Component | Observed app-local DLL names |
+|---|---|
+| libgxps | `gxps-2.dll` |
+| Cairo | `cairo-2.dll` |
+| GLib | `gio-2.0-0.dll`, `glib-2.0-0.dll`, `gobject-2.0-0.dll`, `gmodule-2.0-0.dll` |
+| libarchive | `archive.dll` |
+| LCMS / JPEG / TIFF / PNG | `lcms2-2.dll`, `jpeg62.dll`, `tiff.dll`, `libpng16.dll` |
+| fontconfig / FreeType / pixman / Expat | `fontconfig-1.dll`, `freetype.dll`, `pixman-1-0.dll`, `libexpat.dll` |
+| libffi / PCRE2 | `ffi-8.dll`, `pcre2-8.dll` |
+| gettext-libintl / libiconv | `intl-8.dll`, `iconv-2.dll` |
+| compression | `bz2.dll`, `liblzma.dll`, `lz4.dll`, `z.dll`, `zstd.dll`, `brotlidec.dll`, `brotlicommon.dll` |
+
+This is measured PE linkage, **not an approved packaging allowlist or proof of
+all runtime loading**. OpenSSL, libxslt, libxml2, libspng and pthread packages
+were installed but not present in this observed PE closure; do not copy them
+merely because the install plan lists them. Windows system/API-set DLLs and
+the MSVC/UCRT runtime are separate requirements, not included in the 26 or
+the byte total. The first inventory's candidate ownership search also matched
+host-tool copies of `intl-8.dll`/`iconv-2.dll`; the maintained script now requires
+the exact `x64-windows/bin/<file>` entry. Those runtime DLLs are the LGPL library
+ports, **not the GPL gettext/iconv command-line programs**.
+The [source-only observation snapshot](../../renderer/dependencies/observed-windows-x64.json)
+retains actual names, byte sizes, hashes/imports and exact target-bin owners,
+derived from that run's uploaded file lists. It is not a binary release or
+an assertion that additional dynamically loaded libraries can be omitted.
 
 ## Maintained libgxps patch
 
