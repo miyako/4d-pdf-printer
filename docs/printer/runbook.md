@@ -1,6 +1,7 @@
 # Windows 11 runtime evidence runbook
 
-**The first user-run installation did not create either diagnostic queue.**
+**Neither the first user-run install nor the native ARM64 update created either
+diagnostic queue. The Microsoft reference has both queues on that same host.**
 The printing/service rows below remain unexecuted; see [observed evidence](validation.md).
 Use synthetic pages only. Do not
 upload account names, paths, private print tickets/documents, credentials or full
@@ -53,6 +54,14 @@ ID. The probe logs numeric GDI job ID, UTC FILETIME, process/session and stage.
 Titles, accounts, queue names and destinations are not written to its JSON log.
 
 ## Native ARM64 update and retest
+
+**Historical procedure, already completed on the reported host:** ARM64 0.1.1.0
+updated normally and is healthy, but both product queues remain absent.
+Do not repeat this update, reinstall the successful reference control, collect
+the same deployment logs again, or rebuild the unchanged product as a purported
+fix. The [bounded hosted discriminator](validation.md#generated-artifact-comparison-and-bounded-discriminator)
+is separate from user retesting. No user-host package/trust/data change is
+requested without an evidence-supported correction.
 
 For the existing x64 0.1.0.0 installation, first preserve the original installed
 manifest/PDC/hash, package identity/version/architecture, complete Add activity

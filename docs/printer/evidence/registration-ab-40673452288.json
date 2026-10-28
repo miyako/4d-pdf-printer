@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "run": "https://github.com/miyako/4d-pdf-printer/actions/runs/40673452288",
+  "sourceCommit": "1c93b4b3e01702e99b9ecf22100d4fe09b26e4bc",
+  "artifact": "https://github.com/miyako/4d-pdf-printer/actions/runs/40673452288/artifacts/12809034068",
+  "artifactDigest": "sha256:eb83ba95ec69885cfda6af9b59eede15daf4fd2b0a820fd03403428f10d47de4",
+  "overallConclusion": "success",
+  "host": {
+    "nativeArchitecture": "ARM64",
+    "build": 26200,
+    "image": "20261022.194.1",
+    "powershell": "5.1.26100.9711"
+  },
+  "initialPrinters": ["Microsoft Print to PDF"],
+  "variants": [
+    {
+      "label": "product-baseline",
+      "installedName": "Miyako.PsaFeasibility",
+      "installedVersion": "0.1.1.0",
+      "installedArchitecture": "Arm64",
+      "installedStatus": "Ok",
+      "signedPackageSha256": "3cb55486323d5671444daf61ef2e0b2b33b65b9842800308367c308922409635",
+      "pdcSha256": "e38b25327081ec310b21c5cb077b018ccc8c71090d7ccd09e42bcf6b9a6b4e2c",
+      "before": ["Microsoft Print to PDF"],
+      "after": ["Microsoft Print to PDF"],
+      "observations": 6,
+      "intervalSeconds": 10,
+      "queues": "absent",
+      "cleanup": "exact-owned-package-and-queues-absent"
+    },
+    {
+      "label": "isolated-baseline",
+      "installedName": "Miyako.PsaRegistrationDiagnostic",
+      "installedVersion": "0.1.1.0",
+      "installedArchitecture": "Arm64",
+      "installedStatus": "Ok",
+      "signedPackageSha256": "f17ff84130fddb9a099249e7196e23420518cdd2abf0abddb184bb854d0698d5",
+      "pdcSha256": "e38b25327081ec310b21c5cb077b018ccc8c71090d7ccd09e42bcf6b9a6b4e2c",
+      "before": ["Microsoft Print to PDF"],
+      "after": ["Microsoft Print to PDF"],
+      "observations": 6,
+      "intervalSeconds": 10,
+      "queues": "absent",
+      "cleanup": "exact-owned-package-and-queues-absent"
+    },
+    {
+      "label": "pdc-only",
+      "installedName": "Miyako.PsaRegistrationDiagnostic",
+      "installedVersion": "0.1.2.0",
+      "installedArchitecture": "Arm64",
+      "installedStatus": "Ok",
+      "signedPackageSha256": "196e31d2fb4f76422e27028828a46d5af3a5513163f7d25a6c123c4b87295863",
+      "pdcSha256": "0e9e9d7ee7efaf44bfff45834159dacb506dacfaee0c4f917017a8b11356394c",
+      "before": ["Microsoft Print to PDF"],
+      "after": ["Microsoft Print to PDF"],
+      "observations": 6,
+      "intervalSeconds": 10,
+      "queues": "absent",
+      "cleanup": "exact-owned-package-and-queues-absent"
+    }
+  ],
+  "conclusion": "pdc-only-not-sufficient-in-this-fresh-add-experiment",
+  "error": null,
+  "trustRemoved": true,
+  "keyRemoved": true,
+  "limits": [
+    "No UI, dynamic printer API, task Run, job, service, renderer or 4D invocation.",
+    "The reference control was not reinstalled in this job; its positive hosted and same-user-host evidence is recorded separately.",
+    "Negative PDC-only result does not establish semantic acceptance of the original PDC or a platform prohibition.",
+    "No product correction or user-host reinstall is justified by this result."
+  ]
+}

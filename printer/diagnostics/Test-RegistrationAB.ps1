@@ -38,12 +38,13 @@ $output = (Get-Item -LiteralPath $OutputDirectory).FullName
 $sdk = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/bin/10.0.26100.0/x64'
 $makeappx = Join-Path $sdk 'makeappx.exe'
 $signtool = Join-Path $sdk 'signtool.exe'
-foreach ($tool in @($makeappx, $signtool)) {
+$makepri = Join-Path $sdk 'makepri.exe'
+foreach ($tool in @($makeappx, $signtool, $makepri)) {
     if (-not (Test-Path -LiteralPath $tool -PathType Leaf)) { throw "Missing SDK 26100 tool: $tool" }
 }
 $report = [ordered]@{
     schemaVersion = 1
-    experiment = 'native-static-registration-pdc-ab'
+    experiment = 'native-static-registration-pdc-resource-ab'
     build = [int]$os.BuildNumber
     image = $env:ImageVersion
     powershell = $PSVersionTable.PSVersion.ToString()
@@ -56,6 +57,10 @@ $report = [ordered]@{
 }
 $certificate = $null
 $trustCreated = $false
+
+function Save-Report {
+    $report | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $output 'registration-ab.json') -Encoding UTF8
+}
 
 function Invoke-Tool([string]$Tool, [string[]]$Arguments) {
     & $Tool @Arguments | Out-Host
@@ -75,8 +80,21 @@ function Invoke-Variant([string]$Label, [string]$Directory, [string]$Package) {
         identity = $identity.Name
         version = $identity.Version
         sha256 = (Get-FileHash -LiteralPath $Package -Algorithm SHA256).Hash
+        manifestSha256 = (Get-FileHash -LiteralPath (Join-Path $Directory 'AppxManifest.xml') -Algorithm SHA256).Hash
         pdcSha256 = (Get-FileHash -LiteralPath (Join-Path $Directory 'Config/DiagnosticPdc.xml') -Algorithm SHA256).Hash
+        priSha256 = $(if (Test-Path -LiteralPath (Join-Path $Directory 'resources.pri')) {
+            (Get-FileHash -LiteralPath (Join-Path $Directory 'resources.pri') -Algorithm SHA256).Hash
+        } else { $null })
+        otherPayload = @(Get-ChildItem -LiteralPath $Directory -Recurse -File |
+            Where-Object { $_.Name -cnotin @('AppxManifest.xml', 'DiagnosticPdc.xml', 'resources.pri') } |
+            Sort-Object FullName | ForEach-Object {
+                [ordered]@{
+                    path = $_.FullName.Substring((Get-Item -LiteralPath $Directory).FullName.Length + 1).Replace('\', '/')
+                    sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+                }
+            })
         installed = $null
+        registration = 'not-attempted'
         before = $before
         after = @()
         observations = 0
@@ -87,6 +105,8 @@ function Invoke-Variant([string]$Label, [string]$Directory, [string]$Package) {
     $attempted = $false
     try {
         $attempted = $true
+        $result.registration = 'attempted'
+        Save-Report
         Add-AppxPackage -Path $Package -ErrorAction Stop
         $registered = @(Get-AppxPackage -Name $identity.Name)
         if ($registered.Count -ne 1 -or $registered[0].Publisher -cne $publisher -or
@@ -99,6 +119,8 @@ function Invoke-Variant([string]$Label, [string]$Directory, [string]$Package) {
             architecture = $registered[0].Architecture.ToString()
             status = $registered[0].Status.ToString()
         }
+        $result.registration = 'installed'
+        Save-Report
         $installedManifest = Get-AppxPackageManifest -Package $registered[0].PackageFullName
         $installedManifest.Save((Join-Path $output "$Label-installed.xml"))
         $installedPdc = Join-Path $registered[0].InstallLocation 'Config/DiagnosticPdc.xml'
@@ -113,8 +135,11 @@ function Invoke-Variant([string]$Label, [string]$Directory, [string]$Package) {
         }
         $count = @($names | Where-Object { $_ -cin $result.after }).Count
         $result.queues = @('absent', 'some', 'present')[$count]
+        Save-Report
     } finally {
         if ($attempted) {
+            $result.cleanup = 'attempted'
+            Save-Report
             # Absence was checked globally before deployment. Never remove by wildcard or name alone.
             $owned = @(Get-AppxPackage -AllUsers -Name $identity.Name)
             foreach ($packageInfo in $owned) {
@@ -127,6 +152,7 @@ function Invoke-Variant([string]$Label, [string]$Directory, [string]$Package) {
             $remaining = @(Get-Printer | ForEach-Object Name)
             if (@($remaining | Where-Object { $_ -cin $names }).Count) { throw 'Variant queues remain after removal; stopping comparison.' }
             $result.cleanup = 'exact-owned-package-and-queues-absent'
+            Save-Report
         }
     }
 }
@@ -180,7 +206,53 @@ try {
             $report.conclusion = if ($report.variants[2].queues -eq 'present') {
                 'pdc-only-positive-requires-product-confirmation'
             } else { 'pdc-only-not-sufficient-in-this-fresh-add-experiment' }
+            if ($report.variants[2].queues -eq 'absent') {
+                Copy-Item -LiteralPath (Join-Path $ProductDirectory 'package/Config/DiagnosticPdc.xml') -Destination $pdc
+                $manifest.Package.Identity.Version = '0.1.3.0'
+                $printers = $manifest.GetElementsByTagName('PrintSupportVirtualPrinter',
+                    'http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2')
+                $printers[0].SetAttribute('DisplayName', 'ms-resource:InteractiveDisplayName')
+                $printers[1].SetAttribute('DisplayName', 'ms-resource:CaptureDisplayName')
+                $manifest.Save((Join-Path $stage 'AppxManifest.xml'))
+                $strings = Join-Path $stage 'Strings/en-US'
+                New-Item -ItemType Directory -Path $strings -Force | Out-Null
+                $resw = Join-Path $strings 'Resources.resw'
+                @'
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="InteractiveDisplayName" xml:space="preserve"><value>PSA Diagnostic OXPS (Save As)</value></data>
+  <data name="CaptureDisplayName" xml:space="preserve"><value>PSA Diagnostic Capture (no file UI)</value></data>
+</root>
+'@ | Set-Content -LiteralPath $resw -Encoding UTF8
+                $config = Join-Path $output 'priconfig.xml'
+                $pri = Join-Path $stage 'resources.pri'
+                Invoke-Tool $makepri @('createconfig', '/cf', $config, '/dq', 'lang-en-US', '/o')
+                Invoke-Tool $makepri @('new', '/pr', $stage, '/cf', $config, '/of', $pri, '/o')
+                $dump = Join-Path $output 'resource-only-pri.xml'
+                Invoke-Tool $makepri @('dump', '/if', $pri, '/of', $dump, '/o')
+                [xml]$resources = Get-Content -LiteralPath $dump -Raw
+                foreach ($name in $names) {
+                    if (@($resources.SelectNodes('//Value') | Where-Object { $_.InnerText -ceq $name }).Count -ne 1) {
+                        throw 'PRI does not contain exactly the expected queue-name values.'
+                    }
+                }
+                Remove-Item -LiteralPath $resw
+                Remove-Item -LiteralPath $strings
+                Remove-Item -LiteralPath (Join-Path $stage 'Strings')
+                $resourceVariant = Join-Path $output 'resource-only.msix'
+                Invoke-Tool $makeappx @('pack', '/d', $stage, '/p', $resourceVariant, '/o')
+                Invoke-Tool $signtool @('sign', '/fd', 'SHA256', '/sha1', $certificate.Thumbprint, '/s', 'My', $resourceVariant)
+                Invoke-Variant 'resource-only' $stage $resourceVariant
+                $report.conclusion = if ($report.variants[3].queues -eq 'present') {
+                    'resource-only-positive-requires-product-confirmation'
+                } else { 'neither-pdc-only-nor-resource-only-sufficient-product-cause-unresolved' }
+            }
         }
+    }
+    if ($report.variants.Count -gt 1) {
+        $payloads = @($report.variants | ForEach-Object { ConvertTo-Json -InputObject $_.otherPayload -Depth 4 -Compress } |
+            Select-Object -Unique)
+        if ($payloads.Count -ne 1) { throw 'Non-PDC payload changed between variants.' }
     }
 } catch {
     $report.error = [ordered]@{
@@ -200,6 +272,6 @@ try {
             $report.keyRemoved = -not (Test-Path -LiteralPath $keyPath)
         }
     } finally {
-        $report | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $output 'registration-ab.json') -Encoding UTF8
+        Save-Report
     }
 }

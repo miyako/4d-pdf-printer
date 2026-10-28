@@ -162,13 +162,97 @@ PrintProbe.exe:     8a83df3a70a2070e98f7082702093ffcf1a94d764eab3448eba649afa930
 The subsequent documentation-only revision records this historical build source,
 not a newer binary fix. CI artifacts have retention limits.
 The jobs did not sign/install the package, create queues, submit jobs or run
-service/4D experiments. **The user-run native ARM64 update/registration retest is
-still pending**, and the original x64-on-ARM64 registration failure remains
-unexplained.
+service/4D experiments.
+
+### Completed user-host ARM64 update and reference comparison
+
+The user subsequently performed a normal same-family update from x64 0.1.0.0
+to **ARM64 0.1.1.0**, with Status Ok. Neither diagnostic queue appeared in
+unfiltered enumeration. This update succeeded but did not solve registration;
+do not repeat it or infer a generic native-architecture restriction.
+
+On the **same user host**, the separately identified Microsoft reference control
+**1.1.14.0 ARM64, Status Ok** has both **VirtualPdfPrinter** and
+**VirtualPostScriptPrinter**, while the product remains installed without either
+diagnostic queue. The reference queues were already present at the beginning of
+the supplied transcript: first-install timing is unobserved. The reference UI
+and its dynamic management page were not invoked. Static registration capability
+on this host is established; printing, task `Run`, and service support are not.
+
+### Generated-artifact comparison and bounded discriminator
+
+The comparison uses actual packaged manifests, not just authored XML:
+product [run 40657060798](https://github.com/miyako/4d-pdf-printer/actions/runs/40657060798),
+artifact `printer-feasibility-unsigned-arm64`, and reference
+[run 40668170711](https://github.com/miyako/4d-pdf-printer/actions/runs/40668170711),
+artifact `reference-control-build-evidence` / `resources/packaged-AppxManifest.xml`.
+
+| Registration surface | Actual product / control difference and interpretation |
+|---|---|
+| Static extension | Same `/printsupport/windows10/2` namespace, workflow category, application multi-instance support and ignorable print namespace. Both declare two queues. |
+| Application and activation | Product `Diagnostic` / `PsaDiagnostic.exe` / `PsaDiagnostic.App`; control `App` / `PrintSupportApp.exe` / `PrintSupportApp.App`. Neither specifies explicit trust/runtime overrides. Both task entry points have package-level `windows.activatableClass.inProcessServer` registrations with threading `both`; native `PsaTask.dll` versus generated .NET Native `PrintSupportApp.dll`. Structural equivalence is not a runtime activation test. No omitted mandatory background contract was established. |
+| Device family / frameworks | Product Desktop, minimum 26100, no runtime frameworks; control Universal, minimum 19041 / target 26100, four managed/native frameworks. These are differences, not demonstrated registration requirements. |
+| Names / URIs / formats | Literal diagnostic names versus PRI-backed `ms-resource` names; distinct custom-scheme opaque URIs in both. Product two OXPS endpoints (file and no-file) versus control OXPS/PDF passthrough and PostScript file endpoints. Literal DisplayName, absent SupportedFormats and absent OutputFileTypes on a non-file endpoint are permitted by the public contract. |
+| PDC / PDR | Product reduced PDC versus control full original PDC. Installed product bytes match the artifact; semantic acceptance remains unproved. Control packages PDR but neither queue references it. PDR is optional, not an inferred fix. |
+| Other contracts / capabilities | Control retains other print extensions and network/account capabilities. No source establishes these as prerequisites for installing our local queues. They are not copied into the product. |
+
+The hosted-only
+[`Test-RegistrationAB.ps1`](../../printer/diagnostics/Test-RegistrationAB.ps1)
+first installs the **unchanged product** on one disposable native ARM64 Windows
+11 runner, using local Windows PowerShell 5.1. If any product queue appears, it
+stops: a positive hosted baseline does not reproduce the user-host failure and
+cannot justify attributing a fix to a variant.
+
+Only an absent product baseline permits an identity-isolated baseline, followed
+by a **PDC-only** variant. The latter uses exactly the reference PDC bytes at
+the existing `Config\DiagnosticPdc.xml` path, keeping native binaries, task
+registration, declarations, names, URIs, resources, capabilities and formats
+unchanged. Both isolated variants use the same diagnostic identity/publisher;
+the second has a higher version solely to avoid stale same-version byte
+conflicts. Every install is a fresh Add after exact-owned package removal and
+verification that the identity and both queue names are absent. An isolated
+baseline that registers also stops the comparison, avoiding identity causation
+confusion. Cleanup failure stops the comparison and fails the job.
+
+The report records actual installed identity/version/architecture/status,
+package/PDC hashes, full **disposable-host** queue-name inventories, bounded
+10-second observations (maximum 60 seconds), cleanup, and a sanitized failure
+type/HRESULT. Installed manifests are retained separately. No app UI, dynamic
+registration, `Run`, job, service, policy, registry or driver changes occur.
+This is a diagnostic experiment, not a product PDC replacement or a user-host
+reinstall procedure.
+
+**Actual first discriminator:** [run 40673452288](https://github.com/miyako/4d-pdf-printer/actions/runs/40673452288)
+passed, including exact-owned package/queue cleanup and ephemeral trust/key
+removal. [Persistent summary](evidence/registration-ab-40673452288.json);
+[full report and installed manifests](https://github.com/miyako/4d-pdf-printer/actions/runs/40673452288/artifacts/12809034068).
+Native ARM64 build 26200, image `20261022.194.1`, local Windows PowerShell
+`5.1.26100.9711` reproduced the product failure:
+
+| Fresh Add on the same hosted job | Installed identity/version/status | Queues after six 10-second observations |
+|---|---|---|
+| Unchanged product | `Miyako.PsaFeasibility` / 0.1.1.0 / Arm64 / Ok | Both absent |
+| Identity-isolated baseline | `Miyako.PsaRegistrationDiagnostic` / 0.1.1.0 / Arm64 / Ok | Both absent |
+| Full reference PDC only | Same isolated family / 0.1.2.0 / Arm64 / Ok | Both absent |
+
+Every before/after inventory was exactly `Microsoft Print to PDF`; each identity
+and its queues were verified absent after removal before the next Add.
+**The full reference PDC alone is not sufficient.** Do not ship it as a product
+fix or claim that this proves the original PDC was semantically accepted.
+
+The next bounded discriminator restores the original PDC and changes only the
+queue-name representation to equivalent `ms-resource` values in a tiny generated
+PRI, under isolated version 0.1.3.0. It does not import the sample app/resources
+or change queue-name text, URIs, formats, task code, device family or capabilities.
+MakePri's dump must contain both exact names before installation. Payload hashes
+exclude only the intentional manifest/PDC/PRI variables and must otherwise match
+across variants. This is a second candidate test, not a claim that literal
+DisplayName is prohibited by the public schema.
 
 ## Still not run / not proven
 
-Windows 11 queue creation has not succeeded. Semantic PDC acceptance, real
+Product queue creation on the user host has not succeeded; reference queue
+creation has. Semantic product PDC acceptance, real
 XPS/OXPS capture, Save As, native output-path mapping, named-service account
 registration/activation, pre-login execution, post-sign-out execution, 4D printing,
 external coordinator IPC and PDF rendering remain unobserved in this printer PR.

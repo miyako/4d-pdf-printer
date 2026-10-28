@@ -16,7 +16,7 @@ jobs:
       - name: Build unchanged native product baseline
         shell: pwsh
         run: ./printer/build.ps1 -Architecture ARM64 -VisualStudioVersion 2026
-      - name: Bounded baseline and conditional PDC-only fresh Add
+      - name: Bounded baseline and conditional single-variable fresh Adds
         shell: powershell
         run: |
           ./printer/diagnostics/Test-RegistrationAB.ps1 `
@@ -30,5 +30,6 @@ jobs:
           path: |
             ${{ runner.temp }}/registration-ab/registration-ab.json
             ${{ runner.temp }}/registration-ab/*-installed.xml
+            ${{ runner.temp }}/registration-ab/resource-only-pri.xml
             printer/out/arm64/build-evidence.json
           if-no-files-found: warn
