@@ -9,19 +9,31 @@ permissions:
   contents: read
 jobs:
   gate:
-    name: ${{ matrix.architecture }} native
+    name: ${{ matrix.label }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: windows-2022
+            label: x64 native build
             architecture: x64
             visualStudio: '2022'
             runtime: false
+            artifact: x64-build
           - runner: windows-11-arm
+            label: ARM64 native PSA bootstrap
             architecture: ARM64
             visualStudio: '2026'
             runtime: true
+            bootstrap: true
+            artifact: ARM64-psa
+          - runner: windows-11-arm
+            label: ARM64 native desktop launch
+            architecture: ARM64
+            visualStudio: '2026'
+            runtime: true
+            bootstrap: false
+            artifact: ARM64-desktop
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     steps:
@@ -50,9 +62,10 @@ jobs:
         if: matrix.runtime
         shell: pwsh
         run: |
+          $bootstrap = '${{ matrix.bootstrap }}' -ceq 'true'
           ./desktop/tests/Invoke-DesktopGate.ps1 `
             -PackagePath ./desktop/out/arm64/DesktopPdfPrototype.msix `
-            -OutputPath ./desktop/out/arm64/acceptance.json -AllowDevelopmentInstall -PsaBootstrapOnly
+            -OutputPath ./desktop/out/arm64/acceptance.json -AllowDevelopmentInstall -PsaBootstrapOnly:$bootstrap
       - name: Exact hosted certificate cleanup
         if: always() && matrix.runtime
         shell: pwsh
@@ -66,7 +79,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: desktop-handoff-${{ matrix.architecture }}
+          name: desktop-handoff-${{ matrix.artifact }}
           path: |
             desktop/out/*/DesktopPdfPrototype.msix
             desktop/out/*/build-evidence.json

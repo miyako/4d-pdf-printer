@@ -17,6 +17,7 @@ namespace
 {
     void Submit(std::wstring const& title, JsonObject const& report)
     {
+        report.Insert(L"titleSha256", JsonValue::CreateStringValue(to_hstring(evidence::JobHash(title))));
         Text(report, L"stage", L"gdi-create-dc");
         auto dc = CreateDCW(L"WINSPOOL", L"4D PDF Prototype (Automation)", nullptr, nullptr);
         Check(dc != nullptr);
@@ -162,6 +163,7 @@ int wmain(int argc, wchar_t** argv)
             report.Insert(L"apartmentType", JsonValue::CreateNumberValue(static_cast<int>(apartment)));
             report.Insert(L"apartmentQualifier", JsonValue::CreateNumberValue(static_cast<int>(qualifier)));
             report.Insert(L"processArchitecture", JsonValue::CreateStringValue(to_hstring(evidence::Architecture)));
+            report.Insert(L"executableSha256", JsonValue::CreateStringValue(to_hstring(evidence::ExecutableHash())));
             auto context = std::string("{\"version\":1") +
                 evidence::Context(L"Miyako.DesktopPdfPrototype", L"CN=DesktopPdfPrototypeDev") + "}";
             report.Insert(L"submissionContext", JsonObject::Parse(to_hstring(context)));

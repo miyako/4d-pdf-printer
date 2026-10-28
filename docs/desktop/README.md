@@ -12,6 +12,10 @@ exact-title gate passes. No tray, startup service or foreground fallback is used
 The installed `Miyako.PsaFeasibility` OXPS diagnostic package is not updated,
 re-signed, uninstalled or repurposed by this separate development identity.
 
+**Activation is blocked in the hosted experiments.** See
+[measured results and unverified gates](validation.md). No user-host execution
+or trust change is requested by these results.
+
 ## Early gate
 
 Build on a matching native Windows machine with SDK 26100 and MSVC v143:
@@ -49,12 +53,13 @@ and acknowledges that failure completion returned. A passed gate is **not**
 conversion, successful printing, provider publication or Windows-service proof.
 
 `desktop-windows.yml` builds/tests x64 and native ARM64. Only the Windows 11 ARM64
-job attempts actual PSA registration/submission; the Server-based x64 build is
+jobs attempt actual PSA registration/submission; the Server-based x64 build is
 not Windows 11 runtime acceptance. Runtime results must be recorded separately
 from package/PRI/factory or argument-test results.
 
-The current hosted experiment uses `-PsaBootstrapOnly` to isolate the actual PSA
-path after a desktop-client launch failure. It submits one deliberately
+Separate disposable ARM64 jobs isolate desktop launch and the actual PSA path;
+they never reuse a coordinator started by the other experiment.
+The `-PsaBootstrapOnly` job submits one deliberately
 unprepared synthetic title, observes PSA launch/readiness, and expects
 missing-configuration rejection with no file. At best this is `partial`, never
 a complete gate pass. It is **not** a production scheme that requires dummy

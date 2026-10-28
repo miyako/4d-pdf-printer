@@ -118,6 +118,7 @@ if ($CertificateThumbprint) {
 [ordered]@{
     schema = '4d-pdf-printer.desktop-build'; version = 1; stage = 'handoff-gate-only'
     architecture = $Architecture.ToLowerInvariant(); nativeTests = 'passed'
+    sourceCommit = $env:GITHUB_SHA
     packageSha256 = (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash.ToLowerInvariant()
     resourcesPriSha256 = (Get-FileHash -LiteralPath $pri -Algorithm SHA256).Hash.ToLowerInvariant()
     pdfProduced = $false

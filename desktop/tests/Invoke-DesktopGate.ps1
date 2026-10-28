@@ -16,7 +16,8 @@ $report = [ordered]@{
     osBuild = [Environment]::OSVersion.Version.Build
     architecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
     processArchitecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
-    interactiveSession = [Diagnostics.Process]::GetCurrentProcess().SessionId
+    processSessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId
+    sourceCommit = $env:GITHUB_SHA
     packageSha256 = $null; diagnosticPreserved = $false
     client = $null; psa = @(); error = $null
 }
