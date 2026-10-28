@@ -1,0 +1,39 @@
+name: Microsoft printer reference control
+on:
+  push:
+    paths: ['printer/reference-control/**', 'docs/printer/reference-control.md', '.github/workflows/printer-reference-control.yml']
+  pull_request:
+    paths: ['printer/reference-control/**', 'docs/printer/reference-control.md', '.github/workflows/printer-reference-control.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    name: ARM64 UWP cross-build on VS2022 x64
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build pinned official sample
+        shell: pwsh
+        run: ./printer/reference-control/Build-Control.ps1
+      - name: Preserve build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-control-build-evidence
+          path: |
+            printer/reference-control/out/build.log
+            printer/reference-control/out/build-evidence.json
+            printer/reference-control/out/source/original-files.json
+            printer/reference-control/out/upstream.json
+          if-no-files-found: warn
+      - name: Unsigned ARM64 control
+        uses: actions/upload-artifact@v4
+        with:
+          name: microsoft-reference-control-unsigned-arm64
+          path: |
+            printer/reference-control/out/PsaReferenceControl.arm64.appx
+            printer/reference-control/out/Microsoft-LICENSE.txt
+            printer/reference-control/out/packages/**/Dependencies/arm64/*.appx
+          if-no-files-found: error

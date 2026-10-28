@@ -1,0 +1,15 @@
+{
+  "repository": "https://github.com/microsoft/print-oem-samples",
+  "commit": "652343e4980cc962fb099496125cf749aee51c71",
+  "archive": "https://codeload.github.com/microsoft/print-oem-samples/tar.gz/652343e4980cc962fb099496125cf749aee51c71",
+  "archiveSha256": "213093c3d6b9cf602a2bda94685b10fbc241879b208d5a8c0d10000ca0377e9d",
+  "root": "print-oem-samples-652343e4980cc962fb099496125cf749aee51c71",
+  "paths": [
+    "LICENSE",
+    "PSASamples/UWP/CSharp/NuGet.Config",
+    "PSASamples/UWP/CSharp/README.md",
+    "PSASamples/UWP/CSharp/PrintSupportApp",
+    "PSASamples/UWP/CSharp/Tasks",
+    "PSASamples/XpsUtil"
+  ]
+}
