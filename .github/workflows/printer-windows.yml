@@ -9,20 +9,49 @@ permissions:
   contents: read
 jobs:
   build:
-    runs-on: windows-2022
+    name: ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: x64 native
+            runner: windows-2022
+            host: X64
+            architecture: x64
+            output: printer/out
+            artifact: printer-feasibility-unsigned-x64
+          - label: ARM64 native
+            runner: windows-11-arm
+            host: Arm64
+            architecture: ARM64
+            output: printer/out/arm64
+            artifact: printer-feasibility-unsigned-arm64
+          - label: ARM64 cross-compile
+            runner: windows-2022
+            host: X64
+            architecture: ARM64
+            output: printer/out/arm64
+            artifact: printer-feasibility-unsigned-arm64-cross
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-      - name: Check diagnostic source invariants
+      - name: Verify native runner architecture
         shell: pwsh
-        run: ./printer/tests/Check-Source.ps1
-      - name: Build native probe and AppContainer package
+        run: |
+          $actual = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+          if ($actual -ne '${{ matrix.host }}') { throw "Unexpected runner OS architecture: $actual" }
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber
+          Write-Host "Native runner architecture: $actual; image: $env:ImageVersion"
+      - name: Check, build, test and package requested target
         shell: pwsh
-        run: ./printer/build.ps1
+        run: ./printer/build.ps1 -Architecture ${{ matrix.architecture }}
       - uses: actions/upload-artifact@v4
         with:
-          name: printer-feasibility-unsigned-x64
+          name: ${{ matrix.artifact }}
           path: |
-            printer/out/PsaDiagnostic.msix
-            printer/out/build/Release/PrintProbe.exe
-            printer/out/package/
+            ${{ matrix.output }}/PsaDiagnostic.msix
+            ${{ matrix.output }}/build/Release/PrintProbe.exe
+            ${{ matrix.output }}/build/Release/ActivationProbe.exe
+            ${{ matrix.output }}/build-evidence.json
+            ${{ matrix.output }}/package/
           if-no-files-found: error

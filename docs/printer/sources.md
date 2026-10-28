@@ -95,6 +95,26 @@ collect runtime evidence on the actual 26100+ lab build.
     uses the caller process's security context, not a thread impersonation token.
     A permitted service coordinator can therefore own ordinary Win32 worker
     creation; the UWP task does not need to spawn the executable itself.
+15. [Visual Studio on Arm](https://learn.microsoft.com/en-us/visualstudio/install/visual-studio-on-arm-devices?view=vs-2022)
+    documents native ARM64 development starting with VS 2022 17.4 and separate
+    compiler-host/target combinations. CMake's
+    [VS 2022 generator](https://cmake.org/cmake/help/latest/generator/Visual%20Studio%2017%202022.html)
+    accepts explicit `-A ARM64` independently of host architecture.
+    [Windows 11 x64 emulation](https://learn.microsoft.com/en-us/windows/arm/apps-on-arm-x86-emulation)
+    permits x64 user-mode tools on ARM64; this build deliberately uses x64 SDK
+    MakeAppx/SignTool, not an ARM64 executable on an x64 build host.
+16. [Package Identity](https://learn.microsoft.com/en-us/uwp/schemas/appxpackage/uapmanifestschema/element-f-identity)
+    defines code architecture and quad version fields; [Add-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/add-appxpackage)
+    documents signed same-family updates. Neither source guarantees this
+    prototype's cross-architecture update or print deployment-handler result.
+    Higher development version 0.1.1.0 is a controlled update attempt, not a
+    promise that removal is unnecessary on every host.
+17. [GitHub-hosted runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners#standard-github-hosted-runners-for-public-repositories)
+    lists native ARM64 `windows-11-arm` for public repositories. Its
+    [image inventory](https://github.com/actions/runner-images/blob/main/images/windows/Windows11-Arm64-Readme.md)
+    lists tools/components, but images change; record actual job OS/tool/test
+    results rather than equating a label with executed native tests or PSA
+    runtime support.
 
 **Decision:** retain the PSA architecture as a candidate, but do not integrate a
 production worker/4D plugin until the named-user session-0 activation and permitted

@@ -6,6 +6,10 @@ $ns = [System.Xml.XmlNamespaceManager]::new($manifest.NameTable)
 $ns.AddNamespace('m', 'http://schemas.microsoft.com/appx/manifest/foundation/windows10')
 $ns.AddNamespace('psa', 'http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2')
 $ns.AddNamespace('uap10', 'http://schemas.microsoft.com/appx/manifest/uap/windows10/10')
+$identity = $manifest.SelectSingleNode('/m:Package/m:Identity', $ns)
+if ($identity.Version -ne '0.1.1.0' -or $identity.ProcessorArchitecture -ne 'x64') {
+    throw 'Expected version 0.1.1.0 x64 source template; build generates the selected target.'
+}
 $application = $manifest.SelectSingleNode('//m:Application', $ns)
 if ($application.GetAttribute('SupportsMultipleInstances', $ns.LookupNamespace('uap10')) -ne 'true') {
     throw 'SDK 26100 requires multi-instance support for virtual-printer workflow.'

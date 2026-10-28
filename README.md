@@ -9,6 +9,8 @@ The [printer prototype](docs/printer/README.md) targets Windows 11 24H2+
 It includes a diagnostic OXPS-capture MSIX, separate Save As / no-file-UI endpoints,
 a native GDI submission probe with an actual Windows-service entry point, and
 Windows build automation. It does not render PDFs or launch an external helper.
+The build explicitly selects x64 (default) or ARM64 with isolated, PE-checked
+packages/probes; ARM64 is a compatibility/control test, not a proven queue fix.
 
 **The headless service gate is open:** PSA activation and an allowed external
 coordinator handoff must be demonstrated for a named-user Windows service before

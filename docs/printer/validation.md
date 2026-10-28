@@ -40,9 +40,10 @@ The portable invariant check now enforces that manifest declaration.
 Reported 2026-10-28, separately from hosted CI. Environment: Windows 11
 Enterprise 25H2, build 26200.9711, local SDK 26100 build/signing. No account
 identifiers, machine names, install paths or raw event logs are retained here.
-Native processor architecture has not yet been established: an installed x64
-package does not distinguish native x64 from an emulated x64 process on ARM64.
-This prototype/build artifact is intentionally x64-only.
+Native CPU Architecture **12 (ARM64)** was subsequently confirmed.
+The observed 0.1.0.0 package was x64 under emulation; switching to an x64 console
+still left both diagnostic queues absent. Native x64 runtime was never tested.
+This identifies the host, **not the cause** of the unexplained registration failure.
 
 | Observation | Evidence / limit |
 |---|---|
@@ -83,8 +84,8 @@ runtime handler implemented/accepted this registration. No behavior patch is
 justified by these observations alone. The full Add operation's
 activity-correlated events, obtained using [Get-AppxLog](https://learn.microsoft.com/en-us/powershell/module/appx/get-appxlog)
 without a per-message keyword filter, still do not expose a handler result.
-Establish the native host architecture before selecting any architecture-specific
-next test. Architecture is an unresolved discriminator, **not a diagnosis**.
+Native ARM64 target support was authorized as the next compatibility/control
+test. Architecture causation remains unproved.
 Handler-specific diagnostic evidence remains needed; do not infer a feature
 prohibition or fix native job code that has not been reached.
 
@@ -96,6 +97,27 @@ reran. The observed fresh Add/initial preferred-version selection does not
 support a pre-existing same-version registration as the explanation for this
 initial failure.
 No removal/reinstallation or manual printer/driver workaround is prescribed.
+
+## ARM64 compatibility/control build
+
+Version **0.1.1.0** keeps the original package name/publisher and provides separate
+x64 and ARM64 builds, without changing PDC, capabilities, print workflow code,
+renderer or service behavior. The [build guide](README.md#build-and-installation)
+describes the explicit selector and host/target/tool separation.
+Portable source checks and **23 synthetic build-support cases** passed on macOS:
+all four host/target plans, default/invalid selectors and SDK, generated manifests,
+PE-header/machine validation, staged/archived mixed-target and missing binaries,
+and stale package version rejection. Synthetic PE/ZIP tests are not executable
+Windows tests or MakeAppx schema validation.
+
+Windows CI now requests native x64 (`windows-2022`), native ARM64
+(`windows-11-arm`) and ARM64 cross-compilation on x64. The
+[GitHub runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners#standard-github-hosted-runners-for-public-repositories)
+lists `windows-11-arm` as ARM64 for public repositories; workflow execution also
+asserts the native OS architecture. Actual Windows results/artifact revision must
+be recorded separately; adding the matrix alone proves no successful build.
+The jobs do not install the package, create queues or run service/4D experiments.
+The user-run native ARM64 update/registration retest is still pending.
 
 ## Still not run / not proven
 

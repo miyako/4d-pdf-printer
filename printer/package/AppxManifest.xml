@@ -5,7 +5,7 @@
          xmlns:psa="http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2"
          IgnorableNamespaces="uap uap10 psa">
   <Identity Name="Miyako.PsaFeasibility" Publisher="CN=PsaFeasibilityDev"
-            Version="0.1.0.0" ProcessorArchitecture="x64"/>
+            Version="0.1.1.0" ProcessorArchitecture="x64"/>
   <Properties>
     <DisplayName>PSA feasibility - diagnostic only</DisplayName>
     <PublisherDisplayName>PSA feasibility development</PublisherDisplayName>

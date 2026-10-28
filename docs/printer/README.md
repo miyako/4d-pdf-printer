@@ -11,8 +11,8 @@ not close this earlier registration gate. See [runtime evidence](validation.md).
 | Claim category | Evidence / limit |
 |---|---|
 | Confirmed by source | PSA v4 API is introduced in 26100 / UniversalApiContract 19. Manifest supports OXPS, multiple endpoints and OS Save As. Packaged-app-to-Win32-service RPC is a documented transport pattern; logoff is a task cancellation reason. See [sources](sources.md). |
-| Compile checked | [Actual successful Windows run and artifact evidence](validation.md): native MSVC compile, probe argument tests, direct DLL factory smoke test and MakeAppx manifest/package validation. This is not printer installation, PDC semantic validation or service activation. |
-| Runtime observed on Windows 11 | User reports package installation/Status Ok and both installed manifest declarations, with the intended PDC bytes, but **neither queue exists**. No job, Save As, service, 4D or renderer test has run. See [details and limits](validation.md). |
+| Compile checked | [Recorded Windows run and artifact evidence](validation.md): MSVC compile, probe argument tests, direct DLL factory smoke test and MakeAppx validation. Architecture/PE/build-host evidence is separate from queue registration, PDC semantic acceptance and service activation. |
+| Runtime observed on Windows 11 | On confirmed native ARM64 (CPU Architecture 12), the original x64 0.1.0.0 package installed/Status Ok with intended declarations/PDC bytes, but **neither queue exists**, including from an x64 console. No architecture causation, job, service, 4D or renderer result is claimed. |
 | Still unverified | Queue/package visibility to a service identity; session-0 activation; source MIME type and ticket semantics; `DOCINFO.lpszOutput` to PSA target mapping; no-file endpoint target behavior; allowed authenticated external coordinator transport; cancellation/termination/repeated activation. |
 
 ## Implemented boundaries
@@ -69,21 +69,60 @@ these bounds. This is not a hard renderer timeout or crash-containment guarantee
 
 ## Build and installation
 
-Use x64 Windows with Visual Studio 2022 C++ desktop tools (MSVC v143), CMake 3.24+,
+Use Windows with Visual Studio 2022 C++ desktop tools (MSVC v143), CMake 3.24+,
 PowerShell 7, and **Windows SDK 10.0.26100.0**, including C++/WinRT headers,
-WindowsApp import libraries, MakeAppx and SignTool. No WDK, third-party driver,
-renderer, or product license is selected here.
+WindowsApp import libraries and **x64 MakeAppx/SignTool host tools**.
+For ARM64, select **MSVC v143 - VS 2022 C++ ARM64 build tools**
+(`Microsoft.VisualStudio.Component.VC.Tools.ARM64`), not ARM64EC.
+On an ARM64 host use native Visual Studio 2022 17.4+; on x64 this component
+cross-compiles ARM64. The x64 target requires
+`Microsoft.VisualStudio.Component.VC.Tools.x86.x64`.
+Missing components fail explicitly; the build does not install them.
+No WDK, third-party driver, renderer, or product license is selected here.
 
 ```powershell
 pwsh -File printer/tests/Check-Source.ps1
+pwsh -File printer/tests/Check-BuildSupport.ps1
+# Default remains x64, even from an ARM64 console.
 pwsh -File printer/build.ps1
 # Explicit development signing; creates a CurrentUser\My signing certificate.
 pwsh -File printer/build.ps1 -Sign
+# Native ARM64 package/probe; independent CMake cache, staging and output.
+pwsh -File printer/build.ps1 -Architecture ARM64 -Sign
 ```
 
-Outputs are under ignored `printer/out`: unsigned/signed `PsaDiagnostic.msix`,
-unpacked package, and `build/Release/PrintProbe.exe`. Generated solid-color PNGs
-are original diagnostic assets. `MakeAppx pack` uses normal validation (no `/nv`).
+| Target | Output base | Package / certificate / probe (relative to base) |
+|---|---|---|
+| x64 (default) | `printer/out` | `PsaDiagnostic.msix`, `PsaDiagnostic.cer` (with `-Sign`), `build/Release/PrintProbe.exe` |
+| ARM64 (`-Architecture ARM64`) | `printer/out/arm64` | Same filenames; **all under this independent base** |
+
+Each base also contains `package/` (unpacked MSIX) and `build-evidence.json`.
+The source manifest is an x64 template; the build generates the selected
+`ProcessorArchitecture` (`x64` or `arm64`) and verifies it against the actual PE
+machine types (`0x8664` / `0xaa64`) of shell, task DLL, submission probe and
+factory test. It checks every EXE/DLL in staging and the **actual MSIX ZIP**,
+rejecting mismatches rather than merely trusting a filename or CMake flag.
+The development version is **0.1.1.0 for both targets**, same name/publisher.
+
+The script reports native host OS architecture, PowerShell process architecture,
+requested target, absolute output paths and test-execution mode separately.
+CMake explicitly selects `-A x64` / `-A ARM64`, v143 and a VS instance with the
+requested component. The SDK version is pinned and checked after selection.
+SDK tool paths always end in `bin/10.0.26100.0/x64`, **not** the target folder;
+these x64 tools use Windows 11 emulation on an ARM64 host. A shell change never
+changes the requested target. See [primary sources](sources.md).
+
+Portable architecture/negative packaging tests run for every build. The two
+native CTests run when target equals native host; x64-on-ARM64 execution is
+explicitly labeled emulated. ARM64-on-x64 builds explicitly report CTests
+**not run** rather than attempting unsupported execution; run them on ARM64.
+`build-evidence.json` records that distinction. CI includes native x64,
+native ARM64 (`windows-11-arm`) and ARM64-on-x64 cross-compilation, with separate
+architecture-named artifacts. Native factory/parser tests still do not call
+`Run`, install a printer, submit a job or exercise session-0 activation.
+
+Generated solid-color PNGs are original diagnostic assets.
+`MakeAppx pack` uses normal validation (no `/nv`).
 The workflow builds but **does not sign, trust, install, or submit jobs**.
 The hosted OS may be Windows Server; that is a build environment, not requested
 or established Windows Server OS runtime support.
@@ -98,9 +137,16 @@ For example, after checking the certificate's subject/thumbprint:
 Import-Certificate -FilePath .\printer\out\PsaDiagnostic.cer `
   -CertStoreLocation Cert:\LocalMachine\TrustedPeople
 Add-AppxPackage .\printer\out\PsaDiagnostic.msix
-Get-AppxPackage -Name Miyako.PsaFeasibility
-Get-Printer | Where-Object Name -Like 'PSA Diagnostic*'
+Get-AppxPackage -Name Miyako.PsaFeasibility | Select-Object Name, Version, Architecture, Status
+Get-Printer
 ```
+
+For the already-installed x64 0.1.0.0 package on ARM64, **do not use the x64
+example above**: use the [evidence-preserving ARM64 update procedure](runbook.md#native-arm64-update-and-retest).
+Every `-Sign` run creates a **new certificate**; trust the matching certificate
+from the selected output base after checking its subject/thumbprint, not the
+certificate from another architecture or earlier build. Normal installation
+success still does not establish that either queue was created.
 
 This makes no production signing, Store approval, WPP compatibility or all-user
 deployment claim. Package registration is user-scoped; provisioning/staging an

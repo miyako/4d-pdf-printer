@@ -15,9 +15,13 @@ identity/session and package/queue visibility **privately**; sanitize them befor
 sharing. Label every observation as observed, failed, or not run.
 Establish native CPU architecture separately from the package/process architecture
 (for example, `Get-CimInstance Win32_Processor | Select-Object Architecture`).
-The artifact targets x64; successful x64 package installation alone does not
-establish a native x64 host. Do not diagnose an architecture failure without
-the host evidence.
+The original artifact targeted x64; successful x64 package installation alone does not
+establish a native x64 host. The original observation is now confirmed to be
+CPU Architecture **12 (ARM64)**, with the x64 0.1.0.0 package installed under
+emulation. Switching from an ARM console to an x64 console still showed neither
+diagnostic queue. This does **not** demonstrate architecture caused the failure.
+Native ARM64 builds are now available as a compatibility/control test, not a
+proven registration fix; renderer/plugin ARM64 support is outside this change.
 
 Install the diagnostic MSIX for the desktop test identity. Separately determine
 whether supported deployment can register it for the **named service identity**
@@ -47,6 +51,86 @@ synthetic captures in a suitable XPS/OXPS viewer. Compare the SHA256 of the know
 synthetic job name to `jobTitleSha256`; `workflowSessionSha256` is not a GDI job
 ID. The probe logs numeric GDI job ID, UTC FILETIME, process/session and stage.
 Titles, accounts, queue names and destinations are not written to its JSON log.
+
+## Native ARM64 update and retest
+
+For the existing x64 0.1.0.0 installation, first preserve the original installed
+manifest/PDC/hash, package identity/version/architecture, complete Add activity
+and printer-enumeration evidence **privately outside the checkout**. Preserve
+any existing package LocalState/captures before deployment; never assume a
+deployment operation is an evidence backup. No additional content dump is
+required to re-establish the already-confirmed PDC-byte match.
+
+Use the reviewed ARM64-support revision and the prerequisites in the
+[build guide](README.md#build-and-installation). Build/sign explicitly:
+
+```powershell
+pwsh -File printer/build.ps1 -Architecture ARM64 -Sign
+if ($LASTEXITCODE -ne 0) { throw 'ARM64 build failed; do not install existing/stale outputs.' }
+# Expected: printer/out/arm64/{PsaDiagnostic.msix,PsaDiagnostic.cer,build-evidence.json}
+# Probe: printer/out/arm64/build/Release/PrintProbe.exe
+# Generated manifest: printer/out/arm64/package/AppxManifest.xml (arm64, 0.1.1.0)
+Get-Content .\printer\out\arm64\build-evidence.json
+Get-PfxCertificate -FilePath .\printer\out\arm64\PsaDiagnostic.cer |
+    Select-Object Subject, Thumbprint
+```
+
+On the confirmed native ARM64 host, the evidence must say
+`targetArchitecture=arm64`, `hostOSArchitecture=Arm64`,
+`testExecution=native`, `ctests=passed`, and `peAndManifestChecks=passed`.
+`processArchitecture` may differ if PowerShell itself is emulated.
+Cross-compilation on x64 instead records `not-run-cross-compile` / `not-run`;
+that is not a native self-test. A local ARM64 build automatically runs both
+CTest tests (synthetic arguments and DLL factory only).
+
+The name/publisher remain unchanged; **both targets now use version 0.1.1.0**,
+higher than the observed 0.1.0.0. After checking the new certificate's exact
+subject/thumbprint, have an authorized lab administrator trust the **matching**
+ARM64-build certificate, then attempt the normal same-family higher-version
+update as the intended test identity:
+
+```powershell
+# Lab administrator only: deliberate certificate trust change.
+Import-Certificate -FilePath .\printer\out\arm64\PsaDiagnostic.cer `
+    -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+# Same test identity as the old package; no Remove-AppxPackage or force flags.
+Add-AppxPackage -Path .\printer\out\arm64\PsaDiagnostic.msix -ErrorAction Stop
+```
+
+Each `-Sign` run creates a new certificate; the old trusted certificate alone
+does not establish trust in this new signature. Do not rerun signing and then
+use a stale certificate/package from another output base. CI artifacts are
+unsigned; the command above is for the locally built/signed package, not the
+unsigned download.
+
+Microsoft documents [same-family updates with Add-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/add-appxpackage).
+A higher version avoids reusing the original identity/version, but does **not**
+guarantee cross-architecture update or queue creation on this host. If deployment
+rejects the update, stop and retain the HRESULT/ActivityId privately; do not
+force shutdown/downgrade/reinstall or automatically remove the old package.
+No manual removal is currently prescribed. If Windows ultimately requires one,
+it would de-register the old package/queues and can remove package app data;
+first review the exact error, preserve LocalState/evidence and get explicit
+approval for that separate destructive step.
+
+The **first retest is package architecture plus unfiltered enumeration**, not
+printing or service setup:
+
+```powershell
+$packages = @(Get-AppxPackage -Name Miyako.PsaFeasibility -ErrorAction Stop)
+$packages | Select-Object Name, Version, Architecture, Status
+Get-Printer -ErrorAction Stop
+if ($packages.Count -ne 1 -or $packages[0].Version.ToString() -ne '0.1.1.0' -or
+    $packages[0].Architecture.ToString() -ne 'Arm64' -or $packages[0].Status.ToString() -ne 'Ok') {
+    throw 'Expected exactly one installed ARM64 0.1.1.0 package with Status Ok; stop.'
+}
+```
+
+Then apply the exact-name gate below. If either queue remains absent, preserve
+the new Add activity separately from the original x64 experiment and stop.
+If both appear, that is an observed native ARM64 package-registration result,
+**not proof that architecture alone caused/fixed the old failure**, nor evidence
+of capture, unattended output or named-user service behavior.
 
 ## Queue-registration gate before desktop printing
 
@@ -94,6 +178,8 @@ runtime trust level or PDC contents to make this gate appear to pass.
 
 ```powershell
 $probe = (Resolve-Path .\printer\out\build\Release\PrintProbe.exe).Path
+# ARM64 host after the native ARM64 update: use this INSTEAD of the x64 path.
+# $probe = (Resolve-Path .\printer\out\arm64\build\Release\PrintProbe.exe).Path
 # OS Save As baseline; choose an .oxps destination.
 & $probe --queue 'PSA Diagnostic OXPS (Save As)' --interactive `
   --job-name 'synthetic-desktop-save' --timeout-seconds 120
@@ -143,7 +229,9 @@ It performs one submission then stops. Setup must be done manually by an
 authorized lab administrator; the repository never creates accounts/services,
 changes printer settings, or embeds credentials.
 
-Copy the executable to a protected fixed path, e.g.
+Copy the executable matching the installed package/host (ARM64 source:
+`printer/out/arm64/build/Release/PrintProbe.exe`; x64 source:
+`printer/out/build/Release/PrintProbe.exe`) to a protected fixed path, e.g.
 `C:\PsaLab\bin\PrintProbe.exe`. Create a separate `C:\PsaLab\evidence` directory
 and grant only the named service user/admins the needed access. Give the service
 user write permission to the synthetic output directory, read/execute on the
