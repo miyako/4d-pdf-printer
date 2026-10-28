@@ -1,6 +1,6 @@
 # PSA v4 feasibility prototype
 
-**Architecture HOLD: native named-user SCM/session-0 submission fails at
+**Windows-service printing is deferred: native named-user SCM/session-0 submission fails at
 `StartDocW` on the reported host, with or without `lpszOutput` (error 3003, no job
 ID). The same service submits to inbox XPS.** Both product queues now exist after
 the normal ARM64 0.1.2.0 update, and desktop PSA activation/capture is observed.
@@ -10,6 +10,13 @@ v4 driver, PDF implementation, finished installer, or 4D plugin. It deliberately
 does not launch a renderer. See the [current service evidence and source
 trace](validation.md#named-user-session-0-submission-gate) and
 [one bounded next test](runbook.md#one-instrumented-service-submission).
+
+Desktop-first development is now authorized independently under
+[`desktop/` and its separate package](../desktop/README.md). Its early
+activation/authentication/exact-job gate does not produce PDFs. The service
+investigation below is historical/deferred, not a prerequisite for that approved
+desktop scope or a request for more service-host tests. These OXPS diagnostic
+queues and their LocalState remain unchanged.
 
 | Claim category | Evidence / limit |
 |---|---|

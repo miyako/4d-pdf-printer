@@ -30,12 +30,12 @@
       <Extensions>
         <psa:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="DesktopPdf.Task">
           <psa:PrintSupportVirtualPrinter DisplayName="ms-resource:InteractiveDisplayName"
-              PrinterUri="4d-pdf-prototype:interactive" PreferredInputFormat="application/oxps"
+              PrinterUri="miyako-pdf-prototype:interactive" PreferredInputFormat="application/oxps"
               OutputFileTypes="pdf" PdcFile="Config\PdfPdc.xml"/>
         </psa:Extension>
         <psa:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="DesktopPdf.Task">
           <psa:PrintSupportVirtualPrinter DisplayName="ms-resource:AutomationDisplayName"
-              PrinterUri="4d-pdf-prototype:automation" PreferredInputFormat="application/oxps"
+              PrinterUri="miyako-pdf-prototype:automation" PreferredInputFormat="application/oxps"
               PdcFile="Config\PdfPdc.xml"/>
         </psa:Extension>
         <desktop:Extension Category="windows.fullTrustProcess" Executable="DesktopPdfCoordinator.exe"/>

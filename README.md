@@ -12,12 +12,18 @@ Windows build automation. It does not render PDFs or launch an external helper.
 The build explicitly selects x64 (default) or ARM64 with isolated, PE-checked
 packages/probes; ARM64 is a compatibility/control test, not a proven queue fix.
 
-**The headless service gate is open:** PSA activation and an allowed external
-coordinator handoff must be demonstrated for a named-user Windows service before
-desktop login and after sign-out. A hosted Windows build is not that evidence.
-The first user-run Windows 11 installation reported package success but created
-neither diagnostic queue; **queue registration is an earlier unresolved gate**.
-No printing/service result is implied.
+**Desktop-first; Windows-service printing is deferred.** The
+[separate desktop development package](docs/desktop/README.md) is implementing
+the early actual PSA/full-trust/RPC/exact-job handoff gate. It currently produces
+**no PDFs** and deliberately fails workflow completion; it is not a working
+pipeline or 4D integration.
+
+Diagnostic queue registration is now fixed through validated PRI resources:
+both queues and actual native ARM64 desktop OXPS capture were observed. The
+Save As diagnostic writes OXPS; the no-file-UI endpoint receives no Windows-bound
+destination. Native named-user session-0 PSA submission still fails at StartDocW
+(3003), despite visible package/profile and successful inbox XPS submission.
+This is retained evidence, not solved by a logged-in desktop coordinator.
 See the [runtime runbook](docs/printer/runbook.md),
 [source-backed findings](docs/printer/sources.md), and
 [conditional worker interface](docs/printer/handoff.md).

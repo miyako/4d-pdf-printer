@@ -18,13 +18,13 @@ namespace desktop
 {
     using winrt::Windows::Data::Json::JsonObject;
     using winrt::Windows::Data::Json::JsonValue;
-    inline constexpr wchar_t AutomationUri[] = L"4d-pdf-prototype:automation";
-    inline constexpr wchar_t InteractiveUri[] = L"4d-pdf-prototype:interactive";
+    inline constexpr wchar_t AutomationUri[] = L"miyako-pdf-prototype:automation";
+    inline constexpr wchar_t InteractiveUri[] = L"miyako-pdf-prototype:interactive";
     inline constexpr wchar_t TitlePrefix[] = L"4DPDF1:";
     enum Operation : unsigned long
     {
         Ping = 1, PrepareGate = 2, StatusGate = 3, CancelGate = 4,
-        ClaimGate = 5, FinishGate = 6, WorkflowPing = 7
+        ClaimGate = 5, FinishGate = 6, WorkflowPing = 7, StallGate = 8
     };
 
     struct CloseHandleDeleter

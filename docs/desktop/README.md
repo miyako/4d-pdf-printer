@@ -70,8 +70,15 @@ RpcAsyncCancelCall and returns an uncertain timeout, not proof of server
 rollback. Completion notification and RpcAsyncCompleteCall must release the
 in-flight state before it is freed; a bounded pool retains pending operations
 and rejects more work at its cap. No blocked/detached RPC threads or early
-marshaling-buffer release. **RPC_C_OPT_CALL_TIMEOUT is ignored for ncalrpc**;
+marshaling-buffer release. A loader reference to the calling module accompanies
+each operation; asynchronous reaping uses FreeLibraryWhenCallbackReturns so
+task/DLL teardown cannot unload callback code before it returns.
+**RPC_C_OPT_CALL_TIMEOUT is ignored for ncalrpc**;
 it is not used as a local RPC deadline. A lost Claim reply is never replayed.
+The development gate includes actual five-second in-flight server calls,
+two-second abort deadlines, concurrent pending-cap rejection/recovery and
+completion/timeout boundary cases. These are assertions to be measured on
+Windows, not evidence that deadlines or DLL teardown have already passed.
 
 The complete `4DPDF1:<256-bit random token>` document title selects a prepared
 record. It is spooler-visible, **not an authentication secret**. Status/cancel

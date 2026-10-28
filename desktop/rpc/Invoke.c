@@ -11,6 +11,7 @@ typedef struct PendingCall
     GateResponse output;
     HANDLE event;
     PTP_WAIT wait;
+    HMODULE module;
 } PendingCall;
 
 static volatile LONG pendingCalls = 0;
@@ -19,7 +20,8 @@ static void FreeCall(PendingCall* call)
 {
     CloseThreadpoolWait(call->wait);
     CloseHandle(call->event);
-    RpcBindingFree(&call->binding);
+    if (call->binding) RpcBindingFree(&call->binding);
+    if (call->module) FreeLibrary(call->module);
     free(call);
     InterlockedDecrement(&pendingCalls);
 }
@@ -29,7 +31,6 @@ static VOID CALLBACK ReapCall(PTP_CALLBACK_INSTANCE instance, PVOID context,
 {
     PendingCall* call = context;
     RPC_STATUS status;
-    (void)instance;
     (void)wait;
     (void)result;
     ResetEvent(call->event);
@@ -39,6 +40,8 @@ static VOID CALLBACK ReapCall(PTP_CALLBACK_INSTANCE instance, PVOID context,
         SetThreadpoolWait(call->wait, call->event, NULL);
         return;
     }
+    FreeLibraryWhenCallbackReturns(instance, call->module);
+    call->module = NULL;
     FreeCall(call);
 }
 
@@ -86,6 +89,13 @@ unsigned long InvokeDesktopGate(handle_t binding, unsigned long operation,
         InterlockedDecrement(&pendingCalls);
         return code;
     }
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+        (LPCWSTR)&pendingCalls, &call->module))
+    {
+        code = GetLastError();
+        FreeCall(call);
+        return code;
+    }
     code = RpcBindingCopy(binding, &call->binding);
     if (code != ERROR_SUCCESS) { FreeCall(call); return code; }
     code = RpcAsyncInitializeHandle(&call->async, sizeof(call->async));
@@ -113,4 +123,9 @@ unsigned long InvokeDesktopGate(handle_t binding, unsigned long operation,
     if (code == ERROR_SUCCESS) *response = call->output;
     FreeCall(call);
     return code;
+}
+
+unsigned long DesktopGatePendingCalls(void)
+{
+    return (unsigned long)InterlockedCompareExchange(&pendingCalls, 0, 0);
 }

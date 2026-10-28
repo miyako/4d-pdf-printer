@@ -2,6 +2,10 @@
 #include <winspool.h>
 #include <cstdio>
 #include <thread>
+#include <atomic>
+#include <barrier>
+
+extern "C" unsigned long DesktopGatePendingCalls(void);
 
 using namespace desktop;
 using namespace winrt;
@@ -41,6 +45,81 @@ namespace
         Text(result, L"statusSecret", std::wstring(prepared.GetNamedString(L"statusSecret")));
         return result;
     }
+
+    void TransportChecks(JsonObject const& report)
+    {
+        auto before = Call(Ping);
+        JsonObject stall;
+        stall.Insert(L"milliseconds", JsonValue::CreateNumberValue(5000));
+        auto start = std::chrono::steady_clock::now();
+        try { Call(StallGate, stall); throw hresult_error(E_UNEXPECTED); }
+        catch (hresult_error const& error)
+        {
+            if (error.code() != HRESULT_FROM_WIN32(ERROR_TIMEOUT)) throw;
+        }
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start).count();
+        auto during = Call(Ping);
+        Require(during.GetNamedNumber(L"stallsStarted") > before.GetNamedNumber(L"stallsStarted"));
+        Require(during.GetNamedNumber(L"stallsCompleted") == before.GetNamedNumber(L"stallsCompleted"));
+        Require(elapsed >= 1500 && elapsed < 4000);
+        report.Insert(L"inFlightTimeoutMilliseconds", JsonValue::CreateNumberValue(static_cast<double>(elapsed)));
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(6);
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            if (Call(Ping).GetNamedNumber(L"stallsCompleted") > before.GetNamedNumber(L"stallsCompleted")) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        Require(Call(Ping).GetNamedNumber(L"stallsCompleted") > before.GetNamedNumber(L"stallsCompleted"));
+        std::barrier ready(9);
+        std::atomic<unsigned> capped{0}, timedOut{0}, unexpected{0};
+        std::vector<std::thread> threads;
+        for (unsigned i = 0; i < 9; ++i)
+        {
+            threads.emplace_back([&]
+            {
+                init_apartment();
+                JsonObject input;
+                input.Insert(L"milliseconds", JsonValue::CreateNumberValue(5000));
+                ready.arrive_and_wait();
+                try { Call(StallGate, input); ++unexpected; }
+                catch (hresult_error const& error)
+                {
+                    if (error.code() == HRESULT_FROM_WIN32(ERROR_TOO_MANY_CMDS)) ++capped;
+                    else if (error.code() == HRESULT_FROM_WIN32(ERROR_TIMEOUT)) ++timedOut;
+                    else ++unexpected;
+                }
+                uninit_apartment();
+            });
+        }
+        for (auto& thread : threads) thread.join();
+        Require(capped > 0 && timedOut > 0 && unexpected == 0);
+        report.Insert(L"pendingCapRejections", JsonValue::CreateNumberValue(capped.load()));
+        deadline = std::chrono::steady_clock::now() + std::chrono::seconds(8);
+        while (DesktopGatePendingCalls() && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        Require(DesktopGatePendingCalls() == 0);
+        std::this_thread::sleep_for(std::chrono::seconds(4));
+        for (unsigned delay : {500u, 1900u, 2100u})
+        {
+            JsonObject input;
+            input.Insert(L"milliseconds", JsonValue::CreateNumberValue(delay));
+            bool completed = false;
+            try { Call(StallGate, input); completed = true; }
+            catch (hresult_error const& error)
+            {
+                if (error.code() != HRESULT_FROM_WIN32(ERROR_TIMEOUT)) throw;
+            }
+            if (delay == 500) Require(completed);
+            report.Insert(L"race" + to_hstring(delay), JsonValue::CreateStringValue(completed ? L"completed" : L"timed-out-uncertain"));
+        }
+        deadline = std::chrono::steady_clock::now() + std::chrono::seconds(4);
+        while (DesktopGatePendingCalls() && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        Require(DesktopGatePendingCalls() == 0);
+        Require(Call(Ping).GetNamedBoolean(L"ready"));
+        report.Insert(L"pendingRecoveryVerified", JsonValue::CreateBooleanValue(true));
+    }
 }
 
 int wmain(int argc, wchar_t** argv)
@@ -67,6 +146,8 @@ int wmain(int argc, wchar_t** argv)
             if (launch.LaunchResult() != FullTrustLaunchResult::Success)
                 throw hresult_error(launch.ExtendedError().value < 0 ? launch.ExtendedError() : hresult(E_FAIL));
             Require(WaitReady(std::chrono::seconds(10)));
+            Text(report, L"stage", L"in-flight-rpc-deadlines");
+            TransportChecks(report);
             Text(report, L"stage", L"method-authorization");
             try { Call(WorkflowPing); throw hresult_error(E_UNEXPECTED); }
             catch (hresult_error const& error)

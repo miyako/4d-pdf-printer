@@ -1,10 +1,14 @@
 # Windows 11 runtime evidence runbook
 
-**Current gate: product 0.1.2.0 has both queues and desktop capture works, but
+**Historical service gate, now deferred: product 0.1.2.0 has both queues and desktop capture works, but
 native named-user session-0 `StartDocW` fails (3003) while inbox XPS submission
 works.** See [observed evidence](validation.md#named-user-session-0-submission-gate).
 Do not repeat registration, certificate or old service-control experiments.
 Pre-login, sign-out and 4D tests remain on HOLD.
+Desktop-first work and its separate, explicitly opt-in development handoff gate
+are described in the [desktop run instructions](../desktop/README.md). Do not
+repeat the service procedures below for that milestone or reinterpret a
+logged-in coordinator as service support.
 Use synthetic pages only. Do not
 upload account names, paths, private print tickets/documents, credentials or full
 Windows event logs to this public repository.

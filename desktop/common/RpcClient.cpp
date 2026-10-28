@@ -56,7 +56,7 @@ namespace desktop
             }
             catch (winrt::hresult_error const& error)
             {
-                auto code = static_cast<uint32_t>(error.code().value);
+                auto code = error.code().value;
                 if (code != HRESULT_FROM_WIN32(RPC_S_SERVER_UNAVAILABLE) &&
                     code != HRESULT_FROM_WIN32(RPC_S_SERVER_TOO_BUSY))
                     throw;

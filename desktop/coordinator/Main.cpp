@@ -7,6 +7,7 @@
 #include <map>
 #include <mutex>
 #include <thread>
+#include <cmath>
 #include <winrt/Windows.Storage.h>
 
 using namespace desktop;
@@ -20,6 +21,7 @@ namespace
     std::vector<uint8_t> expectedPackage;
     std::mutex lifecycle;
     auto lastCall = std::chrono::steady_clock::now();
+    std::atomic<uint32_t> stallsStarted{0}, stallsCompleted{0};
 
     struct Job
     {
@@ -77,6 +79,8 @@ namespace
         if (operation == Ping || operation == WorkflowPing)
         {
             result.Insert(L"ready", JsonValue::CreateBooleanValue(true));
+            result.Insert(L"stallsStarted", JsonValue::CreateNumberValue(stallsStarted.load()));
+            result.Insert(L"stallsCompleted", JsonValue::CreateNumberValue(stallsCompleted.load()));
             return result;
         }
         auto now = std::chrono::steady_clock::now();
@@ -159,9 +163,25 @@ extern "C" void DesktopGateRequest(PRPC_ASYNC_STATE async, handle_t binding, uns
         auto end = std::find(std::begin(input->json), std::end(input->json), L'\0');
         if (end == std::end(input->json)) throw winrt::hresult_invalid_argument();
         auto request = JsonObject::Parse(winrt::hstring(input->json, static_cast<uint32_t>(end - input->json)));
-        std::scoped_lock guard(lifecycle);
-        lastCall = std::chrono::steady_clock::now();
-        auto text = Request(static_cast<Operation>(operation), request, caller).Stringify();
+        JsonObject result{nullptr};
+        if (operation == StallGate)
+        {
+            if (caller.appContainer) throw winrt::hresult_error(E_ACCESSDENIED);
+            auto delay = request.GetNamedNumber(L"milliseconds");
+            if (!std::isfinite(delay) || delay < 0 || delay > 5000 || delay != std::floor(delay))
+                throw winrt::hresult_invalid_argument();
+            ++stallsStarted;
+            std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<DWORD>(delay)));
+            ++stallsCompleted;
+            result = Record(L"test-stall-completed");
+        }
+        else
+        {
+            std::scoped_lock guard(lifecycle);
+            lastCall = std::chrono::steady_clock::now();
+            result = Request(static_cast<Operation>(operation), request, caller);
+        }
+        auto text = result.Stringify();
         if (text.size() >= std::size(output->json)) throw winrt::hresult_error(E_BOUNDS);
         std::copy(text.begin(), text.end(), output->json);
     }
