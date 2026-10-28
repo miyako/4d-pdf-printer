@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "run": "https://github.com/miyako/4d-pdf-printer/actions/runs/40675303751",
+  "sourceCommit": "eec490de0aad5cef784610929181ea91c15dbea6",
+  "artifact": "https://github.com/miyako/4d-pdf-printer/actions/runs/40675303751/artifacts/12810691197",
+  "artifactDigest": "sha256:7631fae6ce4331a9747e025a00efbc5b514152a455815b066763226a53a58b9a",
+  "overallConclusion": "success",
+  "host": {
+    "nativeArchitecture": "ARM64",
+    "build": 26200,
+    "image": "20261022.194.1",
+    "powershell": "5.1.26100.9711"
+  },
+  "historicalBaseline": {
+    "run": 40657060798,
+    "unsignedPackageSha256": "8eb42a89542bc4d51819f6625148bd26064f94fb6950bb8c3f982b64bc74bd60"
+  },
+  "variants": [
+    {
+      "label": "product-baseline",
+      "installedName": "Miyako.PsaFeasibility",
+      "installedVersion": "0.1.1.0",
+      "installedArchitecture": "Arm64",
+      "installedStatus": "Ok",
+      "signedPackageSha256": "342b30300d8f19fe3e079a71f3b95a87f9cbede4b4c7b2e9ad474c6212fa7068",
+      "pdcSha256": "e38b25327081ec310b21c5cb077b018ccc8c71090d7ccd09e42bcf6b9a6b4e2c",
+      "priSha256": null,
+      "before": ["Microsoft Print to PDF"],
+      "after": ["Microsoft Print to PDF"],
+      "observations": 6,
+      "intervalSeconds": 10,
+      "queues": "absent",
+      "cleanup": "superseded-by-normal-update-then-exact-owned-cleanup"
+    },
+    {
+      "label": "product-update",
+      "installedName": "Miyako.PsaFeasibility",
+      "installedVersion": "0.1.2.0",
+      "installedArchitecture": "Arm64",
+      "installedStatus": "Ok",
+      "signedPackageSha256": "c8d4b660c57eec4f928948d3cf840f8f08acf21252b8b0461e98ba1039980c9a",
+      "pdcSha256": "e38b25327081ec310b21c5cb077b018ccc8c71090d7ccd09e42bcf6b9a6b4e2c",
+      "priSha256": "bb992932f0c9058927cfc9014d8ef2d1fc1c98a8037442687e444d7932b2396c",
+      "before": ["Microsoft Print to PDF"],
+      "after": ["Microsoft Print to PDF", "PSA Diagnostic Capture (no file UI)", "PSA Diagnostic OXPS (Save As)"],
+      "observations": 1,
+      "intervalSeconds": 10,
+      "queues": "present",
+      "cleanup": "exact-owned-package-and-queues-absent"
+    }
+  ],
+  "conclusion": "normal-product-0.1.1-to-0.1.2-update-both-queues-present",
+  "updateWithoutRemoval": true,
+  "error": null,
+  "trustRemoved": true,
+  "keyRemoved": true,
+  "limits": [
+    "The baseline remained installed between Add-AppxPackage calls; no forced removal/shutdown/downgrade was used.",
+    "Actual 0.1.2.0 update path is demonstrated on hosted ARM64, not yet on the user's own machine.",
+    "No UI, dynamic printer API, task Run, job, service, renderer or 4D invocation."
+  ]
+}

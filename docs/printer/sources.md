@@ -107,8 +107,11 @@ collect runtime evidence on the actual 26100+ lab build.
     defines code architecture and quad version fields; [Add-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/add-appxpackage)
     documents signed same-family updates. Neither source guarantees this
     prototype's cross-architecture update or print deployment-handler result.
-    Higher development version 0.1.1.0 is a controlled update attempt, not a
-    promise that removal is unnecessary on every host.
+    Higher development versions 0.1.1.0 (architecture control) and 0.1.2.0
+    (resource packaging correction) allow ordinary update attempts, not a promise
+    that removal is unnecessary on every host. The separately recorded
+    [runtime evidence](validation.md) must establish the actual update/queue
+    outcome; schema-valid literal DisplayName is not reclassified as prohibited.
 17. [GitHub-hosted runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners#standard-github-hosted-runners-for-public-repositories)
     lists native ARM64 `windows-11-arm` for public repositories. Its
     [image inventory](https://github.com/actions/runner-images/blob/main/images/windows/Windows11-Arm64-Readme.md)

@@ -103,10 +103,9 @@ Copy-Item -LiteralPath (Join-Path $root 'package/Strings/en-US/Resources.resw') 
 $pri = Join-Path $stage 'resources.pri'
 $config = Join-Path $out 'priconfig.xml'
 $dump = Join-Path $out 'resource-evidence.xml'
+if (Test-Path -LiteralPath $pri) { Remove-Item -LiteralPath $pri }
 Invoke-Checked $makepri @('createconfig', '/cf', $config, '/dq', 'lang-en-US', '/o')
 Invoke-Checked $makepri @('new', '/pr', $stage, '/cf', $config, '/of', $pri, '/o')
-Invoke-Checked $makepri @('dump', '/if', $pri, '/of', $dump, '/o')
-Assert-PrinterResourceDump -Dump ([xml](Get-Content -LiteralPath $dump -Raw))
 Remove-Item -LiteralPath $resw
 Remove-Item -LiteralPath $strings
 Remove-Item -LiteralPath (Join-Path $stage 'Strings')
@@ -114,6 +113,15 @@ $package = $plan.Package
 Assert-PrinterPackage -Path $stage -Architecture $Architecture
 Invoke-Checked $makeappx @('pack', '/d', $stage, '/p', $package, '/o')
 Assert-PrinterPackage -Path $package -Architecture $Architecture -Archive
+$packagedPri = Join-Path $out 'packaged-resources.pri'
+$archive = [IO.Compression.ZipFile]::OpenRead($package)
+try {
+    [IO.Compression.ZipFileExtensions]::ExtractToFile($archive.GetEntry('resources.pri'), $packagedPri, $true)
+} finally { $archive.Dispose() }
+if ((Get-FileHash -LiteralPath $packagedPri -Algorithm SHA256).Hash -cne
+    (Get-FileHash -LiteralPath $pri -Algorithm SHA256).Hash) { throw 'Packaged PRI differs from the generated resource index.' }
+Invoke-Checked $makepri @('dump', '/if', $packagedPri, '/of', $dump, '/o')
+Assert-PrinterResourceDump -Dump ([xml](Get-Content -LiteralPath $dump -Raw))
 if ($Sign) {
     # Explicit opt-in; no trust-store changes, service installation, or printer configuration here.
     $cert = New-SelfSignedCertificate -Type Custom -Subject 'CN=PsaFeasibilityDev' `
@@ -138,7 +146,7 @@ if ($Sign) {
     ctests = $(if ($plan.TestExecution -eq 'not-run-cross-compile') { 'not-run' } else { 'passed' })
     peAndManifestChecks = 'passed'
     packageVersion = '0.1.2.0'
-    queueNameResources = 'MakePri dump verified; resources.pri required in stage and MSIX'
+    queueNameResources = 'actual MSIX PRI hash and MakePri dump verified'
     resourcesPriSha256 = (Get-FileHash -LiteralPath $pri -Algorithm SHA256).Hash.ToLowerInvariant()
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $out 'build-evidence.json') -Encoding utf8
 Write-Host "Diagnostic package: $package (not a PDF converter)"

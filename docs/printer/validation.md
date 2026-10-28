@@ -240,7 +240,7 @@ and its queues were verified absent after removal before the next Add.
 **The full reference PDC alone is not sufficient.** Do not ship it as a product
 fix or claim that this proves the original PDC was semantically accepted.
 
-The next bounded discriminator restores the original PDC and changes only the
+The second bounded discriminator restores the original PDC and changes only the
 queue-name representation to equivalent `ms-resource` values in a tiny generated
 PRI, under isolated version 0.1.3.0. It does not import the sample app/resources
 or change queue-name text, URIs, formats, task code, device family or capabilities.
@@ -249,10 +249,61 @@ exclude only the intentional manifest/PDC/PRI variables and must otherwise match
 across variants. This is a second candidate test, not a claim that literal
 DisplayName is prohibited by the public schema.
 
+**Actual positive discriminator:** [run 40674321931](https://github.com/miyako/4d-pdf-printer/actions/runs/40674321931)
+passed. [Persistent summary](evidence/registration-ab-40674321931.json);
+[full report, installed manifests and PRI dump](https://github.com/miyako/4d-pdf-printer/actions/runs/40674321931/artifacts/12810210959).
+On the same native ARM64 job/image/build/PowerShell as above, the product,
+isolated baseline and full-PDC variant again had no queues after 60 seconds.
+The **resource-only** isolated package, version 0.1.3.0, installed Arm64 / Ok
+and exposed **both exact diagnostic names at the first 10-second observation**.
+Its PDC hash was the original product's
+`e38b25327081ec310b21c5cb077b018ccc8c71090d7ccd09e42bcf6b9a6b4e2c`,
+not the reference PDC. Native binary, asset and notice hashes were identical
+across all four variants; actual installed manifests preserve the original
+URIs, formats, task registration, device family and capabilities. The dumped
+PRI maps the two keys to exactly the original display strings. Every owned
+package/queue and ephemeral certificate/key was removed successfully.
+
+This isolates the **queue-name resource packaging** as an observed compatibility
+correction. It does not show which internal DEH call fails for literals, establish
+a universal schema restriction, or implicate native task activation. Product
+0.1.2.0 adopts only those equivalent resource references and a generated,
+verified PRI; it does not replace PDC, add contracts/capabilities/frameworks, or
+change native task/job code.
+
+The current diagnostic workflow separately downloads the exact historical
+0.1.1.0 native artifact (verifying its published unsigned hash), installs it,
+retains it, and performs a **normal same-family 0.1.2.0 update without removal
+between versions**. It checks actual installed version/architecture/status and
+requires both queues, then removes only its owned test packages and certificate.
+This is the user's intended update path, not another isolated fresh Add.
+Historical artifact expiry fails explicitly; there is no silent replacement.
+
+**Actual product update:** [run 40675303751](https://github.com/miyako/4d-pdf-printer/actions/runs/40675303751)
+passed at source `eec490de0aad5cef784610929181ea91c15dbea6`.
+[Persistent summary](evidence/product-update-40675303751.json);
+[full report and both installed manifests](https://github.com/miyako/4d-pdf-printer/actions/runs/40675303751/artifacts/12810691197).
+The historical 0.1.1.0 product installed Arm64 / Ok and remained without queues
+for 60 seconds. With that package **still installed**, normal `Add-AppxPackage`
+updated the same `Miyako.PsaFeasibility` family to **0.1.2.0 / Arm64 / Ok**.
+Both original diagnostic queue names appeared at **10 seconds**. The report
+confirms `updateWithoutRemoval=true`, unchanged original PDC hash, successful
+exact-owned package/queue cleanup, and removal of ephemeral trust/key.
+This validates the intended non-destructive update path on the hosted runner;
+the user's own host still needs only the
+[short normal update retest](runbook.md#resource-packaging-correction-update).
+
+[Build run 40675303817](https://github.com/miyako/4d-pdf-printer/actions/runs/40675303817)
+passed the same revision's native x64, native ARM64 and ARM64-on-x64 builds.
+All ran the 36 portable build/resource cases and normal MakeAppx validation;
+native targets ran both CTests, while cross-compiled native execution was
+explicitly not run. These remain factory/parser tests, not background-task `Run`.
+
 ## Still not run / not proven
 
 Product queue creation on the user host has not succeeded; reference queue
-creation has. Semantic product PDC acceptance, real
+creation has. Isolated native product-payload queue registration has succeeded
+with resource-backed names on hosted ARM64. Real
 XPS/OXPS capture, Save As, native output-path mapping, named-service account
 registration/activation, pre-login execution, post-sign-out execution, 4D printing,
 external coordinator IPC and PDF rendering remain unobserved in this printer PR.

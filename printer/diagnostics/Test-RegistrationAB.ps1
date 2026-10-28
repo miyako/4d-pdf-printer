@@ -45,7 +45,7 @@ foreach ($tool in @($makeappx, $signtool, $makepri)) {
 }
 $report = [ordered]@{
     schemaVersion = 1
-    experiment = 'native-static-registration-pdc-resource-ab'
+    experiment = $(if ($UpdateDirectory) { 'normal-product-resource-update' } else { 'native-static-registration-pdc-resource-ab' })
     build = [int]$os.BuildNumber
     image = $env:ImageVersion
     powershell = $PSVersionTable.PSVersion.ToString()
