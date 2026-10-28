@@ -19,6 +19,7 @@ jobs:
         run: |
           ./printer/reference-control/tests/Check-Source.ps1
           ./printer/reference-control/tests/Check-Signing.ps1
+          ./printer/reference-control/tests/Check-HostedGuard.ps1
       - name: Build pinned official sample
         shell: pwsh
         run: ./printer/reference-control/Build-Control.ps1 -OutputDirectory "$env:RUNNER_TEMP\rc"

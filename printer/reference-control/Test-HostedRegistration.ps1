@@ -61,7 +61,7 @@ $report = [ordered]@{
         status = 'not-read'
     }
     trust = [ordered]@{ store = 'LocalMachine/TrustedPeople'; created = $false; removed = $false }
-    dependencies = [ordered]@{ validated = 0; attempted = 0; alreadySatisfied = 0 }
+    dependencies = [ordered]@{ validated = 0; attempted = 0; alreadySatisfied = 0; signatureChecks = @() }
     spooler = [ordered]@{ before = 'not-read'; after = 'not-read' }
     printers = [ordered]@{
         before = $null
@@ -181,18 +181,28 @@ function Get-PackageSigner([string]$Path) {
 }
 
 function Confirm-TrustedFrameworkSignature([string]$Path) {
-    $sdk = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/bin/10.0.26100.0'
-    $tools = @('arm64', 'x64' | ForEach-Object {
-        Join-Path (Join-Path $sdk $_) 'signtool.exe'
-    } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
-    if ($tools.Count -eq 0) { Stop-Experiment 'requires-sdk26100-signature-verifier' }
-    # Discard all native text, which includes paths. A nonzero exit is never accepted.
+    # Match the x64 SDK verifier used by the build and sign-only script; emulated on ARM64.
+    $tool = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/bin/10.0.26100.0/x64/signtool.exe'
+    if (-not (Test-Path -LiteralPath $tool -PathType Leaf)) { Stop-Experiment 'requires-sdk26100-signature-verifier' }
     $PSNativeCommandUseErrorActionPreference = $false
     $ErrorActionPreference = 'Continue'
     $LASTEXITCODE = $null
-    & $tools[0] verify /pa /v $Path 2>&1 | Out-Null
-    if ($null -eq $LASTEXITCODE -or $LASTEXITCODE -ne 0) {
-        Stop-Experiment 'framework-dependency-signature-not-trusted'
+    $text = (@(& $tool verify /pa /v $Path 2>&1) | Out-String)
+    $exitCode = $LASTEXITCODE
+    $category = if ($exitCode -eq 0) { 'verified' }
+        elseif ($text -match 'root certificate.*not trusted|untrusted root') { 'untrusted-root' }
+        elseif ($text -match 'expired|not within its validity period') { 'certificate-validity' }
+        elseif ($text -match 'No signature found|not signed') { 'signature-not-found' }
+        else { 'verification-failed' }
+    $report.dependencies.signatureChecks += [ordered]@{
+        file = [IO.Path]::GetFileName($Path)
+        toolArchitecture = 'x64; emulated on ARM64'
+        exitCode = $exitCode
+        hresults = @([regex]::Matches($text, '\b0x[0-9a-fA-F]{8}\b') | ForEach-Object { $_.Value } | Select-Object -Unique)
+        category = $category
+    }
+    if ($null -eq $exitCode -or $exitCode -ne 0) {
+        Stop-Experiment 'framework-dependency-signature-verification-failed'
     }
 }
 

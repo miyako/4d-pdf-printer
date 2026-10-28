@@ -186,6 +186,38 @@ changes the MSIX bytes. Keep the key local; never upload it or a PFX.
 The development certificate lasts 30 days and is not timestamped; this is a
 short-lived lab package, not a public release or permanent signing arrangement.
 
+## Disposable hosted registration experiment
+
+The separate `windows-11-arm` job consumes the **same unsigned artifact**.
+It requires a native ARM64 Windows 11 client OS and an elevated, GitHub-hosted
+disposable job. It signs a temporary copy, validates its signer against the
+generated public certificate, verifies the original Microsoft framework
+signatures, then temporarily trusts only that developer leaf certificate and
+performs a normal `Add-AppxPackage` for the job user. It never launches the app.
+
+The probe refuses an existing control identity or either original queue name.
+It enumerates **all** printers before installation and up to six times at
+10-second intervals afterward, publishing only counts, the two expected-queue
+booleans and known inbox names. It reads Spooler state without starting,
+stopping or interpreting a trigger-start service as broken. No policy, printer,
+registry or service changes are used to engineer registration.
+
+`outcome=present`, `some`, or `absent` is the actual observation.
+**A green experiment job may contain `absent`: it means the bounded experiment
+completed, not that registration passed.** Deployment/enumeration/preflight
+errors fail the step and retain a sanitized stage/HRESULT. Cleanup removes only
+exact packages/certificate resources created by that attempt, including partial
+deployment where discoverable; cleanup errors also fail the job. The workflow
+then removes that signing key. Neither a private key/PFX nor the ephemeral
+CI-signed package is uploaded.
+
+The JSON records native OS and PowerShell process architecture separately.
+An elevated hosted account, different OS patch/image, installed framework set,
+and runner session state are **not** the user's Enterprise desktop environment.
+Installation on an ARM64 OS is not execution of the sample print handler:
+there are no print jobs, no Save As/UI, no renderer measurements or service/4D
+activation assertions.
+
 ## Interpretation matrix
 
 Compare **unfiltered** `Get-Printer` after one normal reference installation
