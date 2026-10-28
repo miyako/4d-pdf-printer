@@ -329,6 +329,30 @@ uses the existing VS2022/v143/SDK26100 environment. New local builds/signatures
 will have different package hashes; no byte-reproducible binary claim is made.
 Do not install an unsigned download directly or trust an unrelated certificate.
 
+### Control handoff compatibility, separate from product registration
+
+[Run 40677740858](https://github.com/miyako/4d-pdf-printer/actions/runs/40677740858)
+at helper source `a9f8e082a958290979f6e1fc5eacaf015a6d7b60` passed **49 checks
+in genuine Windows PowerShell Desktop 5.1.20348.5756**, including the exact
+recorded artifact JSON, all five real package hashes/manifests, receipt schema,
+successful/missing/newer/neutral/invalid publisher/shape/count/collision cases,
+and real signature verification of all four supplied Microsoft frameworks.
+The old pipeline's one-array-record failure and corrected four-framework result
+were reproduced directly. [Evidence, resolved PS5.1 failures and limits](evidence/control-install-40677740858.json).
+
+Product native x64 / native ARM64 / cross builds passed
+[run 40677740983](https://github.com/miyako/4d-pdf-printer/actions/runs/40677740983);
+the normal retained-baseline product update passed
+[run 40677740876](https://github.com/miyako/4d-pdf-printer/actions/runs/40677740876).
+The helper changes do not alter the product source already verified above.
+
+**Do not describe all checks as green:** the separate reference runtime job
+again installed/observed both sample queues at 10 seconds, but its unchanged
+bounded package cleanup failed **0x80073CF3**. Its overall workflow is red despite
+the successful helper tests and sample build. Developer leaf trust was removed,
+the signing-key cleanup step succeeded, and framework residue remains unruled
+out. No cleanup workaround or user-host reference reinstall is part of this fix.
+
 ## Still not run / not proven
 
 Product queue creation on the user host has not succeeded; reference queue

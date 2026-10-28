@@ -239,7 +239,26 @@ PowerShell 5.1** (`shell: powershell`) in the reference-control build workflow;
 portable PowerShell 7 runs alone do not establish that compatibility.
 CI also downloads the exact recorded artifact to exercise its unchanged JSON,
 all five real package hashes and manifests against the receipt schema; only
-Appx/PrintManagement and the signature-verification boundary are mocked.
+Appx/PrintManagement and the local developer-signature boundary are mocked.
+All four original Microsoft framework signatures are additionally verified
+with the real SDK SignTool and native SignedCms implementation.
+
+**Actual Windows PowerShell result:** [run 40677740858](https://github.com/miyako/4d-pdf-printer/actions/runs/40677740858)
+passed **49 checks on Desktop 5.1.20348.5756**, including the recorded artifact
+and four real Microsoft signature checks. The unchanged recorded JSON parsed
+as `System.Object[][5]`; the old pipeline emitted **one** `System.Object[]`
+record; corrected enumeration selected **four scalar framework records**.
+[Persistent sanitized evidence](evidence/control-install-40677740858.json).
+Real PS5.1 execution also exposed a missing explicit compression assembly load
+in the helper and test-only scope/serialization/parser-diagnostic differences;
+these were fixed, not waived or inferred from PS7 passes.
+
+The same run's official sample build passed; its separate ARM64 runtime harness
+again observed both reference queues at 10 seconds, then failed existing bounded
+package cleanup with **0x80073CF3**. The overall run remains **red**. Developer
+leaf trust and the signing-key cleanup step succeeded; framework residue is not
+ruled out. This is separate from the passing install-handoff tests and does not
+justify broadening cleanup or reinstalling the successful user control.
 
 Expected new names are **VirtualPdfPrinter** and **VirtualPostScriptPrinter**.
 If either was present before installation, the comparison has a collision: stop,

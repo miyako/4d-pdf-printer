@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "run": "https://github.com/miyako/4d-pdf-printer/actions/runs/40677740858",
+  "sourceCommit": "a9f8e082a958290979f6e1fc5eacaf015a6d7b60",
+  "overallConclusion": "failure",
+  "buildJobConclusion": "success",
+  "installHandoff": {
+    "conclusion": "passed",
+    "edition": "Desktop",
+    "powershell": "5.1.20348.5756",
+    "testsPassed": 49,
+    "recordedArtifactRun": 40668170711,
+    "recordedArtifactId": 12806758379,
+    "recordedUnsignedMsixSha256": "e780082071c909bbf677ad60a78109a67af725742c093530d91c297189e9f52f",
+    "jsonRootType": "System.Object[]",
+    "jsonRootCount": 5,
+    "oldPipelineCount": 1,
+    "oldPipelineFirstType": "System.Object[]",
+    "correctedFrameworkCount": 4,
+    "realPackageHashAndManifestChecks": 5,
+    "realMicrosoftFrameworkSignatureChecks": 4,
+    "signatureVerifier": "SDK 10.0.26100.0 x64 SignTool /pa plus native SignedCms signer verification",
+    "appxAndPrintManagement": "mocked; no helper deployment or trust modification in unit tests"
+  },
+  "resolvedPs51Failures": [
+    {
+      "run": 40677056484,
+      "issue": "Explicit System.IO.Compression assembly load required before ZipArchiveMode resolution.",
+      "correction": "Load both compression assemblies; keep strict installer validation."
+    },
+    {
+      "run": 40677195427,
+      "issue": "Historical broken-pipeline reproducer enabled StrictMode unlike the published snippet.",
+      "correction": "Match the historical snippet only in a local non-StrictMode test scope."
+    },
+    {
+      "run": 40677356745,
+      "issue": "Synthetic fixture JSON reserialization preserved PS5 root-array wrapper metadata.",
+      "correction": "Serialize fixture records through the JSON pipeline; do not relax installer root shape/count."
+    },
+    {
+      "run": 40677546060,
+      "issue": "Expected malformed-JSON diagnostic differed in Windows PowerShell.",
+      "correction": "Accept the observed native parser diagnostic while retaining the zero-deployment assertion."
+    }
+  ],
+  "verifiedFutureDelivery": {
+    "artifact": "https://github.com/miyako/4d-pdf-printer/actions/runs/40677740858/artifacts/12811178580",
+    "helperSha256": "a4a0b304cea1b7a1cc2d0b73e5d921ddac44d1193779f2deae55c4e2fc877f40",
+    "helperListedInChecksumInventory": true,
+    "sourceMatch": "identical after explicit Windows checkout CRLF versus local LF normalization",
+    "noticesAndSignHelperPresent": true,
+    "privateKeyArtifacts": "none"
+  },
+  "separateReferenceRuntime": {
+    "artifact": "https://github.com/miyako/4d-pdf-printer/actions/runs/40677740858/artifacts/12811118982",
+    "artifactDigest": "sha256:e9156c391897abd0e2f98cb8de5b5332f41ea4a3fa36437752fa897b6a585a25",
+    "runtime": "completed",
+    "identity": "Miyako.PsaReferenceControl",
+    "version": "1.1.14.0",
+    "architecture": "arm64",
+    "status": "ok",
+    "queues": "both present at first 10-second observation",
+    "printerCountBefore": 1,
+    "printerCountAfter": 3,
+    "overallOutcome": "cleanup-failed",
+    "cleanupCompleted": false,
+    "cleanupHresult": "0x80073CF3",
+    "ownedPackagesRemoved": 1,
+    "sharedFrameworkRegistrationsRemoved": 0,
+    "frameworkResidueRuledOut": false,
+    "developerLeafTrustRemoved": true,
+    "signingKeyCleanupStep": "success"
+  },
+  "limits": [
+    "The genuine PS5.1 install-handoff tests passed; the reference runtime job remains red for its existing bounded cleanup failure.",
+    "The separate runtime harness, not the new helper's mocked Add-AppxPackage boundary, installed the control.",
+    "No cleanup workaround, broad package removal or shared-framework deletion was introduced.",
+    "No user reference reinstall, app UI, dynamic printer API, task Run, job, service, renderer or 4D validation."
+  ]
+}
