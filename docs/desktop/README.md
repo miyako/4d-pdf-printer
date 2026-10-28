@@ -53,6 +53,13 @@ job attempts actual PSA registration/submission; the Server-based x64 build is
 not Windows 11 runtime acceptance. Runtime results must be recorded separately
 from package/PRI/factory or argument-test results.
 
+The current hosted experiment uses `-PsaBootstrapOnly` to isolate the actual PSA
+path after a desktop-client launch failure. It submits one deliberately
+unprepared synthetic title, observes PSA launch/readiness, and expects
+missing-configuration rejection with no file. At best this is `partial`, never
+a complete gate pass. It is **not** a production scheme that requires dummy
+prints to start a coordinator.
+
 ## Authentication and correlation
 
 Native `ncalrpc` is local-only, authenticated and packet-private. The server

@@ -2,7 +2,8 @@
 param(
     [Parameter(Mandatory)][string]$PackagePath,
     [Parameter(Mandatory)][string]$OutputPath,
-    [switch]$AllowDevelopmentInstall
+    [switch]$AllowDevelopmentInstall,
+    [switch]$PsaBootstrapOnly
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -19,6 +20,7 @@ $report = [ordered]@{
     packageSha256 = $null; diagnosticPreserved = $false
     client = $null; psa = @(); error = $null
 }
+if ($PsaBootstrapOnly) { $report.scope = 'psa-bootstrap-only' }
 $diagnosticBefore = @(Get-AppxPackage -Name Miyako.PsaFeasibility |
     Select-Object PackageFullName, Status)
 try {
@@ -50,7 +52,8 @@ try {
     New-Item -ItemType Directory -Path $private | Out-Null
     $stdout = Join-Path $private 'stdout.json'
     $stderr = Join-Path $private 'stderr.txt'
-    $process = Start-Process -FilePath $alias -ArgumentList '--gate' -PassThru `
+    $argument = if ($PsaBootstrapOnly) { '--psa-bootstrap' } else { '--gate' }
+    $process = Start-Process -FilePath $alias -ArgumentList $argument -PassThru `
         -RedirectStandardOutput $stdout -RedirectStandardError $stderr
     if (-not $process.WaitForExit(120000)) {
         $process.Kill($true)
@@ -59,10 +62,11 @@ try {
     }
     $process.WaitForExit()
     $report.client = Get-Content -LiteralPath $stdout -Raw | ConvertFrom-Json
-    if ($process.ExitCode -ne 0 -or $report.client.stage -cne 'gate-passed-no-pdf') {
+    $expectedStage = if ($PsaBootstrapOnly) { 'psa-bootstrap-verified-no-pdf' } else { 'gate-passed-no-pdf' }
+    if ($process.ExitCode -ne 0 -or $report.client.stage -cne $expectedStage) {
         throw 'Native handoff gate failed; see typed client/PSA evidence.'
     }
-    $report.result = 'passed'
+    $report.result = if ($PsaBootstrapOnly) { 'partial' } else { 'passed' }
 }
 catch {
     $report.error = [ordered]@{

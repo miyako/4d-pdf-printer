@@ -4,6 +4,7 @@
 #include <thread>
 #include <atomic>
 #include <barrier>
+#include <objbase.h>
 
 extern "C" unsigned long DesktopGatePendingCalls(void);
 
@@ -138,9 +139,35 @@ int wmain(int argc, wchar_t** argv)
         }
         else
         {
+            if (argc == 2 && std::wstring(argv[1]) == L"--psa-bootstrap")
+            {
+                Text(report, L"stage", L"psa-bootstrap-submission");
+                Submit(TitlePrefix + RandomToken());
+                Text(report, L"stage", L"psa-bootstrap-readiness");
+                Require(WaitReady(std::chrono::seconds(15)));
+                Text(report, L"stage", L"psa-bootstrap-verified-no-pdf");
+                std::puts(to_string(report.Stringify()).c_str());
+                return 0;
+            }
             if (argc != 2 || std::wstring(argv[1]) != L"--gate") throw hresult_invalid_argument();
-            Text(report, L"stage", L"coordinator-launch");
-            auto launch = FullTrustProcessLauncher::LaunchFullTrustProcessForAppWithArgumentsAsync(L"Printer", L"--serve").get();
+            Text(report, L"stage", L"caller-context");
+            auto identity = CurrentIdentity();
+            report.Insert(L"callerAppContainer", JsonValue::CreateBooleanValue(identity.appContainer));
+            report.Insert(L"callerSession", JsonValue::CreateNumberValue(identity.session));
+            report.Insert(L"expectedPackage", JsonValue::CreateBooleanValue(
+                Package::Current().Id().Name() == L"Miyako.DesktopPdfPrototype"));
+            APTTYPE apartment{};
+            APTTYPEQUALIFIER qualifier{};
+            check_hresult(CoGetApartmentType(&apartment, &qualifier));
+            report.Insert(L"apartmentType", JsonValue::CreateNumberValue(static_cast<int>(apartment)));
+            report.Insert(L"apartmentQualifier", JsonValue::CreateNumberValue(static_cast<int>(qualifier)));
+            report.Insert(L"launchResultAvailable", JsonValue::CreateBooleanValue(false));
+            Text(report, L"stage", L"coordinator-launch-create");
+            auto operation = FullTrustProcessLauncher::LaunchFullTrustProcessForAppWithArgumentsAsync(L"Printer", L"--serve");
+            Text(report, L"stage", L"coordinator-launch-wait-get-results");
+            auto launch = operation.get();
+            Text(report, L"stage", L"coordinator-launch-result");
+            report.Insert(L"launchResultAvailable", JsonValue::CreateBooleanValue(true));
             report.Insert(L"launchResult", JsonValue::CreateNumberValue(static_cast<int>(launch.LaunchResult())));
             report.Insert(L"launchExtendedError", JsonValue::CreateNumberValue(launch.ExtendedError().value));
             if (launch.LaunchResult() != FullTrustLaunchResult::Success)

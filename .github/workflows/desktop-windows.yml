@@ -52,7 +52,7 @@ jobs:
         run: |
           ./desktop/tests/Invoke-DesktopGate.ps1 `
             -PackagePath ./desktop/out/arm64/DesktopPdfPrototype.msix `
-            -OutputPath ./desktop/out/arm64/acceptance.json -AllowDevelopmentInstall
+            -OutputPath ./desktop/out/arm64/acceptance.json -AllowDevelopmentInstall -PsaBootstrapOnly
       - name: Exact hosted certificate cleanup
         if: always() && matrix.runtime
         shell: pwsh

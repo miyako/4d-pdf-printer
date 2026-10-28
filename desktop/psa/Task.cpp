@@ -1,6 +1,7 @@
 #include "../common/RpcClient.h"
 #include <atomic>
 #include <mutex>
+#include <objbase.h>
 #include <winrt/Windows.ApplicationModel.Background.h>
 #include <winrt/Windows.Devices.Printers.h>
 #include <winrt/Windows.Graphics.Printing.Workflow.h>
@@ -127,9 +128,25 @@ struct Task : implements<Task, IBackgroundTask>
             if (session.Printer().PrinterUri().AbsoluteUri() != AutomationUri ||
                 args.SourceContent().ContentType() != L"application/oxps" || !IsTitle(title))
                 throw hresult_invalid_argument();
-            Text(evidence, L"stage", L"full-trust-launch");
+            auto identity = CurrentIdentity();
+            evidence.Insert(L"callerAppContainer", JsonValue::CreateBooleanValue(identity.appContainer));
+            evidence.Insert(L"callerSession", JsonValue::CreateNumberValue(identity.session));
+            evidence.Insert(L"expectedPackage", JsonValue::CreateBooleanValue(
+                Package::Current().Id().Name() == L"Miyako.DesktopPdfPrototype"));
+            APTTYPE apartment{};
+            APTTYPEQUALIFIER qualifier{};
+            check_hresult(CoGetApartmentType(&apartment, &qualifier));
+            evidence.Insert(L"apartmentType", JsonValue::CreateNumberValue(static_cast<int>(apartment)));
+            evidence.Insert(L"apartmentQualifier", JsonValue::CreateNumberValue(static_cast<int>(qualifier)));
+            evidence.Insert(L"launchResultAvailable", JsonValue::CreateBooleanValue(false));
+            Text(evidence, L"stage", L"full-trust-launch-create");
             co_await FileIO::WriteTextAsync(log, evidence.Stringify());
-            auto launch = co_await FullTrustProcessLauncher::LaunchFullTrustProcessForCurrentAppWithArgumentsAsync(L"--serve");
+            auto operation = FullTrustProcessLauncher::LaunchFullTrustProcessForCurrentAppWithArgumentsAsync(L"--serve");
+            Text(evidence, L"stage", L"full-trust-launch-await-get-results");
+            co_await FileIO::WriteTextAsync(log, evidence.Stringify());
+            auto launch = co_await operation;
+            Text(evidence, L"stage", L"full-trust-launch-result");
+            evidence.Insert(L"launchResultAvailable", JsonValue::CreateBooleanValue(true));
             evidence.Insert(L"launchResult", JsonValue::CreateNumberValue(static_cast<int>(launch.LaunchResult())));
             evidence.Insert(L"launchExtendedError", JsonValue::CreateNumberValue(launch.ExtendedError().value));
             if (launch.LaunchResult() != FullTrustLaunchResult::Success)
@@ -137,6 +154,7 @@ struct Task : implements<Task, IBackgroundTask>
             co_await resume_background();
             Text(evidence, L"stage", L"rpc-readiness");
             if (!WaitReady(std::chrono::seconds(10))) throw hresult_error(HRESULT_FROM_WIN32(ERROR_TIMEOUT));
+            evidence.Insert(L"authenticatedRpcReady", JsonValue::CreateBooleanValue(true));
             try { Call(PrepareGate); throw hresult_error(E_UNEXPECTED); }
             catch (hresult_error const& error)
             {
