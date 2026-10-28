@@ -55,7 +55,7 @@ distributed sample artifact. This does not select a license for our own product.
 | Version / PhoneIdentity | Preserve `1.1.14.0` and original phone GUIDs; Windows package identity is distinct from the prototype |
 | Static extension declarations | Preserve both `printsupport2` extensions, entry points, format lists, PDC path, names/URIs, and other print extensions |
 | Names / URIs | `VirtualPdfPrinter` / `contoso-psa:print-to-pdf`; `VirtualPostScriptPrinter` / `contoso-psa:print-to-ps`, resolved using original resources |
-| PDC / PDR / assets / resources / code | Preserve upstream bytes; use the original UWP XAML/PRI build, not placeholder logos/resources or a rewritten task |
+| PDC / PDR / assets / resources / authored code | Preserve upstream bytes; use the original UWP XAML/PRI build, not placeholder logos/resources or a rewritten task |
 | Packaging flags | Single ARM64 MSIX, no x86/x64 bundle; unsigned; disable auto version increment and generated test installer; redirect upstream hard-coded `D:\PSASample\` output |
 | Build baseline | SDK `10.0.26100.0`, VS2022/v143, Release ARM64 with upstream .NET Native enabled |
 | Generated header | Upstream MIDL regenerates its checked-in, automatically generated `XpsUtil.h` from unchanged `XpsUtil.idl`; before/after hashes are reported separately, not called an authored-source adaptation |
@@ -160,15 +160,33 @@ Import-Certificate -FilePath 'C:\lab\reference-control\signed\PsaReferenceContro
 
 Return to the normal user's PowerShell window. Leave the existing prototype
 installed. **Do not launch the sample's application/UI or submit a job.**
-Install once normally with its supplied framework dependencies, then enumerate:
+Install once normally with its supplied framework dependencies, then enumerate.
+The selection below omits frameworks already satisfied by an installed,
+healthy ARM64/neutral version; it does not try to downgrade a newer framework:
 
 ```powershell
 $ErrorActionPreference = 'Stop'
 Get-Printer
-$dependencies = @(Get-ChildItem .\Dependencies\arm64 -File -Filter *.appx |
-  Select-Object -ExpandProperty FullName)
-if ($dependencies.Count -ne 4) { throw 'Expected the four supplied ARM64 framework APPXs.' }
-Add-AppxPackage -Path .\signed\PsaReferenceControl.arm64.msix -DependencyPath $dependencies
+$info = & {
+  . .\Sign-Control.ps1
+  Assert-ControlPackage -Path (Resolve-Path .\signed\PsaReferenceControl.arm64.msix).Path -SignatureState Signed
+}
+$frameworks = @(Get-Content .\architecture-evidence.json -Raw | ConvertFrom-Json |
+  Where-Object name -ne 'Miyako.PsaReferenceControl')
+if ($frameworks.Count -ne 4) { throw 'Expected four supplied ARM64 frameworks.' }
+$dependencies = @(foreach ($framework in $frameworks) {
+  $declaration = @($info.Dependencies | Where-Object Name -ceq $framework.name)
+  if ($declaration.Count -ne 1) { throw 'Unexpected framework declaration.' }
+  $installed = @(Get-AppxPackage -Name $framework.name | Where-Object {
+    $_.Publisher -ceq $declaration[0].Publisher -and $_.IsFramework -and
+    [version]$_.Version -ge [version]$declaration[0].MinVersion -and
+    $_.Architecture.ToString() -iin @('arm64', 'neutral') -and $_.Status.ToString() -ieq 'Ok'
+  })
+  if ($installed.Count -eq 0) { (Resolve-Path ".\Dependencies\arm64\$($framework.file)").Path }
+})
+$install = @{ Path = (Resolve-Path .\signed\PsaReferenceControl.arm64.msix).Path }
+if ($dependencies.Count -ne 0) { $install.DependencyPath = $dependencies }
+Add-AppxPackage @install
 Get-AppxPackage -Name Miyako.PsaReferenceControl |
   Select-Object Name, Version, Architecture, Status
 Get-AppxPackage -Name Miyako.PsaFeasibility |

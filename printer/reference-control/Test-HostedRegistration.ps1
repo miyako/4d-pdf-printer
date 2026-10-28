@@ -186,9 +186,9 @@ function Confirm-TrustedFrameworkSignature([string]$Path) {
     if (-not (Test-Path -LiteralPath $tool -PathType Leaf)) { Stop-Experiment 'requires-sdk26100-signature-verifier' }
     $PSNativeCommandUseErrorActionPreference = $false
     $ErrorActionPreference = 'Continue'
-    $LASTEXITCODE = $null
+    $global:LASTEXITCODE = $null
     $text = (@(& $tool verify /pa /v $Path 2>&1) | Out-String)
-    $exitCode = $LASTEXITCODE
+    $exitCode = $global:LASTEXITCODE
     $category = if ($exitCode -eq 0) { 'verified' }
         elseif ($text -match 'root certificate.*not trusted|untrusted root') { 'untrusted-root' }
         elseif ($text -match 'expired|not within its validity period') { 'certificate-validity' }
