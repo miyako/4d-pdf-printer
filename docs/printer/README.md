@@ -50,6 +50,10 @@ No event-args `GetDeferral()` exists on this API: the task's
 
 Start with **one submitted job at a time across both queues**. A package-local
 atomic `CaptureLock` folder rejects concurrent capture rather than queuing it.
+SDK 26100 MakeAppx requires `uap10:SupportsMultipleInstances="true"` on the
+application for these extensions; the manifest declares it. This permits platform
+multi-instance activation; it is not an implemented serialized dispatcher or a
+promise of a fresh conversion process per job.
 This is not a production broker. A crash can leave the lock: stop all test
 submissions, verify no task is active, preserve evidence and remove only that
 specific folder before resuming. Never automatically delete another job's lock.

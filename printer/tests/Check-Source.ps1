@@ -5,6 +5,11 @@ $root = Split-Path $PSScriptRoot -Parent
 $ns = [System.Xml.XmlNamespaceManager]::new($manifest.NameTable)
 $ns.AddNamespace('m', 'http://schemas.microsoft.com/appx/manifest/foundation/windows10')
 $ns.AddNamespace('psa', 'http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2')
+$ns.AddNamespace('uap10', 'http://schemas.microsoft.com/appx/manifest/uap/windows10/10')
+$application = $manifest.SelectSingleNode('//m:Application', $ns)
+if ($application.GetAttribute('SupportsMultipleInstances', $ns.LookupNamespace('uap10')) -ne 'true') {
+    throw 'SDK 26100 requires multi-instance support for virtual-printer workflow.'
+}
 $printers = $manifest.SelectNodes('//psa:PrintSupportVirtualPrinter', $ns)
 if ($printers.Count -ne 2) { throw 'Expected two separate diagnostic endpoints.' }
 if ($printers[0].OutputFileTypes -ne 'oxps') { throw 'Never label captured OXPS as PDF.' }

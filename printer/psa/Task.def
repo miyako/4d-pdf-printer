@@ -1,4 +1,4 @@
 LIBRARY PsaTask
 EXPORTS
-    DllGetActivationFactory
-    DllCanUnloadNow
+    DllGetActivationFactory PRIVATE
+    DllCanUnloadNow PRIVATE

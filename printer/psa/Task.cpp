@@ -167,8 +167,9 @@ struct Task : implements<Task, IBackgroundTask>
         catch (...)
         {
             DebugFailure(L"activation", to_hresult());
-            state = Finished;
-            Finish();
+            canceled = true;
+            State expected = Waiting;
+            if (state.compare_exchange_strong(expected, Finished) || expected == Finished) Finish();
         }
     }
 
