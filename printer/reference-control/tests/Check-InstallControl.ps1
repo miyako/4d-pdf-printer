@@ -458,7 +458,7 @@ try {
     }
     Test-Case 'malformed JSON stops before changes' {
         Set-Content -LiteralPath $script:evidencePath -Value '{invalid' -Encoding UTF8
-        Expect-Failure { Invoke-TestInstall } 'JSON|property|parsing|convert'
+        Expect-Failure { Invoke-TestInstall } 'JSON|property|parsing|convert|Invalid object passed in'
     }
     Test-Case 'object root instead of array is rejected' {
         Set-Content -LiteralPath $script:evidencePath -Value '{"name":"Miyako.PsaReferenceControl"}'
