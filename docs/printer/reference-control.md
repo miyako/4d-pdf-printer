@@ -59,6 +59,7 @@ distributed sample artifact. This does not select a license for our own product.
 | Packaging flags | Single ARM64 MSIX, no x86/x64 bundle; unsigned; disable auto version increment and generated test installer; redirect upstream hard-coded `D:\PSASample\` output |
 | Build baseline | SDK `10.0.26100.0`, VS2022/v143, Release ARM64 with upstream .NET Native enabled |
 | Generated header | Upstream MIDL regenerates its checked-in, automatically generated `XpsUtil.h` from unchanged `XpsUtil.idl`; before/after hashes are reported separately, not called an authored-source adaptation |
+| Generated manifest | Normal UWP build resolves the executable token, generates ARM64 identity metadata, EN-US/DE-DE resources, framework dependencies and .NET Native activatable-class registrations. The project's existing minimum 19041 / selected target 26100 override source manifest placeholder `10.0.0.0` values; no hand-edited minimum or static-registration OS requirement is inferred. |
 
 These are **identity-adapted Microsoft sample sources**, not an unmodified
 Microsoft-signed distribution. A locally trusted development signature proves
@@ -114,6 +115,76 @@ Build/packaging success, hosted OS architecture, deployment success and actual
 queue enumeration must be reported separately. CI is not the user's machine.
 No reference package, installation result, queue success or native execution
 is implied merely by adding this recipe.
+
+## Local sign-only and side-by-side installation
+
+Use the **unsigned ARM64 control artifact**, not a CI-signed test copy. Extract
+it to a new lab directory. It includes the single main MSIX, four unmodified
+ARM64 Microsoft framework APPXs, source/build evidence, public notices, and the
+standalone `Sign-Control.ps1`; no PFX or private key is distributed.
+The eventual artifact/run URL and unsigned-package hash belong in the results
+section below, not a hash taken from a different build.
+
+Run this in PowerShell 7 from that extracted directory, substituting the exact
+published unsigned **MSIX file** SHA256 (not the artifact ZIP digest):
+
+```powershell
+$ErrorActionPreference = 'Stop'
+pwsh -NoProfile -File .\Sign-Control.ps1 `
+  -PackagePath .\PsaReferenceControl.arm64.msix `
+  -ExpectedSha256 '<published unsigned MSIX SHA256>' `
+  -OutputDirectory .\signed
+if ($LASTEXITCODE -ne 0) { throw 'Signing failed; stop here.' }
+```
+
+The script validates the hash, distinct identity, publisher, version and ARM64
+native payload before signing a copy. It creates a **local** code-signing key
+in CurrentUser\My and exports only a public `.cer` and signing receipt. It never
+imports trust or installs the package, and refuses existing output directories.
+SDK 26100 x64 SignTool is a host tool, emulated on ARM64; this does not change
+the package target.
+
+Review the one exported public certificate and receipt. Its subject must be
+`CN=PsaReferenceControlDev`; compare its thumbprint to the local receipt.
+Do not trust an unrelated certificate from the prototype or another signing run.
+In a separate **administrator** PowerShell window on this disposable lab
+machine only, explicitly import **that exact reviewed public certificate**:
+
+```powershell
+# Use the actual lab directory containing this signing run's output.
+Get-PfxCertificate -FilePath 'C:\lab\reference-control\signed\PsaReferenceControlDev.cer' |
+  Format-List Subject, Thumbprint, NotAfter
+Import-Certificate -FilePath 'C:\lab\reference-control\signed\PsaReferenceControlDev.cer' `
+  -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+```
+
+Return to the normal user's PowerShell window. Leave the existing prototype
+installed. **Do not launch the sample's application/UI or submit a job.**
+Install once normally with its supplied framework dependencies, then enumerate:
+
+```powershell
+$ErrorActionPreference = 'Stop'
+Get-Printer
+$dependencies = @(Get-ChildItem .\Dependencies\arm64 -File -Filter *.appx |
+  Select-Object -ExpandProperty FullName)
+if ($dependencies.Count -ne 4) { throw 'Expected the four supplied ARM64 framework APPXs.' }
+Add-AppxPackage -Path .\signed\PsaReferenceControl.arm64.msix -DependencyPath $dependencies
+Get-AppxPackage -Name Miyako.PsaReferenceControl |
+  Select-Object Name, Version, Architecture, Status
+Get-AppxPackage -Name Miyako.PsaFeasibility |
+  Select-Object Name, Version, Architecture, Status
+Get-Printer
+```
+
+Expected new names are **VirtualPdfPrinter** and **VirtualPostScriptPrinter**.
+If either was present before installation, the comparison has a collision: stop,
+do not rename/remove that existing queue to engineer a result. Package Status Ok
+without queues remains an absent-queue result. If installation fails, stop and
+record that gate; do not loop through trust-store changes or reinstalls.
+The sign-only receipt records separate input/output hashes because local signing
+changes the MSIX bytes. Keep the key local; never upload it or a PFX.
+The development certificate lasts 30 days and is not timestamped; this is a
+short-lived lab package, not a public release or permanent signing arrangement.
 
 ## Interpretation matrix
 

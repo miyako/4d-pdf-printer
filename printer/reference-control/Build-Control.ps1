@@ -74,11 +74,16 @@ New-Item -ItemType Directory -Path (Join-Path $delivery 'Dependencies/arm64') -F
 foreach ($dependency in $dependencies) {
     Copy-Item -LiteralPath $dependency.FullName -Destination (Join-Path $delivery 'Dependencies/arm64')
 }
+& (Join-Path $PSScriptRoot 'Check-Architecture.ps1') -PackagePath $package `
+    -DependencyDirectory (Join-Path $delivery 'Dependencies/arm64') `
+    -ReportPath (Join-Path $delivery 'architecture-evidence.json') -VerifyPublisherSignatures
 foreach ($name in @('Microsoft-LICENSE.txt', 'upstream.json', 'source-comparison.json', 'host-evidence.json')) {
     Copy-Item -LiteralPath (Join-Path $out $name) -Destination $delivery
 }
 Copy-Item -LiteralPath (Join-Path $out 'resources/resource-evidence.json') -Destination $delivery
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'THIRD-PARTY-NOTICES.txt') -Destination $delivery
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Sign-Control.ps1') -Destination $delivery
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../../docs/printer/reference-control.md') -Destination $delivery
 [ordered]@{
     hostOSArchitecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
     processArchitecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()

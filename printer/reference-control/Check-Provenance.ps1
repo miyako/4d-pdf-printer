@@ -47,6 +47,7 @@ foreach ($file in $inventory) {
 if ($changes.Count -ne 1) { throw 'Expected exactly one identity-adapted manifest.' }
 [ordered]@{
     upstreamCommit = '652343e4980cc962fb099496125cf749aee51c71'
+    phase = $(if ($AfterBuild) { 'after-MSBuild' } else { 'before-MSBuild' })
     originalFileCount = $inventory.Count
     unchangedFileCount = $inventory.Count - $changes.Count - $generated.Count
     changedFiles = $changes
