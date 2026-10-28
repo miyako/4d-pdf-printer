@@ -3,13 +3,13 @@
 **Gate: not established for a named-user Windows service before login or after sign-out.**
 This is a diagnostic Windows 11 24H2+ (build 26100) PSA application, not a legacy
 v4 driver, PDF implementation, finished installer, or 4D plugin. It deliberately
-does not launch a renderer. No Windows/4D runtime host was available during
+does not launch a renderer. No Windows 11/4D print-runtime host was available during
 development. A successful hosted build does not close the gate.
 
 | Claim category | Evidence / limit |
 |---|---|
 | Confirmed by source | PSA v4 virtual printer API is introduced in 26100 / UniversalApiContract 19. Manifest supports OXPS preference, multiple endpoints and OS Save As with `OutputFileTypes`. See [sources](sources.md). |
-| Compile checked | See the **Printer Windows build** Actions run for this PR: native MSVC compile, probe argument tests, direct DLL factory smoke test and MakeAppx manifest/package validation. This is not printer installation, PDC semantic validation or service activation. |
+| Compile checked | [Actual successful Windows run and artifact evidence](validation.md): native MSVC compile, probe argument tests, direct DLL factory smoke test and MakeAppx manifest/package validation. This is not printer installation, PDC semantic validation or service activation. |
 | Runtime observed on Windows 11 | **None.** No installed queue, actual captured job, Save As result, 4D print, worker handoff, or pre-login/sign-out execution is claimed. |
 | Still unverified | Queue/package visibility to a service identity; session-0 activation; source MIME type and ticket semantics; `DOCINFO.lpszOutput` to PSA target mapping; no-file endpoint target behavior; allowed authenticated external coordinator transport; cancellation/termination/repeated activation. |
 

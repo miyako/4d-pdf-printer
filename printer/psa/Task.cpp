@@ -70,6 +70,7 @@ namespace
                 throw hresult_error(HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE));
             if (co_await output.WriteAsync(read) != read.Length()) throw hresult_error(E_FAIL);
         }
+        if (total == 0) throw hresult_error(HRESULT_FROM_WIN32(ERROR_INVALID_DATA));
         if (!(co_await output.FlushAsync())) throw hresult_error(E_FAIL);
         co_return total;
     }
