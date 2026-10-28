@@ -1,0 +1,47 @@
+name: Printer static registration discriminator
+on:
+  workflow_dispatch:
+  push:
+    paths: ['printer/diagnostics/**', 'printer/package/**', 'printer/build.ps1', 'printer/BuildSupport.ps1', '.github/workflows/printer-registration-ab.yml']
+  pull_request:
+    paths: ['printer/diagnostics/**', 'printer/package/**', 'printer/build.ps1', 'printer/BuildSupport.ps1', '.github/workflows/printer-registration-ab.yml']
+permissions:
+  contents: read
+jobs:
+  registration:
+    runs-on: windows-11-arm
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build corrected native product
+        shell: pwsh
+        run: ./printer/build.ps1 -Architecture ARM64 -VisualStudioVersion 2026
+      - name: Download exact historical 0.1.1.0 native ARM64 baseline
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 40657060798
+          name: printer-feasibility-unsigned-arm64
+          path: ${{ runner.temp }}/product-0.1.1
+      - name: Bounded normal product update without pre-removal
+        shell: powershell
+        run: |
+          $expected = '8eb42a89542bc4d51819f6625148bd26064f94fb6950bb8c3f982b64bc74bd60'
+          if ((Get-FileHash "$env:RUNNER_TEMP/product-0.1.1/PsaDiagnostic.msix" -Algorithm SHA256).Hash -ine $expected) {
+            throw 'Historical unsigned product baseline hash mismatch.'
+          }
+          ./printer/diagnostics/Test-RegistrationAB.ps1 `
+            -ProductDirectory "$env:RUNNER_TEMP/product-0.1.1" `
+            -UpdateDirectory ./printer/out/arm64 `
+            -OutputDirectory "$env:RUNNER_TEMP/registration-ab"
+      - name: Sanitized static registration evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: printer-static-registration-ab
+          path: |
+            ${{ runner.temp }}/registration-ab/registration-ab.json
+            ${{ runner.temp }}/registration-ab/*-installed.xml
+            ${{ runner.temp }}/registration-ab/resource-only-pri.xml
+            printer/out/arm64/build-evidence.json
+          if-no-files-found: warn

@@ -78,8 +78,25 @@ function Assert-PrinterManifest {
     if ($Manifest.Package.Identity.ProcessorArchitecture -cne $Architecture.ToLowerInvariant()) {
         throw 'Package manifest architecture does not match the requested target.'
     }
-    if ($Manifest.Package.Identity.Version -ne '0.1.1.0') {
-        throw 'Expected development package version 0.1.1.0.'
+    if ($Manifest.Package.Identity.Version -ne '0.1.2.0') {
+        throw 'Expected development package version 0.1.2.0.'
+    }
+}
+
+function Assert-PrinterResourceDump {
+    param([Parameter(Mandatory)][xml]$Dump)
+    if ($Dump.PriInfo.ResourceMap.name -cne 'Miyako.PsaFeasibility') {
+        throw 'PRI resource map must match the product package identity.'
+    }
+    $expected = @{
+        InteractiveDisplayName = 'PSA Diagnostic OXPS (Save As)'
+        CaptureDisplayName = 'PSA Diagnostic Capture (no file UI)'
+    }
+    foreach ($key in $expected.Keys) {
+        $values = @($Dump.SelectNodes("/PriInfo/ResourceMap/ResourceMapSubtree[@name='Resources']/NamedResource[@name='$key']/Candidate[@type='String']/Value"))
+        if ($values.Count -ne 1 -or $values[0].InnerText -cne $expected[$key]) {
+            throw "PRI queue-name resource is missing, ambiguous or incorrect: $key"
+        }
     }
 }
 
@@ -92,6 +109,10 @@ function Assert-PrinterPackage {
     if (-not $Archive) {
         [xml]$manifest = Get-Content -LiteralPath (Join-Path $Path 'AppxManifest.xml') -Raw
         Assert-PrinterManifest -Manifest $manifest -Architecture $Architecture
+        $pri = Join-Path $Path 'resources.pri'
+        if (-not (Test-Path -LiteralPath $pri -PathType Leaf) -or (Get-Item -LiteralPath $pri).Length -eq 0) {
+            throw 'Package missing nonempty resources.pri.'
+        }
         foreach ($name in @('PsaDiagnostic.exe', 'PsaTask.dll')) {
             if (-not (Test-Path -LiteralPath (Join-Path $Path $name) -PathType Leaf)) {
                 throw "Package missing $name."
@@ -112,6 +133,8 @@ function Assert-PrinterPackage {
         $reader = [IO.StreamReader]::new($entry.Open())
         try { [xml]$manifest = $reader.ReadToEnd() } finally { $reader.Dispose() }
         Assert-PrinterManifest -Manifest $manifest -Architecture $Architecture
+        $pri = $zip.GetEntry('resources.pri')
+        if ($null -eq $pri -or $pri.Length -eq 0) { throw 'MSIX missing nonempty resources.pri.' }
         foreach ($name in @('PsaDiagnostic.exe', 'PsaTask.dll')) {
             if ($null -eq $zip.GetEntry($name)) { throw "MSIX missing $name." }
         }

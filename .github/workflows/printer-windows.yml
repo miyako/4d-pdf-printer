@@ -56,5 +56,6 @@ jobs:
             ${{ matrix.output }}/build/Release/PrintProbe.exe
             ${{ matrix.output }}/build/Release/ActivationProbe.exe
             ${{ matrix.output }}/build-evidence.json
+            ${{ matrix.output }}/resource-evidence.xml
             ${{ matrix.output }}/package/
           if-no-files-found: error

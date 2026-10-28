@@ -1,6 +1,7 @@
 # Windows 11 runtime evidence runbook
 
-**The first user-run installation did not create either diagnostic queue.**
+**Neither the first user-run install nor the native ARM64 update created either
+diagnostic queue. The Microsoft reference has both queues on that same host.**
 The printing/service rows below remain unexecuted; see [observed evidence](validation.md).
 Use synthetic pages only. Do not
 upload account names, paths, private print tickets/documents, credentials or full
@@ -54,6 +55,14 @@ Titles, accounts, queue names and destinations are not written to its JSON log.
 
 ## Native ARM64 update and retest
 
+**Historical procedure, already completed on the reported host:** ARM64 0.1.1.0
+updated normally and is healthy, but both product queues remain absent.
+Do not repeat this historical update, reinstall the successful reference control,
+or collect the same deployment logs again. The
+[bounded hosted discriminator](validation.md#generated-artifact-comparison-and-bounded-discriminator)
+isolates a queue-resource packaging correction, implemented separately in
+0.1.2.0. Use the normal higher-version update below, not another 0.1.1.0 rebuild.
+
 For the existing x64 0.1.0.0 installation, first preserve the original installed
 manifest/PDC/hash, package identity/version/architecture, complete Add activity
 and printer-enumeration evidence **privately outside the checkout**. Preserve
@@ -88,7 +97,7 @@ Cross-compilation on x64 instead records `not-run-cross-compile` / `not-run`;
 that is not a native self-test. A local ARM64 build automatically runs both
 CTest tests (synthetic arguments and DLL factory only).
 
-The name/publisher remain unchanged; **both targets now use version 0.1.1.0**,
+The name/publisher remained unchanged; **both targets then used version 0.1.1.0**,
 higher than the observed 0.1.0.0. After checking the new certificate's exact
 subject/thumbprint, have an authorized lab administrator trust the **matching**
 ARM64-build certificate, then attempt the normal same-family higher-version
@@ -136,6 +145,59 @@ the new Add activity separately from the original x64 experiment and stop.
 If both appear, that is an observed native ARM64 package-registration result,
 **not proof that architecture alone caused/fixed the old failure**, nor evidence
 of capture, unattended output or named-user service behavior.
+
+## Resource packaging correction update
+
+For the reported host already running **ARM64 0.1.1.0 / Status Ok**, use the
+reviewed follow-up PR revision implementing **0.1.2.0**. Leave the working
+Microsoft reference installed and do not launch either application or submit a
+job. Preserve existing LocalState and private evidence; no removal, forced
+shutdown, downgrade, driver/service/policy change or same-version reinstall is
+part of this retest.
+
+On the existing VS2022/v143/SDK26100 ARM64 build host, from that reviewed checkout:
+
+```powershell
+pwsh -NoProfile -File printer/build.ps1 -Architecture ARM64 -Sign
+if ($LASTEXITCODE -ne 0) { throw 'Build/sign failed; stop without installing stale outputs.' }
+Get-Content .\printer\out\arm64\build-evidence.json
+Get-PfxCertificate -FilePath .\printer\out\arm64\PsaDiagnostic.cer |
+    Select-Object Subject, Thumbprint
+```
+
+Require version **0.1.2.0**, `targetArchitecture=arm64`, native/passed CTests,
+PE/manifest checks passed, and verified queue-name resources. Each `-Sign` run
+creates a new certificate: an authorized lab administrator must review and trust
+**only this run's matching public CER**, subject `CN=PsaFeasibilityDev`, with the
+displayed thumbprint:
+
+```powershell
+# Administrator, only after reviewing this exact new certificate.
+Import-Certificate -FilePath .\printer\out\arm64\PsaDiagnostic.cer `
+    -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+```
+
+Return to the same normal user's **Windows PowerShell 5.1** for local Appx and
+PrintManagement, not a PowerShell 7 compatibility proxy:
+
+```powershell
+$ErrorActionPreference = 'Stop'
+Add-AppxPackage -Path .\printer\out\arm64\PsaDiagnostic.msix
+$package = @(Get-AppxPackage -Name Miyako.PsaFeasibility)
+$package | Select-Object Name, Version, Architecture, Status
+if ($package.Count -ne 1 -or $package[0].Version.ToString() -ne '0.1.2.0' -or
+    $package[0].Architecture.ToString() -ine 'Arm64' -or
+    $package[0].Status.ToString() -ine 'Ok') { throw 'Expected healthy ARM64 0.1.2.0; stop.' }
+Start-Sleep -Seconds 10
+Get-Printer
+```
+
+Expected names remain **PSA Diagnostic OXPS (Save As)** and
+**PSA Diagnostic Capture (no file UI)**. If missing at 10 seconds, wait once until
+60 seconds and enumerate without reinstalling. Stop there if either is missing;
+do not repeat certificate/install/log loops. Queue presence closes only this
+user-host registration gate, not task `Run`, printing, Save As, fidelity,
+service/session-0, renderer or 4D validation.
 
 ## Queue-registration gate before desktop printing
 

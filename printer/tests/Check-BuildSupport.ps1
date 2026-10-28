@@ -133,6 +133,7 @@ try {
     New-Item $stage -ItemType Directory | Out-Null
     $manifestPath = Join-Path $stage 'AppxManifest.xml'
     $archive = Join-Path $fixture 'synthetic.msix'
+    [IO.File]::WriteAllBytes((Join-Path $stage 'resources.pri'), [byte[]]@(1))
     foreach ($target in @('x64', 'ARM64')) {
         $machine = if ($target -eq 'ARM64') { 0xaa64 } else { 0x8664 }
         Test-Case "$target generated manifest, staged and archived PE consistency" {
@@ -170,8 +171,48 @@ try {
     }
     Test-Case 'old package version rejected' {
         [xml]$manifest = Get-Content -LiteralPath $manifestPath -Raw
-        $manifest.Package.Identity.Version = '0.1.0.0'
+        $manifest.Package.Identity.Version = '0.1.1.0'
         Expect-Failure { Assert-PrinterManifest -Manifest $manifest -Architecture ARM64 }
+    }
+    [xml]$dump = @'
+<PriInfo><ResourceMap name="Miyako.PsaFeasibility"><ResourceMapSubtree name="Resources">
+<NamedResource name="InteractiveDisplayName"><Candidate type="String"><Value>PSA Diagnostic OXPS (Save As)</Value></Candidate></NamedResource>
+<NamedResource name="CaptureDisplayName"><Candidate type="String"><Value>PSA Diagnostic Capture (no file UI)</Value></Candidate></NamedResource>
+</ResourceMapSubtree></ResourceMap></PriInfo>
+'@
+    Test-Case 'exact product PRI resource values accepted' { Assert-PrinterResourceDump -Dump $dump }
+    Test-Case 'wrong PRI resource map rejected' {
+        [xml]$wrong = $dump.OuterXml
+        $wrong.PriInfo.ResourceMap.name = 'Another.Package'
+        Expect-Failure { Assert-PrinterResourceDump -Dump $wrong }
+    }
+    Test-Case 'swapped PRI queue values rejected' {
+        [xml]$wrong = $dump.OuterXml
+        $wrong.SelectSingleNode("//NamedResource[@name='CaptureDisplayName']/Candidate/Value").InnerText = 'PSA Diagnostic OXPS (Save As)'
+        Expect-Failure { Assert-PrinterResourceDump -Dump $wrong }
+    }
+    Test-Case 'missing PRI queue key rejected' {
+        [xml]$wrong = $dump.OuterXml
+        $node = $wrong.SelectSingleNode("//NamedResource[@name='CaptureDisplayName']")
+        $node.ParentNode.RemoveChild($node) | Out-Null
+        Expect-Failure { Assert-PrinterResourceDump -Dump $wrong }
+    }
+    Test-Case 'duplicate PRI queue key rejected' {
+        [xml]$wrong = $dump.OuterXml
+        $node = $wrong.SelectSingleNode("//NamedResource[@name='CaptureDisplayName']")
+        $node.ParentNode.AppendChild($node.CloneNode($true)) | Out-Null
+        Expect-Failure { Assert-PrinterResourceDump -Dump $wrong }
+    }
+    [IO.File]::WriteAllBytes((Join-Path $stage 'PsaTask.dll'), (New-TestPe 0xaa64))
+    Test-Case 'empty staged PRI rejected' {
+        [IO.File]::WriteAllBytes((Join-Path $stage 'resources.pri'), [byte[]]::new(0))
+        Expect-Failure { Assert-PrinterPackage -Path $stage -Architecture ARM64 }
+    }
+    Test-Case 'missing archived PRI rejected' {
+        Remove-Item -LiteralPath (Join-Path $stage 'resources.pri')
+        Remove-Item -LiteralPath $archive
+        [IO.Compression.ZipFile]::CreateFromDirectory($stage, $archive)
+        Expect-Failure { Assert-PrinterPackage -Path $archive -Architecture ARM64 -Archive }
     }
 } finally {
     Remove-Item -LiteralPath $fixture -Recurse -Force

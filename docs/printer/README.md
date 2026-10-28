@@ -1,9 +1,11 @@
 # PSA v4 feasibility prototype
 
-**Gate: queue registration failed in the first reported Windows 11 experiment;
-named-user service activation remains untested.**
-The isolated [Microsoft reference control](reference-control.md) investigates
-static registration without changing the product or replacing its package.
+**Queue-name resource packaging is corrected in 0.1.2.0; user-host retest remains
+pending after the failed 0.1.1.0 ARM64 update.
+Named-user service activation remains untested.**
+The isolated [Microsoft reference control](reference-control.md) registers both
+queues on the same user host. This rules out a generic host inability to install
+static virtual printers, not a particular product-package cause.
 This is a diagnostic Windows 11 24H2+ (build 26100) PSA application, not a legacy
 v4 driver, PDF implementation, finished installer, or 4D plugin. It deliberately
 does not launch a renderer. The first user-run package installation reported
@@ -14,7 +16,7 @@ not close this earlier registration gate. See [runtime evidence](validation.md).
 |---|---|
 | Confirmed by source | PSA v4 API is introduced in 26100 / UniversalApiContract 19. Manifest supports OXPS, multiple endpoints and OS Save As. Packaged-app-to-Win32-service RPC is a documented transport pattern; logoff is a task cancellation reason. See [sources](sources.md). |
 | Compile checked | [Recorded Windows run and artifact evidence](validation.md): MSVC compile, probe argument tests, direct DLL factory smoke test and MakeAppx validation. Architecture/PE/build-host evidence is separate from queue registration, PDC semantic acceptance and service activation. |
-| Runtime observed on Windows 11 | On confirmed native ARM64 (CPU Architecture 12), the original x64 0.1.0.0 package installed/Status Ok with intended declarations/PDC bytes, but **neither queue exists**, including from an x64 console. No architecture causation, job, service, 4D or renderer result is claimed. |
+| Runtime observed on Windows 11 | On confirmed native ARM64 (CPU Architecture 12), both the original x64 0.1.0.0 install and normal ARM64 0.1.1.0 update reported Status Ok, but **neither product queue exists**. The separately identified Microsoft reference 1.1.14.0 ARM64 has both static queues on that same host. No architecture causation, job, service, 4D or renderer result is claimed. |
 | Still unverified | Queue/package visibility to a service identity; session-0 activation; source MIME type and ticket semantics; `DOCINFO.lpszOutput` to PSA target mapping; no-file endpoint target behavior; allowed authenticated external coordinator transport; cancellation/termination/repeated activation. |
 
 ## Implemented boundaries
@@ -28,7 +30,9 @@ There are no NuGet/runtime framework packages, full-trust capability, network
 capability, broad filesystem capability, tray app, or process-spawning code.
 
 The manifest declares two clearly diagnostic queues. Their creation has **not**
-been demonstrated; the first runtime experiment did not create either queue:
+been observed on the user's host. A controlled hosted ARM64 comparison now
+registers both names with PRI-backed resources while unchanged literal-name
+baselines do not; see [the actual comparison](validation.md#generated-artifact-comparison-and-bounded-discriminator).
 
 | Queue | Manifest | Behavior |
 |---|---|---|
@@ -73,7 +77,7 @@ these bounds. This is not a hard renderer timeout or crash-containment guarantee
 
 Use Windows with Visual Studio 2022 C++ desktop tools (MSVC v143), CMake 3.24+,
 PowerShell 7, and **Windows SDK 10.0.26100.0**, including C++/WinRT headers,
-WindowsApp import libraries and **x64 MakeAppx/SignTool host tools**.
+WindowsApp import libraries and **x64 MakeAppx/MakePri/SignTool host tools**.
 For ARM64, select **MSVC v143 - VS 2022 C++ ARM64 build tools**
 (`Microsoft.VisualStudio.Component.VC.Tools.ARM64`), not ARM64EC.
 On an ARM64 host use native Visual Studio 2022 17.4+; on x64 this component
@@ -113,7 +117,13 @@ The source manifest is an x64 template; the build generates the selected
 machine types (`0x8664` / `0xaa64`) of shell, task DLL, submission probe and
 factory test. It checks every EXE/DLL in staging and the **actual MSIX ZIP**,
 rejecting mismatches rather than merely trusting a filename or CMake flag.
-The development version is **0.1.1.0 for both targets**, same name/publisher.
+The development version is **0.1.2.0 for both targets**, same name/publisher.
+The two queue names now use equivalent `ms-resource` references. MakePri compiles
+the two original strings into `resources.pri`; the build validates its resource
+map/values and requires a nonempty PRI in staging and the actual MSIX. This is
+an observed static-registration compatibility correction, not a blanket claim
+that literal DisplayName is invalid. The PDC, native activation and task/job
+code, URIs, formats, device family and capabilities are unchanged.
 
 The script reports native host OS architecture, PowerShell process architecture,
 requested target, absolute output paths and test-execution mode separately.
@@ -134,9 +144,12 @@ architecture-named artifacts. Native factory/parser tests still do not call
 
 Generated solid-color PNGs are original diagnostic assets.
 `MakeAppx pack` uses normal validation (no `/nv`).
-The workflow builds but **does not sign, trust, install, or submit jobs**.
+The build workflow **does not sign, trust, install, or submit jobs**.
 The hosted OS may be Windows Server; that is a build environment, not requested
 or established Windows Server OS runtime support.
+A separate [bounded registration discriminator](validation.md#generated-artifact-comparison-and-bounded-discriminator)
+signs/installs only on a disposable native Windows 11 ARM64 runner and never
+submits jobs. It is not a user-host installation helper or a product fix.
 
 On an isolated Windows 11 26100+ lab machine, an administrator must review and
 trust **only the generated development certificate** in the appropriate Trusted
@@ -152,8 +165,8 @@ Get-AppxPackage -Name Miyako.PsaFeasibility | Select-Object Name, Version, Archi
 Get-Printer
 ```
 
-For the already-installed x64 0.1.0.0 package on ARM64, **do not use the x64
-example above**: use the [evidence-preserving ARM64 update procedure](runbook.md#native-arm64-update-and-retest).
+For the reported host already running ARM64 0.1.1.0, **do not use the x64
+example above**: use the [normal 0.1.2.0 resource correction update](runbook.md#resource-packaging-correction-update).
 Every `-Sign` run creates a **new certificate**; trust the matching certificate
 from the selected output base after checking its subject/thumbprint, not the
 certificate from another architecture or earlier build. Normal installation

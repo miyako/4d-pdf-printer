@@ -22,6 +22,18 @@ jobs:
           ./printer/reference-control/tests/Check-HostedGuard.ps1
           ./printer/reference-control/tests/Check-Verifier.ps1
           ./printer/reference-control/tests/Check-CleanupOwnership.ps1
+      - name: Download exact recorded control for install-handoff regression
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 40668170711
+          name: microsoft-reference-control-unsigned-arm64
+          path: ${{ runner.temp }}/recorded-control
+      - name: Check recorded install handoff on Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          ./printer/reference-control/tests/Check-InstallControl.ps1 -RequireWindowsPowerShell `
+            -RealArtifactDirectory "$env:RUNNER_TEMP/recorded-control"
       - name: Build pinned official sample
         shell: pwsh
         run: ./printer/reference-control/Build-Control.ps1 -OutputDirectory "$env:RUNNER_TEMP\rc"

@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "run": "https://github.com/miyako/4d-pdf-printer/actions/runs/40674321931",
+  "sourceCommit": "8a6e12e5aade2bdf7bdb0f6143d73f2a70c9fa68",
+  "artifact": "https://github.com/miyako/4d-pdf-printer/actions/runs/40674321931/artifacts/12810210959",
+  "artifactDigest": "sha256:c6841dbeb4494989681dd1f77b1a8e7794462e7a050f9cad4c74e6b53549182d",
+  "overallConclusion": "success",
+  "host": {
+    "nativeArchitecture": "ARM64",
+    "build": 26200,
+    "image": "20261022.194.1",
+    "powershell": "5.1.26100.9711"
+  },
+  "initialPrinters": ["Microsoft Print to PDF"],
+  "allOtherStagedPayloadIdenticalAcrossVariants": true,
+  "commonNativePayload": {
+    "PsaDiagnostic.exe": "070b39547c3308d56ab4854fd02c4cf6fd53ad374c6a22527fe1d01eb3fe5d96",
+    "PsaTask.dll": "f79c63bbc1b839ca4e34bbcdcffb397fb92dbc4faaf544bba6442559c838182c"
+  },
+  "variants": [
+    {
+      "label": "product-baseline",
+      "installedName": "Miyako.PsaFeasibility",
+      "installedVersion": "0.1.1.0",
+      "installedArchitecture": "Arm64",
+      "installedStatus": "Ok",
+      "signedPackageSha256": "2e4b14e259d6891df8fcfa309696f40b34ac96ad00a41ff477281dad53f7fbf3",
+      "pdcSha256": "e38b25327081ec310b21c5cb077b018ccc8c71090d7ccd09e42bcf6b9a6b4e2c",
+      "priSha256": null,
+      "before": ["Microsoft Print to PDF"],
+      "after": ["Microsoft Print to PDF"],
+      "observations": 6,
+      "intervalSeconds": 10,
+      "queues": "absent",
+      "cleanup": "exact-owned-package-and-queues-absent"
+    },
+    {
+      "label": "isolated-baseline",
+      "installedName": "Miyako.PsaRegistrationDiagnostic",
+      "installedVersion": "0.1.1.0",
+      "installedArchitecture": "Arm64",
+      "installedStatus": "Ok",
+      "signedPackageSha256": "10499dbe3ee9d918f6b650dcfd94b522e6c202bd155144b22c5db7fa56ec2c33",
+      "pdcSha256": "e38b25327081ec310b21c5cb077b018ccc8c71090d7ccd09e42bcf6b9a6b4e2c",
+      "priSha256": null,
+      "before": ["Microsoft Print to PDF"],
+      "after": ["Microsoft Print to PDF"],
+      "observations": 6,
+      "intervalSeconds": 10,
+      "queues": "absent",
+      "cleanup": "exact-owned-package-and-queues-absent"
+    },
+    {
+      "label": "pdc-only",
+      "installedName": "Miyako.PsaRegistrationDiagnostic",
+      "installedVersion": "0.1.2.0",
+      "installedArchitecture": "Arm64",
+      "installedStatus": "Ok",
+      "signedPackageSha256": "b874af7b6b9b449ed6faf1b190ad8f8b0ebb116d10f7d3ae05fcde4829abcc67",
+      "pdcSha256": "0e9e9d7ee7efaf44bfff45834159dacb506dacfaee0c4f917017a8b11356394c",
+      "priSha256": null,
+      "before": ["Microsoft Print to PDF"],
+      "after": ["Microsoft Print to PDF"],
+      "observations": 6,
+      "intervalSeconds": 10,
+      "queues": "absent",
+      "cleanup": "exact-owned-package-and-queues-absent"
+    },
+    {
+      "label": "resource-only",
+      "installedName": "Miyako.PsaRegistrationDiagnostic",
+      "installedVersion": "0.1.3.0",
+      "installedArchitecture": "Arm64",
+      "installedStatus": "Ok",
+      "signedPackageSha256": "02bbd94316be92a210ca385d32cccf0d123ca047f34aee7511c5eb1bc4880d54",
+      "pdcSha256": "e38b25327081ec310b21c5cb077b018ccc8c71090d7ccd09e42bcf6b9a6b4e2c",
+      "priSha256": "f3eaa4772664cfc6aeb9e0f57753a9c3eb68445772aa109bdb1f0b534be4db56",
+      "before": ["Microsoft Print to PDF"],
+      "after": ["Microsoft Print to PDF", "PSA Diagnostic Capture (no file UI)", "PSA Diagnostic OXPS (Save As)"],
+      "observations": 1,
+      "intervalSeconds": 10,
+      "queues": "present",
+      "cleanup": "exact-owned-package-and-queues-absent"
+    }
+  ],
+  "verifiedResourceValues": {
+    "InteractiveDisplayName": "PSA Diagnostic OXPS (Save As)",
+    "CaptureDisplayName": "PSA Diagnostic Capture (no file UI)"
+  },
+  "conclusion": "resource-only-positive-requires-product-confirmation",
+  "error": null,
+  "trustRemoved": true,
+  "keyRemoved": true,
+  "limits": [
+    "This is an observed name/resource-packaging compatibility correction, not a claim that the public schema prohibits literal DisplayName.",
+    "The positive isolated-identity fresh Add is separate from normal same-family product update confirmation.",
+    "No UI, dynamic printer API, task Run, job, service, renderer or 4D invocation."
+  ]
+}
