@@ -2,13 +2,20 @@
 
 This is an external **development runtime**, not a signed installer, license
 clearance or production packaging promise. The renderer owns the dependency
-assembly/inventory; desktop integration consumes it instead of maintaining a
+assembly/inventory; a desktop consumer must use it instead of maintaining a
 second packager. Public CI uploads evidence only, never the executable/DLL tree,
 private captures, fonts, PDFs, screenshots or raw document diagnostics.
 Remote dependency binary-cache upload/restore is disabled as well: publicly
 retrievable CI caches are inside this project's conservative distribution gate.
 Local ephemeral per-job caches/build trees are fine. This boundary is not a
 blanket legal judgment about caching and does not establish license compliance.
+Earlier development dispatches did upload dependency binary caches. Four
+exactly identified entries for this workstream's branch were deleted when this
+gate was clarified, including an `always()` save that completed during job
+cancellation. Other workstreams' caches were not purged. Prior retrieval cannot
+be ruled out; do not describe those caches as never having been public or treat
+their deletion as license clearance. No private captures or credentials were
+involved.
 
 ## Architecture and runtime root
 

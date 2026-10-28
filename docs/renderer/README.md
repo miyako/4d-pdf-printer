@@ -133,9 +133,14 @@ On the initial macOS arm64 development run (patched libgxps 0.3.2, Cairo 1.18.4,
 GLib 2.88.3, libarchive 3.8.10), each generated two-page XPS and OXPS produced
 **6,115 bytes / 3,057.5 bytes per page**. Input ZIP sizes were 3,611 and 3,574
 bytes. These are measurements, not size-reduction claims or acceptance targets.
-Tests inspect PDF structure, text and resources; **no pixel-reference comparison,
-real 4D corpus, accessibility/PDF-A/print-ticket validation, WDP validation or
-Microsoft failure reproduction has been performed**.
+Tests inspect PDF structure, text and resources; **no independent XPS/Microsoft
+pixel reference, real 4D corpus, accessibility/PDF-A/print-ticket validation,
+WDP validation or Microsoft failure reproduction has been established**.
+Separately authorized capture conversion and source/PDF raster checks were
+performed locally and retained privately, not added to this repository or CI.
+Those source checks share libgxps's parser with conversion; PDF rasterizers
+also differ in thin-stroke/text antialiasing. They do not establish pixel-perfect
+fidelity, independent XPS conformance or a size improvement over Microsoft.
 
 The earlier renderer code at `ade0bd0` passed the
 [Windows Server 2022/x64/MSVC build and execution run](https://github.com/miyako/4d-pdf-printer/actions/runs/40645829062):
@@ -151,6 +156,40 @@ detection disabled). This does not substitute for Windows native execution.
 Installed DLL,
 feature and license evidence is distinguished from the manifest assumptions in
 [the observed runtime inventory](dependencies.md#observed-windows-pe-runtime-closure).
+
+The current worker/overlay/build code at
+`0ce31edb786d4d13268ef4e9c63b61b13017c180` passed the
+[native Windows x64 job in run 40701343705](https://github.com/miyako/4d-pdf-printer/actions/runs/40701343705/job/122861694213):
+35 Python cases (30 passed, 5 POSIX-only skipped), plus native transactions,
+against the assembled runtime with a restricted PATH. All 27 packaged PEs
+(worker and 26 target-owned DLLs) were `0x8664`; DLLs totaled 13,216,768 bytes
+and the worker 61,952 bytes. The two-page synthetic PDFs remained 6,115 bytes.
+This job used VS 2022 17.14.37806.7/v143 14.44.35207, SDK 10.0.26100.0,
+CMake 3.31.6 and a native x64 OS. The **overall run was later cancelled** to stop
+the other architecture's pending binary-cache publication; the completed x64
+result remains valid. Do not relabel it as testing the later cache-disabled
+workflow revision `fc8ea13984508f1a5405eb40851bf21527cc077d`: that revision changes
+only workflow/cache policy and related documentation, not the renderer,
+dependencies, helpers or test inputs.
+
+The cache-disabled revision `fc8ea13984508f1a5405eb40851bf21527cc077d` also passed
+[native Windows 11 ARM64 run 40711028689](https://github.com/miyako/4d-pdf-printer/actions/runs/40711028689)
+(job `122896034653`, 1h34m13s cold build). It executed the assembled ARM64 worker:
+35 Python cases registered, 30 passed / 5 POSIX-only skipped, plus native
+transactions; the generated two-page PDFs were again 6,115 bytes. All 27 runtime
+PEs were **`0xaa64`**, including the 57,856-byte worker and 26 target-owned DLLs
+totaling 12,513,792 bytes, with ownership/notices and native test receipt checks.
+The runner reported a native ARM64 OS/process, native `arm64-windows` host ports,
+VS 2026 18.11.12315.225/v143 14.44.35207, SDK 10.0.26100.0 and CMake 4.4.4.
+Host tools/interpreters may be x64-emulated; the tested worker/DLLs were native
+ARM64, not x64 emulation or compile-only evidence.
+
+The final checkpoint changes documentation/evidence only relative to that
+revision. Its draft PR deliberately uses a `[skip ci]` documentation commit to
+honor the bounded-build checkpoint: **final HEAD/PR checks are not claimed
+green**. The completed manual results above retain their exact tested revisions.
+Neither architecture result establishes printer activation, end-to-end desktop
+printing, user-host validation or Windows-service submission.
 
 Runtime DLL/notice inventory, LGPL replacement/relinking, immutable MSIX,
 current font/rendering fidelity and desktop identity integration must be
