@@ -383,12 +383,19 @@ try {
         $fixed = @($root | Where-Object { $_.name -cne 'Miyako.PsaReferenceControl' })
         Assert-Equal $fixed.Count 4
         if ($PSVersionTable.PSVersion.Major -eq 5) {
-            $broken = @(Get-Content -LiteralPath $recordedPath -Raw | ConvertFrom-Json |
-                Where-Object name -ne 'Miyako.PsaReferenceControl')
-            $oldType = if ($broken.Count -gt 0) { $broken[0].GetType().FullName } else { '<empty>' }
+            $legacy = & {
+                # Match the published snippet, which did not enable StrictMode.
+                Set-StrictMode -Off
+                $broken = @(Get-Content -LiteralPath $recordedPath -Raw | ConvertFrom-Json |
+                    Where-Object name -ne 'Miyako.PsaReferenceControl')
+                [pscustomobject]@{
+                    Count = $broken.Count
+                    FirstType = $(if ($broken.Count -gt 0) { $broken[0].GetType().FullName } else { '<empty>' })
+                }
+            }
             Write-Host ("PS5.1 recorded JSON reproduction: root={0}[{1}]; old records={2}, first type={3}; fixed frameworks={4}" -f
-                $root.GetType().FullName, $root.Count, $broken.Count, $oldType, $fixed.Count)
-            Assert-Equal $broken.Count 1
+                $root.GetType().FullName, $root.Count, $legacy.Count, $legacy.FirstType, $fixed.Count)
+            Assert-Equal $legacy.Count 1
         }
         Invoke-TestInstall
         Assert-AllPreflighted
