@@ -28,8 +28,12 @@ Build on a matching native Windows machine with SDK 26100 and MSVC v143:
 
 ```powershell
 ./desktop/build.ps1 -Architecture x64 -VisualStudioVersion 2022
-./desktop/build.ps1 -Architecture ARM64 -VisualStudioVersion 2026
+./desktop/build.ps1 -Architecture ARM64 -VisualStudioVersion 2022
 ```
+
+VS2022/v143/SDK26100 is the local default for both architectures. The hosted
+ARM runner uses VS2026; `-VisualStudioVersion 2026` is optional only where that
+toolchain and CMake4.2+ are already installed, not a requested local installation.
 
 Default packages are unsigned. `-CertificateThumbprint` signs only with an
 explicitly supplied `CN=DesktopPdfPrototypeDev` certificate in CurrentUser/My;

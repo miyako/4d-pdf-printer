@@ -6,18 +6,19 @@ result is claimed.** Normal-desktop execution and a matching **locally
 available** renderer require separate creator approval. No installation,
 signing, trust change, runtime download or dependency build is authorized by this
 document.
-The creator separately authorized **one own-code-only compile/unit CI batch**:
-manual dispatch only, no automatic push/PR runs or historical activation steps.
-That batch does not execute this document's Windows printing/worker experiment.
+The creator separately authorized the initial own-code-only compile/unit batch
+and **one narrow reporting-correction follow-up**: manual dispatch only, no
+automatic push/PR runs or historical activation steps. Neither batch executes
+this document's Windows printing/worker experiment.
 
 This is a standalone original-input experiment, **not a Save-As-only usable
 printer**. Silent application-supplied output and the interactive endpoint both
 remain mandatory for the later first usable prototype. Existing activation
 failures and exact source SHAs remain in [validation.md](validation.md).
 
-## Exact compile/unit checkpoint
+## Historical initial compile/unit checkpoint
 
-The **single** authorized manual batch
+The initial authorized manual batch
 [40735110227](https://github.com/miyako/4d-pdf-printer/actions/runs/40735110227)
 passed at source `6cf816ee4a80cdc2319f77ecb29cbdaea7954a45`:
 
@@ -31,15 +32,18 @@ passed at source `6cf816ee4a80cdc2319f77ecb29cbdaea7954a45`:
 executable hashes, source identity and `sourceDirty:false`. Artifacts are
 JSON/text evidence only, not downloadable proof executables or renderer trees.
 The workflow is manual-only; the source commit's skip-ci marker suppressed
-automatic push/PR builds of the older cumulative printer diff. No second batch,
+automatic push/PR builds of the older cumulative printer diff. At that checkpoint no second batch,
 MIDL/MSIX creation, renderer/dependency build/cache, binary upload, signing/trust,
 installation, GDI submission or PSA activation occurred.
 
 Local macOS validation ran all 45 comparator tests, including a real Poppler
 interoperability case with an original stdlib-generated Type3 glyph and vector
 primitive. Identical PDFs passed the automated content/render checks but had
-ratio1.0, correctly failing the size gate. That is tool interoperability, **not
-a Microsoft comparison or product improvement**. Six local consent/subprocess
+ratio1.0, which the historical code classified as a failed size gate. That
+classification was incorrect: the numeric reference was unapproved, not a
+product acceptance criterion. This historical source/receipt does **not** test
+the reporting correction below. The run is tool interoperability, **not a
+Microsoft comparison or product improvement**. Six local consent/subprocess
 units and the existing 36 build-support cases also passed.
 
 Not executed: original Windows GDI/EMF fixture generation/replay, old diagnostic
@@ -47,6 +51,26 @@ control, Microsoft PDF baseline, actual worker launch/repetitions/faults through
 this supervisor, resource thresholds, manual fidelity review or either new
 printing endpoint. Compiling Job Object code is not execution evidence for its
 worker lifecycle. No result here closes the historical activation/service gates.
+
+## Reporting correction
+
+Size/raster/observer-growth references are explicitly **unapproved observations,
+not pass/fail gates**. A complete valid measurement returns `result:completed`
+and exit0, with `productUsable:false` and manual review required. Exit0 means
+measurement completion, **not product success**, a size/lifecycle claim, host-run
+approval or permission to progress to milestone B. Identical valid PDFs report
+ratio1.0/no size improvement; larger PDFs and viewer-dependent pixel differences
+remain visible. Dimensionally different rasters are explicitly uncomparable,
+with null difference metrics, not invented zero differences.
+
+Missing content, invalid PDFs/tool outputs, protocol/tool errors, surviving
+processes, unsafe filesystem/publication state and actual resource/deadline
+violations remain failures. Only actually safe, complete repetitions permit
+bounded fault observations and downstream comparison. A missed numeric reference
+does not stop them. Native units exercise that same continuation decision;
+Python and subprocess units distinguish reference misses from real errors.
+The follow-up compile/unit checkpoint will identify its own tested source;
+the historical `6cf816e` receipts remain unchanged.
 
 ## What this measures
 
@@ -68,13 +92,16 @@ Microsoft output is a comparison baseline, not evidence that DOCINFO output
 propagates on PSA. The native submission record explicitly says submitted, not
 pipeline success. A missing/invalid baseline prevents comparison.
 
-The initial metric target is aggregate worker PDF bytes at most 90% of Microsoft
-PDF bytes across all three predefined fixtures. Individual growth is reported.
+The unapproved exploratory size reference is aggregate worker PDF bytes at most
+90% of Microsoft PDF bytes across all three predefined fixtures. Exact aggregate
+and individual ratios/growth are reported; missing this reference does not fail
+the measurement or suppress other safe observations.
 The comparator requires matching normalized selectable text/expected glyph
 strings, embedded fonts, page count/media within 0.1pt, non-rasterized vector
 paths and no unexpected full-page images. It renders both with the same local
-Poppler tools at 150dpi: mean absolute normalized RGB difference at most 0.01,
-and at most 0.5% of pixels with any channel difference above 0.10. Critical
+Poppler tools at 150dpi. Unapproved raster references are mean absolute normalized
+RGB difference at most 0.01 and at most 0.5% of pixels with any channel difference
+above 0.10. Those metrics/reference misses are observations, not hard gates. Critical
 regions still require local manual inspection; automated averages do not
 establish general fidelity. No promise every file is smaller.
 
@@ -102,9 +129,14 @@ request or permission to run on the user's Windows machine now:
 Own-code-only build, no MIDL/MSIX/libgxps/Cairo build:
 
 ```powershell
-./desktop/build.ps1 -Mode Proof -Architecture ARM64 -VisualStudioVersion 2026
-# x64 uses -Architecture x64 -VisualStudioVersion 2022
+./desktop/build.ps1 -Mode Proof -Architecture ARM64
+# Defaults to installed VS2022/v143 and SDK26100; x64 uses -Architecture x64.
 ```
+
+VS2026 is the hosted ARM runner's toolchain choice, **not** a local ARM64
+prerequisite. Use `-VisualStudioVersion 2026` only where it is already installed
+(with its required CMake4.2+); do not install/select it for the user's existing
+VS2022/v143/SDK26100 environment.
 
 Only after separate host/run consent and existing runtime/tool availability:
 
@@ -144,15 +176,19 @@ status never qualify.
 
 The one warm-up and 30 serialized conversions record worker PID/creation,
 wall/CPU time, kernel peak committed memory and sampled private/working-set/
-handle peaks. Sampled peaks are lower bounds. The persistent observer must
-finish within 4 handles and 16MiB private bytes of its post-warm-up baseline.
+handle peaks. Sampled peaks are lower bounds. Observer growth of 4 handles and
+16MiB private bytes from its post-warm-up baseline are **unapproved reference
+targets only**. Reports retain baseline/final values, signed growth and reference
+misses; these values do not gate safe fault observations/comparison.
 Every worker exits; native renderer caches are never reused in-process.
 Successful PDFs are deliberately retained as named private experiment outputs;
 unexpected staging entries fail the test.
 
 Deadline, cancellation and forced-termination cases require an actually observed
-stop/reap. If the worker finishes before injection, that case fails as
-unobserved rather than claiming a cancellation test passed. These establish
+stop/reap. If a valid worker finishes before injection and leaves accounted-for
+staging, that case is an explicit **unobserved fault/review gap**, not a passed
+cancellation test; remaining safe observations continue. Unsafe, unreaped or
+failed conversions stop further worker launches. Observed faults establish
 active-process supervision, not a proven render-stage injection or native AV.
 Stopped experiment outputs are removed only from that exact newly owned private
 root after reaping; failed/indeterminate ordinary conversions are retained with
@@ -174,9 +210,9 @@ with verbose off. Reports/logs avoid private paths, raw titles/tokens, document
 strings, font data and raw upstream stderr. Original fixture manifests contain
 their own required synthetic text as test input, not diagnostic logs.
 
-Passing automated observations still returns `productUsable:false` and manual
+Completed automated measurements still return `productUsable:false` and manual
 review required. This does not test the new PSA-to-host bridge, silent output,
 StorageFile publication, 30 repeated PSA prints, service support or upstream OS/
 spooler/application memory cleanup. Those remain separate milestone-B gates.
-No compression tuning, rasterization substitute, threshold relaxation or
-renderer-scope edit is authorized when the product comparison fails.
+No compression tuning, rasterization substitute, acceptance-threshold decision,
+renderer-scope edit or milestone-B work is authorized by measurement completion.

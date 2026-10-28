@@ -8,7 +8,7 @@ Reports contain no document text, font names, input paths, or tool diagnostics.
 Every fixture requires at least one nonblank expected_text string.
 Renders are retained for local critical-region review, which is NOT measured here.
 Use private parent directories; Windows parent ACLs must be host-managed.
-Passing these fixture gates does not establish general fidelity or a usable printer.
+Completed measurements do not establish product acceptance or a usable printer.
 No tools are installed, PDFs rewritten, or files uploaded.
 """
 
@@ -41,10 +41,10 @@ MAX_PAGES = 16
 TOOL_TIMEOUT_SECONDS = 60
 MEDIA_TOLERANCE_PT = 0.1
 FULLPAGE_AREA_FRACTION = 0.90
-MAX_MEAN_DIFFERENCE = 0.01
+REFERENCE_MAX_MEAN_DIFFERENCE = 0.01
 PIXEL_DIFFERENCE_THRESHOLD = 0.10
-MAX_DIFFERENT_PIXEL_FRACTION = 0.005
-MAX_AGGREGATE_SIZE_RATIO = 0.90
+REFERENCE_MAX_DIFFERENT_PIXEL_FRACTION = 0.005
+REFERENCE_AGGREGATE_SIZE_RATIO = 0.90
 NUMBER = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
 
 
@@ -564,7 +564,15 @@ def parse_ppm(data):
 
 def raster_metrics(baseline, worker):
     if (baseline.width, baseline.height) != (worker.width, worker.height):
-        return {"dimensions_equal": False}
+        return {
+            "dimensions_equal": False,
+            "baseline_dimensions": [baseline.width, baseline.height],
+            "worker_dimensions": [worker.width, worker.height],
+            "normalized_mean_absolute_rgb_difference": None,
+            "different_pixel_fraction": None,
+            "reference_target_approved": False,
+            "within_reference_target": None,
+        }
 
     def samples(image):
         if image.maxval < 256:
@@ -589,7 +597,9 @@ def raster_metrics(baseline, worker):
         "dimensions_equal": True,
         "normalized_mean_absolute_rgb_difference": mean,
         "different_pixel_fraction": fraction,
-        "passed": mean <= MAX_MEAN_DIFFERENCE and fraction <= MAX_DIFFERENT_PIXEL_FRACTION,
+        "reference_target_approved": False,
+        "within_reference_target": mean <= REFERENCE_MAX_MEAN_DIFFERENCE
+        and fraction <= REFERENCE_MAX_DIFFERENT_PIXEL_FRACTION,
     }
 
 
@@ -600,16 +610,24 @@ def size_summary(fixtures):
                             for role in ("baseline", "worker")):
         raise ProofError("EMPTY_PDF", "size")
     for item in fixtures:
-        item["worker_baseline_size_ratio"] = item["worker"]["bytes"] / item["baseline"]["bytes"]
+        ratio = item["worker"]["bytes"] / item["baseline"]["bytes"]
+        item["worker_baseline_size_ratio"] = ratio
+        item["size_change"] = "smaller" if ratio < 1 else "larger" if ratio > 1 else "identical"
     ratio = worker / baseline
     return {"baseline_bytes": baseline, "worker_bytes": worker,
             "worker_baseline_size_ratio": ratio,
-            "maximum_ratio": MAX_AGGREGATE_SIZE_RATIO,
-            "passed": ratio <= MAX_AGGREGATE_SIZE_RATIO}
+            "size_change": "smaller" if ratio < 1 else "larger" if ratio > 1 else "identical",
+            "size_improvement_observed": ratio < 1,
+            "reference_target_approved": False,
+            "reference_maximum_ratio": REFERENCE_AGGREGATE_SIZE_RATIO,
+            "within_reference_target": ratio <= REFERENCE_AGGREGATE_SIZE_RATIO}
 
 
 def add_stage(record, name, passed, **metrics):
     record["stages"].append({"stage": name, "status": "passed" if passed else "failed", **metrics})
+
+def add_observation(record, name, **metrics):
+    record["observations"].append({"stage": name, "status": "observed", **metrics})
 
 
 def inspect_fixture(fixture, record, tools, render, runner):
@@ -658,8 +676,7 @@ def inspect_fixture(fixture, record, tools, render, runner):
             render / f"{fixture['id']}-{role}-{page:04d}.ppm", MAX_RENDER_FILE_BYTES, "raster"))
                   for role in ("baseline", "worker")]
         metrics = raster_metrics(*images)
-        add_stage(record, "raster", metrics.get("passed", False), page=page,
-                  **{key: value for key, value in metrics.items() if key != "passed"})
+        add_observation(record, "raster", page=page, **metrics)
 
 
 def new_report():
@@ -667,14 +684,18 @@ def new_report():
         "schema": "4d-pdf-printer.proof-comparison-report", "version": 1,
         "result": "error", "manual_review_required": True, "productUsable": False,
         "critical_region_manual_review": "unmeasured",
-        "scope": "automated_original_fixture_gates_only",
-        "tools": {}, "fixtures": [], "stages": [], "errors": [],
-        "thresholds": {
+        "scope": "measurements_and_required_content_safety_checks_only",
+        "tools": {}, "fixtures": [], "stages": [], "observations": [], "errors": [],
+        "validation_parameters": {
             "media_tolerance_pt": MEDIA_TOLERANCE_PT, "render_dpi": 150,
             "fullpage_image_area_fraction": FULLPAGE_AREA_FRACTION,
-            "maximum_mean_rgb_difference": MAX_MEAN_DIFFERENCE,
+        },
+        "reference_targets": {
+            "approved": False, "role": "observational_only_not_product_acceptance",
+            "aggregate_maximum_size_ratio": REFERENCE_AGGREGATE_SIZE_RATIO,
+            "maximum_mean_rgb_difference": REFERENCE_MAX_MEAN_DIFFERENCE,
             "pixel_channel_difference_threshold": PIXEL_DIFFERENCE_THRESHOLD,
-            "maximum_different_pixel_fraction": MAX_DIFFERENT_PIXEL_FRACTION,
+            "maximum_different_pixel_fraction": REFERENCE_MAX_DIFFERENT_PIXEL_FRACTION,
         },
     }
 
@@ -717,7 +738,7 @@ def compare(manifest, output, *, tools_root=None, render_directory=None, runner=
             check_path(root, kind="directory")
         report_fd = create_report_file(output_path)
         for fixture in fixtures:
-            record = {"id": fixture["id"], "stages": []}
+            record = {"id": fixture["id"], "stages": [], "observations": []}
             report["fixtures"].append(record)
             for role in ("baseline", "worker"):
                 path = absolute_path(fixture[role])
@@ -725,7 +746,7 @@ def compare(manifest, output, *, tools_root=None, render_directory=None, runner=
                 record[role] = identity.copy()
                 snapshots.append((path, identity, record, role))
         report["size"] = size_summary(report["fixtures"])
-        add_stage(report, "aggregate_size", report["size"]["passed"])
+        add_observation(report, "aggregate_size", **report["size"])
         tools = discover_tools(root, runner, report)
         if len(tools) == len(TOOLS):
             check_path(render, new=True)
@@ -759,7 +780,7 @@ def compare(manifest, output, *, tools_root=None, render_directory=None, runner=
                                 else "error")
         else:
             stages = report["stages"] + [stage for item in report["fixtures"] for stage in item["stages"]]
-            report["result"] = "passed" if stages and all(
+            report["result"] = "completed" if stages and all(
                 stage["status"] == "passed" for stage in stages) else "failed"
         try:
             if report_fd is None and output_path is not None and report_safe:
@@ -779,7 +800,7 @@ def compare(manifest, output, *, tools_root=None, render_directory=None, runner=
         finally:
             if report_fd is not None:
                 os.close(report_fd)
-    return (0 if report["result"] == "passed" else 2), report
+    return (0 if report["result"] == "completed" else 2), report
 
 
 class PrivateArgumentParser(argparse.ArgumentParser):
@@ -799,7 +820,7 @@ def main(argv=None):
                           render_directory=arguments.render_directory)
     except ProofError:
         code = 2
-    print("Automated comparison passed; local manual review is still required."
+    print("Comparison measurements completed; manual review required, not product acceptance."
           if code == 0 else
           "Automated comparison did not pass; consult the private report if safely created.")
     return code

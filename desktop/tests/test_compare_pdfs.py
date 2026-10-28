@@ -88,30 +88,33 @@ class ParserTests(unittest.TestCase):
     def test_metrics_identity_dimensions_and_normalization(self):
         image = comparator.parse_ppm(PPM_BYTES)
         metrics = comparator.raster_metrics(image, image)
-        self.assertTrue(metrics["passed"])
+        self.assertTrue(metrics["within_reference_target"])
+        self.assertFalse(metrics["reference_target_approved"])
         self.assertEqual(metrics["normalized_mean_absolute_rgb_difference"], 0)
         self.assertEqual(metrics["different_pixel_fraction"], 0)
-        self.assertEqual(comparator.raster_metrics(image, comparator.PPM(1, 2, 255, image.pixels)),
-                         {"dimensions_equal": False})
+        unmatched = comparator.raster_metrics(image, comparator.PPM(1, 2, 255, image.pixels))
+        self.assertFalse(unmatched["dimensions_equal"])
+        self.assertIsNone(unmatched["normalized_mean_absolute_rgb_difference"])
+        self.assertIsNone(unmatched["within_reference_target"])
         first = comparator.PPM(1, 1, 255, b"\0\xff\0")
         second = comparator.PPM(1, 1, 65535, b"\0\0\xff\xff\0\0")
         self.assertEqual(comparator.raster_metrics(first, second)["normalized_mean_absolute_rgb_difference"], 0)
 
-    def test_metrics_both_gates_and_exact_boundaries(self):
+    def test_metrics_unapproved_references_and_exact_boundaries(self):
         baseline = comparator.PPM(200, 1, 255, bytes(600))
         changed = comparator.PPM(200, 1, 255, b"\xff\0\0" + bytes(597))
-        self.assertTrue(comparator.raster_metrics(baseline, changed)["passed"])
+        self.assertTrue(comparator.raster_metrics(baseline, changed)["within_reference_target"])
         self.assertEqual(comparator.raster_metrics(baseline, changed)["different_pixel_fraction"], 0.005)
         shorter = comparator.PPM(199, 1, 255, bytes(597))
         self.assertFalse(comparator.raster_metrics(
-            shorter, comparator.PPM(199, 1, 255, b"\xff\0\0" + bytes(594)))["passed"])
+            shorter, comparator.PPM(199, 1, 255, b"\xff\0\0" + bytes(594)))["within_reference_target"])
         mean_failure = comparator.raster_metrics(
             comparator.PPM(1, 1, 255, b"\0\0\0"), comparator.PPM(1, 1, 255, b"\x03\x03\x03"))
         self.assertEqual(mean_failure["different_pixel_fraction"], 0)
-        self.assertFalse(mean_failure["passed"])
+        self.assertFalse(mean_failure["within_reference_target"])
         exact_mean = comparator.raster_metrics(
             comparator.PPM(1, 1, 100, b"\0\0\0"), comparator.PPM(1, 1, 100, b"\x01\x01\x01"))
-        self.assertTrue(exact_mean["passed"])
+        self.assertTrue(exact_mean["within_reference_target"])
         exact_channel = comparator.raster_metrics(
             comparator.PPM(1, 1, 10, b"\x03\x03\x03"), comparator.PPM(1, 1, 10, b"\x04\x04\x04"))
         self.assertEqual(exact_channel["different_pixel_fraction"], 0)
@@ -204,11 +207,12 @@ class ParserTests(unittest.TestCase):
                     for name, baseline, worker in (("text", 100, 120), ("vectors", 100, 100),
                                                   ("mixed", 800, 680))]
         result = comparator.size_summary(fixtures)
-        self.assertTrue(result["passed"])
+        self.assertTrue(result["within_reference_target"])
+        self.assertFalse(result["reference_target_approved"])
         self.assertEqual(result["worker_baseline_size_ratio"], 0.9)
         self.assertEqual([item["worker_baseline_size_ratio"] for item in fixtures], [1.2, 1, 0.85])
         fixtures[2]["worker"]["bytes"] += 1
-        self.assertFalse(comparator.size_summary(fixtures)["passed"])
+        self.assertFalse(comparator.size_summary(fixtures)["within_reference_target"])
         fixtures[2]["baseline"]["bytes"] = 0
         self.assert_code("EMPTY_PDF", comparator.size_summary, fixtures)
 
@@ -342,11 +346,12 @@ class WorkspaceTests(unittest.TestCase):
         with mock.patch.object(comparator, "MAX_MANIFEST_BYTES", 1):
             self.assertEqual(self.compare()[1]["errors"][0]["code"], "FILE_SIZE_LIMIT")
 
-    def test_mock_success_all_gates_private_reports_and_pdf_integrity(self):
+    def test_mock_completed_measurement_private_reports_and_pdf_integrity(self):
         before = {path: path.read_bytes() for path in self.root.glob("*.pdf")}
         code, report = self.compare()
         self.assertEqual(code, 0)
-        self.assertEqual(report["result"], "passed")
+        self.assertEqual(report["result"], "completed")
+        self.assertFalse(report["reference_targets"]["approved"])
         self.assertTrue(report["manual_review_required"])
         self.assertFalse(report["productUsable"])
         self.assertEqual(report["critical_region_manual_review"], "unmeasured")
@@ -379,8 +384,6 @@ class WorkspaceTests(unittest.TestCase):
             ("pdffonts", FONT_HEADER + FONT_SEPARATOR, "fonts"),
             ("pdfimages", NO_IMAGES + b"1 0 image 595 842 rgb 3 8 jpeg no 12 0 72 72 2K 1%\n", "images"),
             ("pdftocairo", b"<svg/>", "vectors"),
-            ("pdftoppm", b"P6\n1 1\n255\n\0\0\0", "raster"),
-            ("pdftoppm", b"P6\n2 1\n255\n" + bytes(6), "raster"),
         )
         for tool, data, gate in variants:
             with self.subTest(tool=tool, gate=gate):
@@ -399,15 +402,64 @@ class WorkspaceTests(unittest.TestCase):
                          for role in ("baseline", "worker")}
         self.assertEqual(self.compare()[1]["result"], "failed")
 
-    def test_size_gate_does_not_select_winners(self):
+    def test_size_reference_miss_does_not_abort_or_select_winners(self):
         for index, size in enumerate((120, 80, 80)):
             Path(self.manifest["fixtures"][index]["worker"]).write_bytes(b"x" * size)
         code, report = self.compare()
-        self.assertEqual(code, 2)
-        self.assertEqual(report["result"], "failed")
+        self.assertEqual(code, 0)
+        self.assertEqual(report["result"], "completed")
+        self.assertFalse(report["size"]["within_reference_target"])
+        self.assertFalse(report["size"]["reference_target_approved"])
+        self.assertTrue(report["manual_review_required"])
+        self.assertFalse(report["productUsable"])
         self.assertAlmostEqual(report["size"]["worker_baseline_size_ratio"], 280 / 300)
         self.assertEqual([item["worker_baseline_size_ratio"] for item in report["fixtures"]],
                          [1.2, 0.8, 0.8])
+        self.assertEqual(report["fixtures"][0]["size_change"], "larger")
+        self.assertEqual(len(list(self.render.glob("*.ppm"))), 6)
+
+    def test_larger_output_and_pixel_reference_misses_complete_for_review(self):
+        for fixture in self.manifest["fixtures"]:
+            Path(fixture["worker"]).write_bytes(b"x" * 150)
+        self.behavior = {("pdftoppm", "worker"): b"P6\n2 1\n255\n" + bytes(6)}
+        code, report = self.compare()
+        self.assertEqual(code, 0)
+        self.assertEqual(report["result"], "completed")
+        self.assertEqual(report["size"]["worker_baseline_size_ratio"], 1.5)
+        self.assertEqual(report["size"]["size_change"], "larger")
+        self.assertFalse(report["size"]["size_improvement_observed"])
+        self.assertTrue(report["manual_review_required"])
+        self.assertFalse(report["productUsable"])
+        for fixture in report["fixtures"]:
+            raster = fixture["observations"][0]
+            self.assertEqual(raster["stage"], "raster")
+            self.assertEqual(raster["status"], "observed")
+            self.assertFalse(raster["reference_target_approved"])
+            self.assertFalse(raster["within_reference_target"])
+            self.assertEqual(raster["normalized_mean_absolute_rgb_difference"], 0.5)
+            self.assertEqual(raster["different_pixel_fraction"], 0.5)
+        self.assertEqual(len(list(self.render.glob("*.svg"))), 6)
+        self.assert_private(report)
+
+    def test_raster_dimensions_are_explicit_uncomparable_observations(self):
+        self.behavior = {("pdftoppm", "worker"): b"P6\n1 1\n255\n\0\0\0"}
+        code, report = self.compare()
+        self.assertEqual(code, 0)
+        self.assertEqual(report["result"], "completed")
+        for fixture in report["fixtures"]:
+            raster = fixture["observations"][0]
+            self.assertFalse(raster["dimensions_equal"])
+            self.assertIsNone(raster["normalized_mean_absolute_rgb_difference"])
+            self.assertIsNone(raster["within_reference_target"])
+        self.assertTrue(report["manual_review_required"])
+        self.assertFalse(report["productUsable"])
+
+    def test_invalid_raster_remains_an_actual_error(self):
+        self.behavior = {("pdftoppm", "worker"): b"P6\n1 1\n255\n\0"}
+        code, report = self.compare()
+        self.assertEqual(code, 2)
+        self.assertEqual(report["result"], "error")
+        self.assertTrue(all(error["code"] == "PPM_PARSE_FAILED" for error in report["errors"]))
 
     def test_missing_tools_are_blocked_with_all_ratios_and_integrity(self):
         with mock.patch.object(comparator.shutil, "which", return_value=None):
@@ -755,7 +807,7 @@ end
                 continue
         self.skipTest("Existing local Poppler tool set absent; interoperability unmeasured")
 
-    def test_actual_poppler_interoperability_only_identical_pdfs_fail_size(self):
+    def test_actual_poppler_identical_pdfs_complete_without_size_improvement(self):
         tools_root = self.existing_poppler_root()
         with tempfile.TemporaryDirectory(
                 prefix=".compare-pdfs-poppler-", dir=Path(__file__).absolute().parent) as directory:
@@ -777,7 +829,7 @@ end
             output = root / "report.json"
             console = io.StringIO()
             # Only the timeout is shortened; every tool is real, and all
-            # production media/raster/size thresholds remain unchanged.
+            # structural validation and observational references remain unchanged.
             with mock.patch.object(comparator, "TOOL_TIMEOUT_SECONDS", 5), \
                     contextlib.redirect_stdout(console), contextlib.redirect_stderr(console):
                 code, report = comparator.compare(
@@ -785,27 +837,32 @@ end
                     render_directory=root / "renders")
             self.assertEqual(console.getvalue(), "")
             self.assertEqual(report["errors"], [], "Actual Poppler inspection must not error")
-            self.assertEqual(code, 2)
-            self.assertEqual(report["result"], "failed")
+            self.assertEqual(code, 0)
+            self.assertEqual(report["result"], "completed")
             self.assertEqual(report["size"]["worker_baseline_size_ratio"], 1.0)
-            self.assertFalse(report["size"]["passed"])
+            self.assertFalse(report["size"]["within_reference_target"])
+            self.assertFalse(report["size"]["reference_target_approved"])
+            self.assertFalse(report["size"]["size_improvement_observed"])
+            self.assertEqual(report["size"]["size_change"], "identical")
             self.assertTrue(report["manual_review_required"])
             self.assertFalse(report["productUsable"])
             self.assertEqual(report["critical_region_manual_review"], "unmeasured")
             self.assertEqual(len(report["tools"]), len(comparator.TOOLS))
             self.assertTrue(all(tool["status"] == "passed" for tool in report["tools"].values()))
-            self.assertEqual(report["stages"], [{"stage": "aggregate_size", "status": "failed"}])
+            self.assertEqual(report["stages"], [])
+            self.assertEqual(report["observations"][0]["stage"], "aggregate_size")
+            self.assertEqual(report["observations"][0]["status"], "observed")
             self.assertEqual(len(report["fixtures"]), 3)
             for fixture in report["fixtures"]:
                 self.assertEqual(fixture["worker_baseline_size_ratio"], 1.0)
                 self.assertEqual({stage["stage"] for stage in fixture["stages"]},
-                                 {"media", "text", "fonts", "images", "vectors", "raster", "integrity"})
+                                 {"media", "text", "fonts", "images", "vectors", "integrity"})
                 self.assertTrue(all(stage["status"] == "passed" for stage in fixture["stages"]))
                 text = next(stage for stage in fixture["stages"] if stage["stage"] == "text")
                 self.assertTrue(text["equal"])
                 self.assertEqual(text["baseline_expected_present"], 1)
                 self.assertEqual(text["worker_expected_present"], 1)
-                raster = next(stage for stage in fixture["stages"] if stage["stage"] == "raster")
+                raster = next(stage for stage in fixture["observations"] if stage["stage"] == "raster")
                 self.assertTrue(raster["dimensions_equal"])
                 self.assertEqual(raster["normalized_mean_absolute_rgb_difference"], 0)
                 self.assertEqual(raster["different_pixel_fraction"], 0)

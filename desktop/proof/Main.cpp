@@ -54,6 +54,36 @@ namespace
         return options;
     }
 
+    struct RepetitionAssessment
+    {
+        JsonObject reference;
+        bool safeToContinue;
+    };
+    RepetitionAssessment AssessRepetitions(bool measurementsValid, uint32_t completed,
+        uint64_t beforeBytes, uint64_t afterBytes, DWORD beforeHandles, DWORD afterHandles)
+    {
+        JsonObject reference;
+        Flag(reference, L"approved", false);
+        Text(reference, L"role", L"observational_only_not_product_acceptance");
+        Text(reference, L"sample_point", L"after_repetitions_before_fault_observations");
+        double byteGrowth = static_cast<double>(afterBytes) - static_cast<double>(beforeBytes);
+        double handleGrowth = static_cast<double>(afterHandles) - static_cast<double>(beforeHandles);
+        reference.Insert(L"private_bytes_growth", JsonValue::CreateNumberValue(byteGrowth));
+        reference.Insert(L"handle_growth", JsonValue::CreateNumberValue(handleGrowth));
+        Number(reference, L"reference_private_bytes_growth", 16 * 1024 * 1024);
+        Number(reference, L"reference_handle_growth", 4);
+        Flag(reference, L"within_reference_target", byteGrowth <= 16 * 1024 * 1024 && handleGrowth <= 4);
+        return {reference, measurementsValid && completed == 30};
+    }
+
+    uint64_t UnexpectedStaging(std::filesystem::path const& job)
+    {
+        uint64_t count = 0;
+        for (auto const& entry : std::filesystem::directory_iterator(job))
+            if (entry.path().filename() != L"output.pdf") ++count;
+        return count;
+    }
+
     void SelfTest()
     {
         Require(Quote(L"") == L"\"\"" && Quote(L"a b") == L"\"a b\"" &&
@@ -97,6 +127,19 @@ namespace
         for (unsigned round = 0; round < 16; ++round)
             Require(Hash(file.get()) == L"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
                 "hash-contract");
+        auto within = AssessRepetitions(true, 30, 1024, 1024, 10, 10);
+        auto beyond = AssessRepetitions(true, 30, 1024, 1024 + 32 * 1024 * 1024, 10, 20);
+        Require(within.reference.GetNamedBoolean(L"within_reference_target") &&
+            within.safeToContinue, "reference-within");
+        Require(!beyond.reference.GetNamedBoolean(L"approved") &&
+            !beyond.reference.GetNamedBoolean(L"within_reference_target") && beyond.safeToContinue,
+            "reference-miss-still-continues");
+        Require(AssessRepetitions(true, 30, 1024, 1024, 10, 20).safeToContinue &&
+            AssessRepetitions(true, 30, 1024, 1024 + 32 * 1024 * 1024, 10, 10).safeToContinue,
+            "individual-reference-miss-still-continues");
+        Require(!AssessRepetitions(false, 30, 1024, 1024, 10, 10).safeToContinue &&
+            !AssessRepetitions(false, 30, 1024, 1024 + 32 * 1024 * 1024, 10, 20).safeToContinue &&
+            !AssessRepetitions(true, 29, 1024, 1024, 10, 10).safeToContinue, "unsafe-or-incomplete-stops");
     }
 
     uint64_t PrivateBytes()
@@ -142,9 +185,10 @@ namespace
         auto warm = run(0, L"warm-up");
         report.Insert(L"warm_up", warm);
         Require(warm.GetNamedString(L"result") == L"ok" && warm.GetNamedBoolean(L"reaped"), "warm-up");
+        Require(UnexpectedStaging(root / L"warm-up") == 0, "warm-up-staging");
         uint64_t beforeBytes = PrivateBytes();
         DWORD beforeHandles = Handles();
-        bool passed = true;
+        bool measurementsValid = true;
         std::set<std::wstring> processInstances;
         for (uint32_t index = 0; index < 30; ++index)
         {
@@ -156,26 +200,29 @@ namespace
                     L":" + std::wstring(value.GetNamedString(L"creation_filetime"));
                 Require(processInstances.insert(key).second, "worker-instance-reused");
                 auto job = root / std::wstring(value.GetNamedString(L"job_name"));
-                uint64_t unexpected = 0;
-                for (auto const& entry : std::filesystem::directory_iterator(job))
-                    if (entry.path().filename() != L"output.pdf") ++unexpected;
+                uint64_t unexpected = UnexpectedStaging(job);
                 Number(value, L"unaccounted_staging_entries", unexpected);
                 clean = unexpected == 0;
             }
             Number(value, L"observer_private_bytes_after_reap", PrivateBytes());
             Number(value, L"observer_handles_after_reap", Handles());
             results.Append(value);
-            if (!clean) { passed = false; break; }
+            if (!clean) { measurementsValid = false; break; }
         }
         report.Insert(L"jobs", results);
         Number(report, L"observer_baseline_private_bytes", beforeBytes);
         Number(report, L"observer_baseline_handles", beforeHandles);
-        Number(report, L"observer_final_private_bytes", PrivateBytes());
-        Number(report, L"observer_final_handles", Handles());
-        passed = passed && results.Size() == 30 && Handles() <= beforeHandles + 4 &&
-            PrivateBytes() <= beforeBytes + 16 * 1024 * 1024;
+        auto afterBytes = PrivateBytes();
+        auto afterHandles = Handles();
+        Number(report, L"observer_final_private_bytes", afterBytes);
+        Number(report, L"observer_final_handles", afterHandles);
+        auto assessment = AssessRepetitions(measurementsValid, results.Size(),
+            beforeBytes, afterBytes, beforeHandles, afterHandles);
+        report.Insert(L"observer_reference", assessment.reference);
+        measurementsValid = assessment.safeToContinue;
+        uint64_t unobservedFaults = 0;
         report.Insert(L"faults", faults);
-        if (passed)
+        if (assessment.safeToContinue)
         {
             for (auto kind : {L"deadline", L"cancel", L"forced-termination"})
             {
@@ -188,21 +235,35 @@ namespace
                 Flag(value, L"fault_observed", observed);
                 Text(value, L"fault_scope", L"active-process; not proof of render stage or native AV");
                 faults.Append(value);
-                if (observed && value.GetNamedBoolean(L"created_by_supervisor"))
+                bool safe = value.GetNamedBoolean(L"reaped") &&
+                    value.GetNamedBoolean(L"created_by_supervisor", false);
+                if (observed && safe)
                 {
                     auto job = root / (L"fault-" + std::wstring(kind));
                     ValidatePath(job);
                     std::filesystem::remove_all(job);
                     Flag(value, L"private_experiment_cleanup_complete", !std::filesystem::exists(job));
+                    safe = !std::filesystem::exists(job);
                 }
-                passed = passed && observed;
+                else if (safe && value.GetNamedString(L"result") == L"ok")
+                {
+                    uint64_t unexpected = UnexpectedStaging(root / (L"fault-" + std::wstring(kind)));
+                    Number(value, L"unaccounted_staging_entries", unexpected);
+                    Text(value, L"observation", L"fault_not_observed_worker_completed");
+                    ++unobservedFaults;
+                    safe = unexpected == 0;
+                }
+                else safe = false;
+                if (!safe) { measurementsValid = false; break; }
             }
         }
         report.Insert(L"faults", faults);
         Flag(report, L"verbose_truncated", trace.truncated);
+        Number(report, L"unobserved_fault_count", unobservedFaults);
         Text(report, L"stage", L"worker-experiment-complete");
-        Text(report, L"result", passed ? L"passed" : L"failed");
+        Text(report, L"result", measurementsValid ? L"completed" : L"failed");
         Flag(report, L"psa_pipeline_tested", false);
+        Flag(report, L"manual_review_required", true);
         Flag(report, L"manual_fidelity_review_required", true);
         return report;
     }

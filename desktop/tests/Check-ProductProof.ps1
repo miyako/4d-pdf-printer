@@ -33,6 +33,18 @@ try {
     $arguments = @('-NoProfile', '-File', $program, '-Report', $new)
     $value = Invoke-Bounded $pwsh $arguments $new 10
     if ($value.schema -cne 'proof-test' -or $value.stage -cne 'done') { throw 'Subprocess report/arguments changed.' }
+    if ($value.result -cne 'completed' -or $value.within_reference_target -or
+        $value.reference_target_approved -or $value.productUsable -or -not $value.manual_review_required) {
+        throw 'A reference miss was not preserved as a completed measurement requiring review.'
+    }
+    ++$checks
+    try {
+        Invoke-Bounded $pwsh @('-NoProfile', '-File', $program, '-Report',
+            (Join-Path $root 'hard-error.json'), '-Mode', 'error') (Join-Path $root 'hard-error.json') 10
+        throw 'A real subprocess failure was accepted as a completed measurement.'
+    } catch {
+        if ($_.Exception.Message -cne 'Proof subprocess failed; see typed private record.') { throw }
+    }
     ++$checks
     try {
         Invoke-Bounded $pwsh @('-NoProfile', '-File', $program, '-Mode', 'large') `
