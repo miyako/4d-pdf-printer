@@ -38,10 +38,14 @@ jobs:
         with:
           python-version: '3.12'
           architecture: x64 # Host interpreter may be emulated; target worker must be native.
+      - name: Check portable Visual Studio selection
+        run: |
+          & renderer/tests/Check-BuildSupport.ps1
       - name: Assert native OS and select pinned v143 toolchain
         id: prepare
         run: |
-          & renderer/tools/build-windows.ps1 -Architecture '${{ matrix.arch }}' -Stage Prepare
+          & renderer/tools/build-windows.ps1 -Architecture '${{ matrix.arch }}' -Stage Prepare `
+            -VisualStudioVersion '${{ matrix.arch == 'arm64' && '2026' || '2022' }}'
       # Public-repo caches can be fork-readable. Keep dependency binaries local
       # to this job until covered-source/distribution gates are resolved.
       - name: Build dynamic target dependencies and worker

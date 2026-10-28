@@ -1,9 +1,11 @@
 param(
     [Parameter(Mandatory = $true)][ValidateSet('x64', 'arm64')][string]$Architecture,
-    [Parameter(Mandatory = $true)][ValidateSet('Prepare', 'Build', 'Test')][string]$Stage
+    [Parameter(Mandatory = $true)][ValidateSet('Prepare', 'Build', 'Test')][string]$Stage,
+    [ValidateSet('2022', '2026')][string]$VisualStudioVersion = '2022'
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'BuildSupport.ps1')
 $Architecture = $Architecture.ToLowerInvariant()
 if (![Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([Runtime.InteropServices.OSPlatform]::Windows)) {
     throw 'This helper requires a matching native Windows runner'
@@ -41,9 +43,10 @@ if ($Stage -eq 'Prepare') {
     if ($LASTEXITCODE) { throw 'Cannot determine CMake version' }
     $cmakeVersion = @($cmakeOutput)[0]
     if ($cmakeVersion -notmatch 'cmake version ([0-9]+\.[0-9]+\.[0-9]+)') { throw 'Cannot parse CMake version' }
-    if ($Architecture -eq 'arm64' -and [version]$Matches[1] -lt [version]'4.2.0') { throw 'VS2026 requires CMake 4.2+' }
+    $plan = Get-RendererBuildPlan -Architecture $Architecture -VisualStudioVersion $VisualStudioVersion `
+        -CMakeVersion ([version]$Matches[1])
     $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-    $vsRange = if ($Architecture -eq 'arm64') { '[18.0,19.0)' } else { '[17.0,18.0)' }
+    $vsRange = $plan.VisualStudioRange
     $instances = & $vswhere -products '*' -version $vsRange -format json | ConvertFrom-Json
     if ($LASTEXITCODE) { throw 'vswhere failed' }
     $toolset = $null
@@ -65,7 +68,7 @@ if ($Stage -eq 'Prepare') {
             (Test-Path "${env:ProgramFiles(x86)}\Windows Kits\10\Lib\$($_.Name)\um\$Architecture\kernel32.lib") } |
         Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
     if (!$sdk) { throw "No Windows SDK for $Architecture" }
-    $generator = if ($Architecture -eq 'arm64') { 'Visual Studio 18 2026' } else { 'Visual Studio 17 2022' }
+    $generator = $plan.CMakeGenerator
     foreach ($arch in @($Architecture)) {
         @"
 set(VCPKG_TARGET_ARCHITECTURE $arch)
@@ -107,6 +110,7 @@ set(VCPKG_CMAKE_SYSTEM_VERSION $($sdk.Name))
         os_architecture = $osArchitecture
         process_architecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
         generator = $generator; visual_studio = $instance.installationPath
+        visual_studio_selection = $plan.VisualStudioVersion
         visual_studio_version = $instance.installationVersion; toolset = $toolset.Name
         windows_sdk = $sdk.Name; cmake = $cmakeVersion; toolchain_cache_key = $key
         compiler_tools = $compilerTools

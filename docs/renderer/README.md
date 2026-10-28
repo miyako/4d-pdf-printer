@@ -42,7 +42,9 @@ See [the exact v1 status and exit contract](cli-v1.md) and
 ## Windows source build
 
 Use PowerShell 7, Git, Python 3.12 and the matching native Windows OS.
-x64 uses Visual Studio 2022; ARM64 uses Visual Studio 2026 and CMake >= 4.2.
+Local x64 **and ARM64 default to Visual Studio 2022**, with CMake >= 3.24.
+An explicit `-VisualStudioVersion 2026` selects VS 2026 and requires CMake >= 4.2
+on either architecture; this is not inferred from the target CPU.
 Both require installed v143/14.44 Hostx64 tools and release/debug CRT libraries
 for the target architecture, plus a matching Windows SDK. vcpkg host helpers
 use the native architecture's triplet too: the ARM64 runner's x64 cross-compiler
@@ -59,6 +61,24 @@ $arch = 'arm64' # Use 'x64' on native x64 Windows.
 & renderer/tools/build-windows.ps1 -Architecture $arch -Stage Build
 & renderer/tools/build-windows.ps1 -Architecture $arch -Stage Test
 ```
+
+The selector applies to `Prepare`; `Build` and `Test` use that preparation's
+recorded instance/generator rather than redetecting Visual Studio. For an
+intentional VS 2026 build, use
+`-Stage Prepare -VisualStudioVersion 2026`. CI explicitly retains VS 2026 on
+the hosted ARM64 runner and VS 2022 on x64. No tool installation, automatic
+upgrade or missing-CRT fallback is performed.
+
+Portable selector checks (no Windows preparation, dependency or runtime build):
+
+```powershell
+pwsh -NoLogo -NoProfile -File renderer/tests/Check-BuildSupport.ps1
+```
+
+The local VS 2022 ARM64 selector is covered by these portable checks, **not an
+executed Windows `Prepare`/`Build`/`Test` compatibility result**. The earlier
+native ARM64 engine evidence below used hosted VS 2026; it is not proof that
+the revised helper has run in a user's VS 2022 environment.
 
 Stop on any nonzero build command. `renderer/vcpkg.json` pins the registry
 baseline; `renderer/ports/libgxps` is the explicit overlay. vcpkg has no separate
@@ -184,12 +204,17 @@ VS 2026 18.11.12315.225/v143 14.44.35207, SDK 10.0.26100.0 and CMake 4.4.4.
 Host tools/interpreters may be x64-emulated; the tested worker/DLLs were native
 ARM64, not x64 emulation or compile-only evidence.
 
-The final checkpoint changes documentation/evidence only relative to that
-revision. Its draft PR deliberately uses a `[skip ci]` documentation commit to
+The earlier `afd9b13ea1e52584293db90ea93eee68eda3e6b5` checkpoint changed
+documentation/evidence only relative to that revision. Its draft PR deliberately
+used a `[skip ci]` documentation commit to
 honor the bounded-build checkpoint: **final HEAD/PR checks are not claimed
 green**. The completed manual results above retain their exact tested revisions.
 Neither architecture result establishes printer activation, end-to-end desktop
 printing, user-host validation or Windows-service submission.
+The later local-delivery selector correction also uses a disclosed skip-ci
+checkpoint: engine/dependency/features/protocol inputs remain unchanged, but
+its helper/workflow changes have portable validation only, with no new native
+renderer build or CI run.
 
 Runtime DLL/notice inventory, LGPL replacement/relinking, immutable MSIX,
 current font/rendering fidelity and desktop identity integration must be

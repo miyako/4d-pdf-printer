@@ -55,6 +55,21 @@ The renderer-owned source-build helper is
 | `renderer/build-runtime-<arch>/native-test-receipt.json` | Written only after the native contract/transaction tests pass |
 | `renderer/build-evidence-<arch>/` | Public synthetic test log, import dumps, package file lists, notices and provenance |
 
+`Prepare` defaults to installed **VS 2022 for both native architectures**.
+`-VisualStudioVersion 2026` is an explicit opt-in requiring CMake 4.2+; VS 2022
+uses the existing CMake 3.24+ project requirement. Hosted ARM64 CI opts into
+2026 explicitly, while x64 CI selects 2022. Both keep the same pinned v143/14.44
+target compiler/CRT checks and native target/host triplet policy. The chosen year
+is recorded as `visual_studio_selection` alongside the exact installed version,
+generator, source/recipe/compiler hashes and SDK. `Build`/`Test` consume that
+prepared provenance, not a fresh VS selection.
+
+The selector and CMake gating have portable PowerShell coverage. Native
+VS 2022 ARM64 preparation/runtime compatibility has **not** been executed by
+this correction; prior hosted VS 2026 native engine results must not be relabeled
+as testing the revised local helper. No tool installation or user-host renderer
+execution is implied or authorized by these instructions.
+
 Inventory `files[]` contains `file`, `machine`, `sha256`, `bytes`,
 `package_file_list`, `installed_path` and `imports[]`. Each import has `file`,
 `resolution`, `classification`, `observed_path` and `classification_basis`.
