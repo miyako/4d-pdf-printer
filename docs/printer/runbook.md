@@ -65,8 +65,13 @@ opens a dialog**, never calls a UI launcher, and bounds submission using a
 disposable-process watchdog. It cannot forbid the print system from showing
 Save As. Any OS dialog in this mode is a **failed unattended experiment**.
 There is intentionally no undocumented "suppress all PSA UI" flag.
-The watchdog defaults to 60 seconds (1..300), starts before synchronous queue/GDI
-calls, and kills only this disposable submitter if blocked. A killed submitter
+`--timeout-seconds` is the submission allowance (default 60, range 1..300).
+`--delay-seconds` is a separate startup delay (default 0, range 0..86400).
+The watchdog starts before that delay and the synchronous queue/GDI calls;
+its total budget is **delay + timeout**, not timeout alone. A delay greater than
+the timeout is valid: no `delay < timeout` restriction applies. Malformed or
+out-of-range timing arguments fail explicitly with exit 2 before submission.
+The watchdog kills only this disposable submitter if blocked. A killed submitter
 may leave a spooled job or OS dialog; inspect/cancel that exact job before retrying.
 Zero exit means GDI accepted `EndDoc`, **not** PSA success. Automated capture
 intentionally completes Failed even if the submission process exits zero.
@@ -118,7 +123,12 @@ services.msc
 **Do not start it under the default Local System account.** In Services, set
 **Log On** to the named valid user, verify its credentials privately, then select
 **Automatic** for the cold-boot case and record configuration privately. The
-delay supports a sign-out test; it is included in the watchdog's total budget.
+delay supports a sign-out test and is **added to** the submission allowance.
+The exact command above waits 120 seconds and has a 210-second watchdog budget
+(120 + 90), leaving a nominal 90 seconds for submission after the delay.
+The 300-second maximum limits the timeout argument, not the combined budget.
+The probe JSON records `delaySeconds`, `timeoutSeconds` and
+`watchdogBudgetSeconds` so the actual selected values can be checked.
 Do not enable service recovery retries. Use `sc.exe start PsaPrintProbe` and
 `sc.exe queryex PsaPrintProbe` to start/inspect the one-shot test; distinguish
 SCM errors, the service's reported exit code and workflow evidence.

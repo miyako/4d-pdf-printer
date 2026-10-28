@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace
@@ -20,13 +21,27 @@ namespace
         unsigned timeout = 60, delay = 0;
     };
 
-    unsigned Number(std::wstring const& value, unsigned maximum)
+    unsigned Number(std::wstring const& value, unsigned minimum, unsigned maximum, char const* option)
     {
-        if (value.empty() || value.find_first_not_of(L"0123456789") != std::wstring::npos)
-            throw std::invalid_argument("invalid numeric option");
-        auto number = std::stoul(value);
-        if (number > maximum) throw std::invalid_argument("numeric option out of range");
-        return static_cast<unsigned>(number);
+        std::string error = std::string(option) + " must be an integer in " +
+            std::to_string(minimum) + ".." + std::to_string(maximum);
+        if (value.empty()) throw std::invalid_argument(error);
+        unsigned number = 0;
+        for (wchar_t digit : value)
+        {
+            if (digit < L'0' || digit > L'9') throw std::invalid_argument(error);
+            unsigned next = static_cast<unsigned>(digit - L'0');
+            if (number > maximum / 10 || (number == maximum / 10 && next > maximum % 10))
+                throw std::invalid_argument(error);
+            number = number * 10 + next;
+        }
+        if (number < minimum) throw std::invalid_argument(error);
+        return number;
+    }
+
+    std::chrono::seconds WatchdogBudget(Options const& value)
+    {
+        return std::chrono::seconds(value.delay + value.timeout);
     }
 
     Options Parse(std::vector<std::wstring> const& args)
@@ -46,13 +61,15 @@ namespace
                 else if (arg == L"--output") result.output = value;
                 else if (arg == L"--job-name") result.job = value;
                 else if (arg == L"--log") result.log = value;
-                else if (arg == L"--timeout-seconds") result.timeout = Number(value, 300);
-                else if (arg == L"--delay-seconds") result.delay = Number(value, 86400);
+                else if (arg == L"--timeout-seconds")
+                    result.timeout = Number(value, 1, 300, "--timeout-seconds");
+                else if (arg == L"--delay-seconds")
+                    result.delay = Number(value, 0, 86400, "--delay-seconds");
                 else throw std::invalid_argument("unknown option");
             }
         }
-        if (result.queue.empty() || result.interactive == result.noninteractive || result.timeout == 0)
-            throw std::invalid_argument("require queue, exactly one interaction mode, positive timeout");
+        if (result.queue.empty() || result.interactive == result.noninteractive)
+            throw std::invalid_argument("require queue and exactly one interaction mode");
         if (result.service && (!result.noninteractive || result.log.empty()))
             throw std::invalid_argument("service requires noninteractive mode and log");
         if (!result.output.empty())
@@ -95,6 +112,9 @@ namespace
             std::to_string(jobId) + ",\"processId\":" + std::to_string(GetCurrentProcessId()) +
             ",\"windowsSessionId\":" + std::to_string(sessionId) +
             ",\"utcFileTime\":" + std::to_string(timestamp.QuadPart) +
+            ",\"timeoutSeconds\":" + std::to_string(options.timeout) +
+            ",\"delaySeconds\":" + std::to_string(options.delay) +
+            ",\"watchdogBudgetSeconds\":" + std::to_string(WatchdogBudget(options).count()) +
             ",\"outputSupplied\":" + (options.output.empty() ? "false" : "true") + "}\n";
         if (options.log.empty()) std::fputs(line.c_str(), stdout);
         else
@@ -133,10 +153,9 @@ namespace
     {
         Log("probe-started");
         // A separate watchdog bounds synchronous GDI/driver calls that may ignore AbortProc.
-        std::thread watchdog([]
+        auto limit = std::chrono::steady_clock::now() + WatchdogBudget(options);
+        std::thread watchdog([limit]
         {
-            auto limit = std::chrono::steady_clock::now() +
-                std::chrono::seconds(options.timeout + options.delay);
             while (!done)
             {
                 if (stopRequested || std::chrono::steady_clock::now() >= limit)
@@ -233,10 +252,16 @@ namespace
     int SelfTest()
     {
         unsigned checked = 0;
-        auto reject = [&checked](std::vector<std::wstring> args)
+        auto reject = [&checked](std::vector<std::wstring> args, char const* expectedError = nullptr)
         {
             try { Parse(args); }
-            catch (std::exception const&) { ++checked; return; }
+            catch (std::exception const& error)
+            {
+                if (expectedError && std::string(error.what()).find(expectedError) == std::string::npos)
+                    throw std::runtime_error("incorrect timing error");
+                ++checked;
+                return;
+            }
             throw std::runtime_error("invalid arguments were accepted");
         };
         reject({});
@@ -244,15 +269,51 @@ namespace
         reject({L"--queue", L"q", L"--interactive", L"--output", L"C:\\x.oxps"});
         reject({L"--queue", L"q", L"--noninteractive", L"--output", L"C:\\x.pdf"});
         reject({L"--queue", L"q", L"--noninteractive", L"--output", L"x.oxps"});
-        reject({L"--queue", L"q", L"--noninteractive", L"--timeout-seconds", L"0"});
-        reject({L"--queue", L"q", L"--noninteractive", L"--timeout-seconds", L"-1"});
+        reject({L"--queue", L"q", L"--noninteractive", L"--timeout-seconds", L"0"},
+            "--timeout-seconds must be an integer in 1..300");
+        reject({L"--queue", L"q", L"--noninteractive", L"--timeout-seconds", L"-1"},
+            "--timeout-seconds must be an integer in 1..300");
         reject({L"--queue", L"q", L"--noninteractive", L"--service"});
         reject({L"--queue", L"q", L"--noninteractive", L"--unknown", L"x"});
+        reject({L"--queue", L"q", L"--noninteractive", L"--timeout-seconds", L"301"},
+            "--timeout-seconds must be an integer in 1..300");
+        reject({L"--queue", L"q", L"--noninteractive", L"--timeout-seconds", L"999999999999999999999"},
+            "--timeout-seconds must be an integer in 1..300");
+        reject({L"--queue", L"q", L"--noninteractive", L"--delay-seconds", L"-1"},
+            "--delay-seconds must be an integer in 0..86400");
+        reject({L"--queue", L"q", L"--noninteractive", L"--delay-seconds", L"86401"},
+            "--delay-seconds must be an integer in 0..86400");
+        reject({L"--queue", L"q", L"--noninteractive", L"--delay-seconds", L"999999999999999999999"},
+            "--delay-seconds must be an integer in 0..86400");
+        reject({L"--queue", L"q", L"--noninteractive", L"--delay-seconds", L"1.5"},
+            "--delay-seconds must be an integer in 0..86400");
         auto valid = Parse({L"--queue", L"q", L"--noninteractive",
             L"--output", L"C:\\synthetic.oxps", L"--job-name", L"synthetic-token"});
-        if (checked != 9 || valid.job != L"synthetic-token" || !valid.noninteractive)
+        if (checked != 15 || valid.job != L"synthetic-token" || !valid.noninteractive ||
+            WatchdogBudget(valid) != std::chrono::seconds(60))
             throw std::runtime_error("argument assertions failed");
-        std::puts("10 argument cases passed; no printer accessed.");
+        auto delayed = Parse({L"--service", L"--noninteractive", L"--queue",
+            L"PSA Diagnostic Capture (no file UI)", L"--output",
+            L"C:\\PsaLab\\evidence\\synthetic-service.oxps", L"--job-name", L"synthetic-service",
+            L"--log", L"C:\\PsaLab\\evidence\\service.jsonl",
+            L"--timeout-seconds", L"90", L"--delay-seconds", L"120"});
+        auto start = std::chrono::steady_clock::time_point{};
+        auto submission = start + std::chrono::seconds(delayed.delay);
+        auto deadline = start + WatchdogBudget(delayed);
+        if (!delayed.service || delayed.timeout != 90 || delayed.delay != 120 ||
+            deadline != start + std::chrono::seconds(210) ||
+            deadline - submission != std::chrono::seconds(90))
+            throw std::runtime_error("documented service command must retain 90 seconds after its 120-second delay");
+        for (auto const& values : {std::pair{L"1", L"0"}, std::pair{L"300", L"86400"},
+            std::pair{L"240", L"120"}})
+        {
+            auto timing = Parse({L"--queue", L"q", L"--noninteractive", L"--timeout-seconds",
+                values.first, L"--delay-seconds", values.second});
+            if (WatchdogBudget(timing) - std::chrono::seconds(timing.delay) !=
+                std::chrono::seconds(timing.timeout))
+                throw std::runtime_error("delay must be added to, not deducted from, submission allowance");
+        }
+        std::puts("20 argument/timing cases passed; service delay 120 + timeout 90 = budget 210; no printer accessed.");
         return 0;
     }
 }
@@ -281,7 +342,8 @@ int wmain(int argc, wchar_t** argv)
         std::fprintf(stderr, "PrintProbe: %s\n"
             "Usage: PrintProbe --queue NAME (--interactive | --noninteractive)"
             " [--output ABSOLUTE.oxps] [--job-name TOKEN] [--timeout-seconds 1..300]"
-            " [--log ABSOLUTE.jsonl] [--service] [--delay-seconds 0..86400]\n", error.what());
+            " [--log ABSOLUTE.jsonl] [--service] [--delay-seconds 0..86400]\n"
+            "Watchdog budget = delay + timeout; timeout is not reduced by the startup delay.\n", error.what());
         return 2;
     }
 }
