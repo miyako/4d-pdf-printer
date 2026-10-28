@@ -1,0 +1,75 @@
+name: Desktop Windows handoff gate
+on:
+  push:
+    paths: ['desktop/**', 'docs/desktop/**', '.github/workflows/desktop-windows.yml']
+  pull_request:
+    paths: ['desktop/**', 'docs/desktop/**', '.github/workflows/desktop-windows.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  gate:
+    name: ${{ matrix.architecture }} native
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            architecture: x64
+            visualStudio: '2022'
+            runtime: false
+          - runner: windows-11-arm
+            architecture: ARM64
+            visualStudio: '2026'
+            runtime: true
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Native build and package
+        shell: pwsh
+        run: ./desktop/build.ps1 -Architecture ${{ matrix.architecture }} -VisualStudioVersion ${{ matrix.visualStudio }}
+      - name: Explicit disposable hosted signing and trust
+        if: matrix.runtime
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted') {
+            throw 'Temporary signing/trust is restricted to this disposable hosted job.'
+          }
+          $cert = New-SelfSignedCertificate -Type Custom -Subject 'CN=DesktopPdfPrototypeDev' `
+            -KeyUsage DigitalSignature -CertStoreLocation 'Cert:/CurrentUser/My' `
+            -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}')
+          $cer = Join-Path $env:RUNNER_TEMP 'DesktopPdfPrototypeDev.cer'
+          Export-Certificate -Cert $cert -FilePath $cer | Out-Null
+          Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:/LocalMachine/TrustedPeople' | Out-Null
+          $tool = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/bin/10.0.26100.0/x64/signtool.exe'
+          & $tool sign /fd SHA256 /sha1 $cert.Thumbprint /s My ./desktop/out/arm64/DesktopPdfPrototype.msix
+          if ($LASTEXITCODE -ne 0) { throw 'Hosted development signing failed.' }
+          "DESKTOP_GATE_CERT=$($cert.Thumbprint)" >> $env:GITHUB_ENV
+      - name: Actual Windows 11 PSA background handoff gate
+        if: matrix.runtime
+        shell: pwsh
+        run: |
+          ./desktop/tests/Invoke-DesktopGate.ps1 `
+            -PackagePath ./desktop/out/arm64/DesktopPdfPrototype.msix `
+            -OutputPath ./desktop/out/arm64/acceptance.json -AllowDevelopmentInstall
+      - name: Exact hosted certificate cleanup
+        if: always() && matrix.runtime
+        shell: pwsh
+        run: |
+          if ($env:DESKTOP_GATE_CERT) {
+            foreach ($store in @('CurrentUser/My', 'LocalMachine/TrustedPeople')) {
+              $path = "Cert:/$store/$env:DESKTOP_GATE_CERT"
+              if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path }
+            }
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-handoff-${{ matrix.architecture }}
+          path: |
+            desktop/out/*/DesktopPdfPrototype.msix
+            desktop/out/*/build-evidence.json
+            desktop/out/*/resource-evidence.xml
+            desktop/out/*/acceptance.json
+          if-no-files-found: warn
