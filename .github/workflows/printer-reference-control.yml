@@ -16,24 +16,24 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build pinned official sample
         shell: pwsh
-        run: ./printer/reference-control/Build-Control.ps1
+        run: ./printer/reference-control/Build-Control.ps1 -OutputDirectory "$env:RUNNER_TEMP\rc"
       - name: Preserve build evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: reference-control-build-evidence
           path: |
-            printer/reference-control/out/build.log
-            printer/reference-control/out/build-evidence.json
-            printer/reference-control/out/source/original-files.json
-            printer/reference-control/out/upstream.json
+            ${{ runner.temp }}/rc/build.log
+            ${{ runner.temp }}/rc/build-evidence.json
+            ${{ runner.temp }}/rc/source/original-files.json
+            ${{ runner.temp }}/rc/upstream.json
           if-no-files-found: warn
       - name: Unsigned ARM64 control
         uses: actions/upload-artifact@v4
         with:
           name: microsoft-reference-control-unsigned-arm64
           path: |
-            printer/reference-control/out/PsaReferenceControl.arm64.appx
-            printer/reference-control/out/Microsoft-LICENSE.txt
-            printer/reference-control/out/packages/**/Dependencies/arm64/*.appx
+            ${{ runner.temp }}/rc/PsaReferenceControl.arm64.appx
+            ${{ runner.temp }}/rc/Microsoft-LICENSE.txt
+            ${{ runner.temp }}/rc/packages/**/Dependencies/arm64/*.appx
           if-no-files-found: error

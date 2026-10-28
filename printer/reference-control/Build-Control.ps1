@@ -1,11 +1,12 @@
 [CmdletBinding()]
-param([string]$OutputDirectory = (Join-Path $PSScriptRoot 'out'))
+param([Parameter(Mandatory)][string]$OutputDirectory)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 if (-not $IsWindows) { throw 'Build requires Windows, VS2022 UWP C#/C++ ARM64 tools and SDK 26100.' }
 if (Test-Path -LiteralPath $OutputDirectory) { throw "Use a fresh output directory: $OutputDirectory" }
 New-Item -ItemType Directory -Path $OutputDirectory | Out-Null
 $out = (Resolve-Path -LiteralPath $OutputDirectory).Path
+if ($out.Length -gt 40) { throw 'Use a short output path (at most 40 characters), e.g. C:\psa-rc, for legacy UWP/NuGet tools.' }
 $source = & (Join-Path $PSScriptRoot 'Fetch-Source.ps1') -Destination (Join-Path $out 'source')
 $app = Join-Path $source 'PSASamples/UWP/CSharp/PrintSupportApp'
 $project = Join-Path $app 'PrintSupportApp.sln'
