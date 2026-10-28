@@ -32,7 +32,6 @@ namespace desktop
         qos.Sid = identity.user.data();
         CheckRpc(RpcBindingSetAuthInfoExW(binding, nullptr, RPC_C_AUTHN_LEVEL_PKT_PRIVACY,
             RPC_C_AUTHN_WINNT, nullptr, RPC_C_AUTHZ_NONE, reinterpret_cast<RPC_SECURITY_QOS*>(&qos)));
-        CheckRpc(RpcBindingSetOption(binding, RPC_C_OPT_CALL_TIMEOUT, 2000));
         GateRequest input{};
         auto text = request.Stringify();
         if (text.size() >= std::size(input.json)) throw winrt::hresult_invalid_argument();

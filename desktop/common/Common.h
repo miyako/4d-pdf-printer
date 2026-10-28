@@ -10,6 +10,7 @@
 #include <winrt/Windows.ApplicationModel.h>
 #include <winrt/Windows.Data.Json.h>
 #include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Security.Cryptography.h>
 #include <winrt/Windows.Security.Cryptography.Core.h>
 
@@ -39,7 +40,7 @@ namespace desktop
 
     inline void CheckRpc(RPC_STATUS code)
     {
-        if (code != RPC_S_OK) throw winrt::hresult_error(HRESULT_FROM_WIN32(code));
+        if (code != ERROR_SUCCESS) throw winrt::hresult_error(HRESULT_FROM_WIN32(code));
     }
 
     inline std::vector<uint8_t> TokenData(HANDLE token, TOKEN_INFORMATION_CLASS kind)

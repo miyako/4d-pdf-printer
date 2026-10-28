@@ -27,14 +27,19 @@ add_custom_command(
   OUTPUT "${rpc_dir}/desktop-v1.h" "${rpc_dir}/desktop-v1_c.c" "${rpc_dir}/desktop-v1_s.c"
   COMMAND "${DESKTOP_SDK_BIN}/midl.exe" /nologo /robust /W4 /WX /env "${midl_arch}"
     /I "${DESKTOP_SDK_INCLUDE}/um" /I "${DESKTOP_SDK_INCLUDE}/shared"
+    /acf "${CMAKE_CURRENT_SOURCE_DIR}/rpc/desktop-v1.acf"
     /out "${rpc_dir}" /h desktop-v1.h
     "${CMAKE_CURRENT_SOURCE_DIR}/rpc/desktop-v1.idl"
-  DEPENDS rpc/desktop-v1.idl
+  DEPENDS rpc/desktop-v1.idl rpc/desktop-v1.acf
   VERBATIM)
+add_custom_target(DesktopRpcGenerated DEPENDS
+  "${rpc_dir}/desktop-v1.h" "${rpc_dir}/desktop-v1_c.c" "${rpc_dir}/desktop-v1_s.c")
 add_library(DesktopRpcClient STATIC
   common/RpcClient.cpp rpc/Invoke.c "${rpc_dir}/desktop-v1_c.c")
+add_dependencies(DesktopRpcClient DesktopRpcGenerated)
 target_include_directories(DesktopRpcClient PUBLIC "${rpc_dir}")
 add_executable(DesktopPdfCoordinator coordinator/Main.cpp "${rpc_dir}/desktop-v1_s.c")
+add_dependencies(DesktopPdfCoordinator DesktopRpcGenerated)
 target_include_directories(DesktopPdfCoordinator PRIVATE "${rpc_dir}")
 target_link_libraries(DesktopPdfCoordinator PRIVATE windowsapp rpcrt4 advapi32 userenv)
 add_executable(DesktopPdfCtl client/Main.cpp)

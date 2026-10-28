@@ -149,7 +149,7 @@ namespace
     }
 }
 
-extern "C" void DesktopGateRequest(handle_t binding, unsigned long operation,
+extern "C" void DesktopGateRequest(PRPC_ASYNC_STATE async, handle_t binding, unsigned long operation,
     GateRequest* input, GateResponse* output)
 {
     *output = {};
@@ -170,6 +170,8 @@ extern "C" void DesktopGateRequest(handle_t binding, unsigned long operation,
         auto error = static_cast<uint32_t>(winrt::to_hresult().value);
         output->code = (error & 0xffff0000u) == 0x80070000u ? error & 0xffffu : ERROR_INVALID_DATA;
     }
+    if (RpcAsyncCompleteCall(async, nullptr) != RPC_S_OK)
+        OutputDebugStringW(L"Desktop PDF gate RPC completion failed\n");
 }
 
 int wmain(int argc, wchar_t** argv)

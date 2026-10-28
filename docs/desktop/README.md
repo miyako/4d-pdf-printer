@@ -63,6 +63,16 @@ Scoped impersonation is reverted before handling state; failures deny access.
 Clients supply their expected server user SID in RPC security QoS rather than
 trusting an endpoint name. The server is a per-user/session singleton.
 
+The SDK generates asynchronous native RPC stubs using the documented ACF
+`[async]` attribute. Calls retain their own heap input/output, binding, event
+and async state. A two-second client deadline requests **abortive**
+RpcAsyncCancelCall and returns an uncertain timeout, not proof of server
+rollback. Completion notification and RpcAsyncCompleteCall must release the
+in-flight state before it is freed; a bounded pool retains pending operations
+and rejects more work at its cap. No blocked/detached RPC threads or early
+marshaling-buffer release. **RPC_C_OPT_CALL_TIMEOUT is ignored for ncalrpc**;
+it is not used as a local RPC deadline. A lost Claim reply is never replayed.
+
 The complete `4DPDF1:<256-bit random token>` document title selects a prepared
 record. It is spooler-visible, **not an authentication secret**. Status/cancel
 use a different private credential. No title, credential, user SID or document
@@ -82,6 +92,7 @@ identity or title gate blocks expansion and must be reported with evidence.
 - [UWP IPC guide](https://learn.microsoft.com/en-us/windows/uwp/communication/interprocess-communication): same-package full-trust proxy and package-SID ACLed Win32 RPC. No custom capability/SCCD or sample entitlement is assumed.
 - [JobTitle](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.printing.workflow.printworkflowconfiguration.jobtitle?view=winrt-26100): documented title extraction; exact preservation is measured, not inferred.
 - [RPC security QoS v3 server SID](https://learn.microsoft.com/en-us/windows/win32/api/rpcdce/ns-rpcdce-rpc_security_qos_v3_w), [caller impersonation](https://learn.microsoft.com/en-us/windows/win32/api/rpcdce/nf-rpcdce-rpcimpersonateclient), and [token-query caveats](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-gettokeninformation).
+- [Native RPC ACF async attribute](https://learn.microsoft.com/en-us/windows/win32/midl/async), [abortive cancellation](https://learn.microsoft.com/en-us/windows/win32/api/rpcasync/nf-rpcasync-rpcasynccancelcall) and [completion/resource lifetime](https://learn.microsoft.com/en-us/windows/win32/api/rpcasync/nf-rpcasync-rpcasynccompletecall). [RpcBindingSetOption](https://learn.microsoft.com/en-us/windows/win32/api/rpcdce/nf-rpcdce-rpcbindingsetoption) explicitly excludes local RPC from call-timeout behavior.
 - [Restricted capabilities and sideloading](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/app-capability-declarations): development trust/policy still applies; no Store approval is promised.
 
 Windows-service printing before login/after sign-out remains explicitly deferred.
