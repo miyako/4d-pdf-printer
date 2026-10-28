@@ -37,8 +37,10 @@ if ($Stage -eq 'Prepare') {
     if ($manifest.'builtin-baseline' -ne $pin -or $overlay.version -ne '0.3.2' -or $overlay.'port-version' -lt 7) {
         throw 'Expected the pinned baseline and fail-closed/interleaved libgxps 0.3.2 overlay #7 or newer'
     }
-    $cmakeVersion = (& cmake --version | Select-Object -First 1)
-    if ($LASTEXITCODE -or $cmakeVersion -notmatch 'cmake version ([0-9]+\.[0-9]+\.[0-9]+)') { throw 'Cannot determine CMake version' }
+    $cmakeOutput = & cmake --version
+    if ($LASTEXITCODE) { throw 'Cannot determine CMake version' }
+    $cmakeVersion = @($cmakeOutput)[0]
+    if ($cmakeVersion -notmatch 'cmake version ([0-9]+\.[0-9]+\.[0-9]+)') { throw 'Cannot parse CMake version' }
     if ($Architecture -eq 'arm64' -and [version]$Matches[1] -lt [version]'4.2.0') { throw 'VS2026 requires CMake 4.2+' }
     $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
     $vsRange = if ($Architecture -eq 'arm64') { '[18.0,19.0)' } else { '[17.0,18.0)' }
