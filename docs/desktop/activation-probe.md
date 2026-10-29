@@ -7,7 +7,17 @@ normal-desktop observation. Native compilation and controlled-child units cannot
 pass that gate. Full B, comparison continuation, destinations/UI and services
 remain paused. No PDF is produced; the PSA deliberately completes Failed/Canceled.
 
-**Version0.2.1 scoped validation passed:** manual
+**Latest diagnostic-only0.2.2 validation passed:** manual
+[40892385882](https://github.com/miyako/4d-pdf-printer/actions/runs/40892385882)
+tested clean source `849ddacb56056b9deb5eaa65c919a98102a7f943`.
+Both architectures passed compile/link, complete controlled native units,
+unsigned packaging and25 actual wrapper-body plus retained7+9 script cases.
+The real-family reference returned S_OK/present/checked/valid on both hosted
+runners. This does not reproduce or fix the actual packaged user's SID failure,
+exercise packaged `Current()`, or pass the PSA gate.
+[Exact receipt](evidence/40892385882.json).
+
+**Historical version0.2.1 scoped validation passed:** manual
 [40852574080](https://github.com/miyako/4d-pdf-printer/actions/runs/40852574080)
 tested clean source `6ed19cbd71758e4d26a5ef6dc3dd4529475664e9`.
 Both x64/native ARM64 passed complete controlled native units, unsigned package
@@ -17,7 +27,7 @@ preparation or the actual PSA callback. The next host boundary is parent-reviewe
 **preparation only**, never printing automatically.
 [Exact receipt](evidence/40852574080.json). All failures below remain historical.
 
-**New version0.2.2 diagnostics pending validation:** a subsequent actual ARM64
+**Reason for version0.2.2 diagnostics:** a subsequent actual ARM64
 preparation-only attempt with the user's locally built/signed0.2.1 passed
 `Current(false)` but stopped at `prepare.security` / `package-sid` /
 `IsValidSid` / `sid-validity`. No observer, print or callback occurred. This
@@ -400,7 +410,7 @@ asserted. CI success does not prove the user's first failing operation, real
 medium packaged `Current()`, alias preparation or actual activation. No user
 build/update/preparation/printing followed; all old state and failures remain.
 
-**Conditional user handoff, not authorization:** only after native validation and
+**Historical0.2.1 handoff, superseded below (not authorization):** after native validation and
 parent review, preserve the complete old native output directory (including
 signed0.2.0 MSIX, build receipt and CTest LastTest.log) and every existing proof/
 preparation root. Prefer a fresh detached source worktree at the approved SHA
@@ -459,6 +469,28 @@ fresh records remain busy, and old package-hash callbacks remain rejected.
 Any future update must preserve the user's signed0.2.1 MSIX, build receipt,
 CTest log, all earlier versions/three private attempt roots, certificate/trust
 and healthy diagnostic package/queues. No same-version overwrite or uninstall.
+
+### One authorized0.2.2 native matrix
+
+Fresh [40892385882](https://github.com/miyako/4d-pdf-printer/actions/runs/40892385882)
+at `849ddacb56056b9deb5eaa65c919a98102a7f943` passed overall. Native CTests
+took3.36s on x64 and3.44s on nativeARM64. Both direct references observed exact
+HRESULT0/present=true/checked=true/valid=true; the production ctor/lifetime
+tests passed, as did the retained token, security, state and controlled-child
+suite. Both architectures completed unsigned MSIX/PE/PRI validation and all
+25+7+9 script cases. Original
+[x64](evidence/40892385882-x64.json) /
+[ARM64](evidence/40892385882-arm64.json) build receipts and raw
+[x64](evidence/40892385882-x64-LastTest.log) /
+[ARM64](evidence/40892385882-arm64-LastTest.log) CTest logs are preserved with
+byte hashes in the [overall receipt](evidence/40892385882.json).
+
+This is an unpackaged hosted-process baseline, not a normal packaged caller
+or actual user-failure reproduction. No deterministic own SID defect was found
+or repaired. One actual packaged preparation-only observation, if separately
+approved by the parent, is still needed for the real derivation HRESULT and
+null-versus-invalid distinction. No signing, host update/preparation, print,
+callback, renderer or dependency build occurred in this validation.
 
 ## Supported primitives, not an assumed callback result
 
@@ -574,16 +606,17 @@ Use a normal signed-in, non-elevated native PowerShell7 desktop on the existing
 Windows11 ARM64 machine, VS2022/v143/SDK26100. No renderer/Python/Poppler work.
 
 1. Use a **new source worktree** at tested
-   `6ed19cbd71758e4d26a5ef6dc3dd4529475664e9`, not the original worktree/output.
-   Preserve the old signed0.2.0 MSIX, build receipt, CTest LastTest.log, all
-   private attempt roots and package state. A separately named verified archive
+   `849ddacb56056b9deb5eaa65c919a98102a7f943`, not the original worktree/output.
+   Preserve the old signed0.2.1 MSIX, build receipt, CTest LastTest.log, earlier
+   signed0.2.0 artifacts, all three private attempt roots and package state.
+   A separately named verified archive
    before any overwrite is an alternative, not a cleanup/resume mechanism.
    Record clean source state and
    `Get-AppxPackage` identity/version/status for BOTH `Miyako.PsaFeasibility` and
    `Miyako.DesktopPdfPrototype`, plus their existing queues.
    Parent command blocks must enclose all guards/actions in `& { ... }`.
-   Stop if the probe package is already version0.2.1.0 or newer,
-   has another publisher, or existing development state cannot be preserved;
+   Stop unless the existing probe package is healthy version0.2.1.0,
+   or if it has another publisher or development state cannot be preserved;
    never solve an update error by uninstalling.
 2. Build only `./desktop/build.ps1 -Mode ActivationProbe -Architecture ARM64
    -VisualStudioVersion 2022 -CertificateThumbprint <EXISTING approved cert>`.
@@ -593,8 +626,8 @@ Windows11 ARM64 machine, VS2022/v143/SDK26100. No renderer/Python/Poppler work.
    user's local-build identity.
 3. Explicitly approve and current-user install/update ONLY
    `desktop/out/arm64/DesktopPdfActivationProbe.msix`. Same development identity
-   version0.2.1.0 preserves its LocalState/LocalCache on an ordinary update; it
-   retains the0.2.0 automation endpoint and alias `4dpdf-probe.exe`. Do not
+   version0.2.2.0 preserves its LocalState/LocalCache on an ordinary update; it
+   retains the existing automation endpoint and alias `4dpdf-probe.exe`. Do not
    uninstall, overwrite the same version, change identity or touch the healthy
    diagnostic family/queues. Verify version/status/family/publisher and
    registration and the development no-file-UI queue; stop if missing. Do not
@@ -609,7 +642,8 @@ Windows11 ARM64 machine, VS2022/v143/SDK26100. No renderer/Python/Poppler work.
    receipt and native architecture, then performs one bounded native preparation.
    No observer, submission, callback/host launch, Save As or PDF is authorized.
 5. Preserve results on success **or failure**; no automatic retry. Review safe
-   `result.json` native HRESULT/stage/API/object/origin/reason/code and bounded
+   `result.json` native HRESULT/stage/API/object/origin/reason/code, exact
+   `derivation.hresult` / `outputPresent` / `validityChecked` / `valid`, and bounded
    private captures. Preparation success still reports gate/PDF false and
    `preparation-only-not-activation`; a blocked result is evidence, not permission
    to relax guards, clear records or elevate the caller. Old expired records
