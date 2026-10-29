@@ -14,6 +14,8 @@ function Invoke-SmokeBody {
     $buffers = @([IO.MemoryStream]::new(), [IO.MemoryStream]::new())
     $exitCode = $null
     $started = $false
+    $cleanup = [ordered]@{ treeTerminationRequested = $false; observerExitObserved = $false
+        error = $null; systemLaunchedHostCovered = $false }
     try {
         if (-not [IO.Path]::IsPathFullyQualified($Executable) -or
             -not (Test-Path -LiteralPath $Executable -PathType Leaf)) { throw 'Expected an existing absolute executable path.' }
@@ -54,14 +56,26 @@ function Invoke-SmokeBody {
     } catch {
         $primary = "API/stage=$stage; $($_.Exception.Message)"
         if ($started -and -not $process.HasExited) {
-            try { $process.Kill(); $null = $process.WaitForExit(2000) }
-            catch { [Console]::Error.WriteLine("Secondary exact observer termination failure: $_") }
+            $cleanup.treeTerminationRequested = $true
+            try { $process.Kill($true) }
+            catch {
+                $cleanup.error = "API=Process.Kill(true) owned observer tree; $_"
+                [Console]::Error.WriteLine("Secondary cleanup uncertainty: $($cleanup.error)")
+            }
+            try {
+                $cleanup.observerExitObserved = $process.WaitForExit(2000)
+                if (-not $cleanup.observerExitObserved) { throw 'Owned observer exit not observed within 2000 ms; descendant exits are not individually guaranteed.' }
+            } catch {
+                $secondary = "API=Process.WaitForExit(2000) owned observer; $_"
+                if (-not $cleanup.error) { $cleanup.error = $secondary }
+                [Console]::Error.WriteLine("Secondary cleanup uncertainty: $secondary")
+            }
         }
     }
     try {
         Write-SmokeNewFile (Join-Path $Evidence 'stdout.txt') $buffers[0].ToArray()
         Write-SmokeNewFile (Join-Path $Evidence 'stderr.txt') $buffers[1].ToArray()
-        $report = [ordered]@{ exitCode = $exitCode; primaryError = $primary; pdfProduced = $false
+        $report = [ordered]@{ exitCode = $exitCode; primaryError = $primary; cleanup = $cleanup; pdfProduced = $false
             note = 'Wrapper transport only; activation pass is in native observation.json, not this report.' }
         Write-SmokeNewFile (Join-Path $Evidence 'wrapper.json') `
             ([Text.UTF8Encoding]::new($false).GetBytes(($report | ConvertTo-Json -Depth 4)))

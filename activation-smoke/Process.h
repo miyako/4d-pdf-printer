@@ -54,4 +54,38 @@ namespace smoke
         check_bool(GetExitCodeProcess(process, &code));
         return true;
     }
+    inline JsonObject FinishOwnedSubmitter(HANDLE process, DWORD initialWait = 1000, DWORD cleanupWait = 2000)
+    {
+        JsonObject result;
+        Flag(result, L"cleanupSucceeded", false); Flag(result, L"exitObserved", false);
+        Flag(result, L"terminationAttempted", false);
+        wchar_t const* stage = L"owned submitter WaitForSingleObject/GetExitCodeProcess";
+        try
+        {
+            DWORD code{};
+            bool terminationSucceeded = true;
+            if (!ObserveExit(process, initialWait, code))
+            {
+                Flag(result, L"terminationAttempted", true);
+                stage = L"TerminateProcess exact owned submitter";
+                if (!TerminateProcess(process, ERROR_TIMEOUT))
+                {
+                    auto hr = HRESULT_FROM_WIN32(GetLastError());
+                    Failure(stage, hr); Number(result, L"terminationHresult", hr);
+                    terminationSucceeded = false;
+                }
+                stage = L"owned submitter post-termination WaitForSingleObject/GetExitCodeProcess";
+                if (!ObserveExit(process, cleanupWait, code))
+                    throw hresult_error(HRESULT_FROM_WIN32(ERROR_TIMEOUT));
+            }
+            Flag(result, L"exitObserved", true); Number(result, L"exitCode", code);
+            Flag(result, L"cleanupSucceeded", terminationSucceeded);
+        }
+        catch (...)
+        {
+            auto hr = to_hresult(); Failure(stage, hr);
+            Text(result, L"failureStage", stage); Number(result, L"hresult", hr.value);
+        }
+        return result;
+    }
 }

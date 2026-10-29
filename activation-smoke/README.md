@@ -71,9 +71,16 @@ without blocking an STA with `.get()`; cancellation explicitly calls `Cancel`.
 Neither timeout nor cancellation excludes a late host launch.
 
 The MTA desktop observer has a 45-second observation deadline and a brief owned
-submitter wait. On submitter timeout it terminates only that exact child process
-handle, never processes by name. The wrapper has a 55-second deadline and kills
-only the observer process it created if necessary. A host launched after that
+submitter wait (1 second), followed if needed by exact-handle termination and a
+2-second exit-observation wait. Failed termination or unobserved exit blocks the
+overall pass and is recorded separately without replacing a primary activation
+error. Normal nonzero GDI submitter exit is not itself cleanup failure. No
+processes are selected by name. The wrapper has a 55-second deadline; if needed,
+it requests termination of its exact owned observer **tree** and checks a
+2-second observer-exit wait. Secondary cleanup uncertainty is preserved in its
+report/stderr without replacing the primary error. That wait observes the
+observer, not every descendant individually, and the system-launched host is
+not covered by the tree kill. A host launched after that
 deadline still has its own 10-second ready-record timeout. These are bounded
 application waits, **not** hard OS-hang/termination guarantees or lifetime
 reliability claims; synchronous GDI/OS/storage calls can still stall. No repeated
@@ -105,10 +112,16 @@ No signing, certificate creation/import, trust/policy modification, installation
 or printing is performed by the build.
 
 Tests cover strict IDs/titles/arguments, record parsing, PID/creation-time
-parsing, wrong image/time rejection, and controlled child timeout/exit0. Wrapper
+parsing, wrong image/time rejection, and controlled child timeout/exit0.
+The production owned-submitter cleanup helper is exercised with real handles:
+normal exit1, denied termination/unobserved exit, and actual termination followed
+by observed exit. Wrapper
 tests execute the actual process-capture/report body, including exact known raw
 UTF-8 bytes independent of console encoding, nonzero exits, deadlines,
-create-new collisions and primary-error retention. These tests run unpackaged;
+create-new collisions and primary-error retention. A controlled process tree
+exercises the actual production wrapper timeout/`Kill(true)`/checked wait; the
+test holds the exact descendant handle before termination and observes its exit.
+These tests run unpackaged;
 they do **not** establish packaged ApplicationData or PSA behavior.
 
 The narrow pull-request workflow checks out the **exact PR head SHA**, builds

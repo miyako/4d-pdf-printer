@@ -140,16 +140,10 @@ namespace
         }
         if (submit.value)
         {
-            stage = L"submitter WaitForSingleObject/GetExitCodeProcess";
-            DWORD code{};
-            if (!ObserveExit(submit.value, 1000, code))
-            {
-                Failure(L"synthetic submitter deadline; terminate exact owned child", HRESULT_FROM_WIN32(ERROR_TIMEOUT));
-                if (!TerminateProcess(submit.value, ERROR_TIMEOUT))
-                    Failure(L"TerminateProcess owned submitter", HRESULT_FROM_WIN32(GetLastError()));
-                Text(report, L"submission", L"timed-out (GDI result may be missing)");
-            }
-            else Number(report, L"submitterExitCode", code);
+            stage = L"finish exact owned submitter";
+            auto cleanup = FinishOwnedSubmitter(submit.value);
+            report.Insert(L"submitterCleanup", cleanup);
+            if (!cleanup.GetNamedBoolean(L"cleanupSucceeded")) passed = false;
         }
         Flag(report, L"activationFeasibilityPassed", passed);
         stage = L"publish observation.json";

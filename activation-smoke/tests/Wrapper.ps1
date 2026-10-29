@@ -36,11 +36,80 @@ try {
     try { Invoke-SmokeBody -Executable $Fixture -Arguments @('--sleep') -Evidence $timeout -DeadlineMs 30 }
     catch { $message = $_.Exception.Message }
     Check ($message.Contains('deadline')) 'controlled timeout'
+    $report = Get-Content -LiteralPath (Join-Path $timeout 'wrapper.json') -Raw | ConvertFrom-Json
+    Check ($report.primaryError.Contains('deadline') -and $report.cleanup.treeTerminationRequested -and
+        $report.cleanup.observerExitObserved -and $null -eq $report.cleanup.error -and
+        -not $report.cleanup.systemLaunchedHostCovered) 'actual production timeout tree kill and checked observer exit'
+    $engine = (Get-Process -Id $PID).Path
+    $treeScript = Join-Path $root 'tree-fixture.ps1'
+    $workerScript = Join-Path $root 'wrapper-worker.ps1'
+    [IO.File]::WriteAllText($treeScript, @'
+param([string]$Receipt)
+$ErrorActionPreference = 'Stop'
+$start = [Diagnostics.ProcessStartInfo]::new((Get-Process -Id $PID).Path)
+$start.UseShellExecute = $false
+$start.CreateNoWindow = $true
+foreach ($arg in @('-NoProfile', '-Command', 'Start-Sleep -Seconds 30')) { $start.ArgumentList.Add($arg) }
+$child = [Diagnostics.Process]::Start($start)
+try {
+    [IO.File]::WriteAllText($Receipt, ($child.Id.ToString()))
+    Start-Sleep -Seconds 30
+} finally { $child.Dispose() }
+'@)
+    [IO.File]::WriteAllText($workerScript, @'
+param([string]$Body, [string]$Engine, [string]$Fixture, [string]$Receipt, [string]$Evidence)
+$ErrorActionPreference = 'Stop'
+. $Body
+try {
+    Invoke-SmokeBody -Executable $Engine -Arguments @('-NoProfile', '-File', $Fixture, '-Receipt', $Receipt) -Evidence $Evidence -DeadlineMs 6000
+} catch { [Console]::Error.WriteLine($_); exit 1 }
+'@)
+    $receipt = Join-Path $root 'descendant.pid'
+    $treeEvidence = Join-Path $root 'tree-evidence'
+    $start = [Diagnostics.ProcessStartInfo]::new($engine)
+    $start.UseShellExecute = $false
+    $start.CreateNoWindow = $true
+    foreach ($arg in @('-NoProfile', '-File', $workerScript, '-Body', (Join-Path $PSScriptRoot '../Invoke-Body.ps1'),
+        '-Engine', $engine, '-Fixture', $treeScript, '-Receipt', $receipt, '-Evidence', $treeEvidence)) {
+        $start.ArgumentList.Add($arg)
+    }
+    $worker = $null; $descendant = $null
+    try {
+        $worker = [Diagnostics.Process]::Start($start)
+        $watch = [Diagnostics.Stopwatch]::StartNew()
+        while (-not [IO.File]::Exists($receipt) -and -not $worker.HasExited -and $watch.ElapsedMilliseconds -lt 10000) {
+            Start-Sleep -Milliseconds 10
+        }
+        $fixtureError = Join-Path $treeEvidence 'stderr.txt'
+        if (-not [IO.File]::Exists($receipt) -and [IO.File]::Exists($fixtureError)) {
+            $diagnostic = [IO.File]::ReadAllText($fixtureError)
+            [Console]::Error.WriteLine("Controlled tree fixture stderr: $($diagnostic.Substring(0, [Math]::Min(2048, $diagnostic.Length)))")
+        }
+        Check ([IO.File]::Exists($receipt)) 'controlled descendant PID receipt before timeout'
+        $descendant = [Diagnostics.Process]::GetProcessById([int][IO.File]::ReadAllText($receipt))
+        $null = $descendant.Handle
+        Check ($worker.WaitForExit(8000) -and $worker.ExitCode -eq 1) 'production wrapper timeout remains nonzero'
+        Check ($descendant.WaitForExit(2000)) 'held exact descendant handle exit after production Kill(true)'
+        $report = Get-Content -LiteralPath (Join-Path $treeEvidence 'wrapper.json') -Raw | ConvertFrom-Json
+        Check ($report.primaryError.Contains('deadline') -and $report.cleanup.treeTerminationRequested -and
+            $report.cleanup.observerExitObserved -and $null -eq $report.cleanup.error) 'tree cleanup receipt preserves primary timeout'
+    } finally {
+        foreach ($owned in @($descendant, $worker)) {
+            if ($null -eq $owned) { continue }
+            try {
+                if (-not $owned.HasExited) {
+                    $owned.Kill($true)
+                    if (-not $owned.WaitForExit(2000)) { throw 'Controlled test process exit not observed.' }
+                }
+            } catch { [Console]::Error.WriteLine("Secondary controlled-test cleanup failure: $_") }
+            finally { $owned.Dispose() }
+        }
+    }
     $message = ''
     try { Write-SmokeNewFile (Join-Path $good 'stdout.txt') ([byte[]](0)) }
     catch { $message = $_.Exception.Message }
     Check ($message.Length -gt 0) 'create-new never overwrite'
-    Write-Host 'Wrapper execution/UTF8/JSON/failure/deadline cases passed (not packaged PSA proof).'
+    Write-Host 'Wrapper execution/UTF8/JSON/failure/deadline/owned-tree cleanup cases passed (not packaged PSA proof).'
 } finally {
     Remove-Item -LiteralPath $root -Recurse -Force
 }
