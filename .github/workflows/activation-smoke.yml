@@ -1,0 +1,41 @@
+name: PSA activation smoke native gate
+on:
+  pull_request:
+    paths: ['activation-smoke/**', '.github/workflows/activation-smoke.yml']
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - runner: windows-2022
+            architecture: x64
+            vs: '2022'
+          - runner: windows-11-arm
+            architecture: ARM64
+            vs: '2026'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Verify exact original-source head
+        shell: pwsh
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if ((git rev-parse HEAD) -cne $env:EXPECTED_SHA) { throw 'Unexpected source SHA' }
+          ./activation-smoke/build.ps1 -Architecture '${{ matrix.architecture }}' -VisualStudioVersion '${{ matrix.vs }}'
+      - name: Evidence only - never package/binary/cache upload
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: psa-smoke-${{ matrix.architecture }}-evidence
+          path: |
+            activation-smoke/out/**/evidence/*.json
+            activation-smoke/out/**/evidence/*.txt
+          if-no-files-found: warn
+          retention-days: 7
