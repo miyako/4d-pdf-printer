@@ -171,7 +171,7 @@ CI uploads neither EMFs/fonts/rasters nor binaries. A separately authorized
 single manual x64/native-ARM64 own-code compile/unit batch includes this test;
 it performs **no printing, PSA activation or renderer/dependency/runtime build**.
 
-### Single attempted producer-unit checkpoint -- blocked
+### First attempted producer-unit checkpoint -- historical compile failure
 
 The authorized run
 [40825481671](https://github.com/miyako/4d-pdf-printer/actions/runs/40825481671)
@@ -192,9 +192,9 @@ Local Clang metric guards and PowerShell seven-plus-nine cases passed before
 dispatch; they do not compile the Windows-only GUID calls or substitute for
 real EMF-generation evidence. One attempt only; the failure was reported to the
 creator, no rerun or post-attempt source repair was performed. The documentation
-checkpoint is not a tested source or green run. **Native fixture validation
-remains blocked pending creator review**, and no user-host build/reprints are
-requested.
+checkpoint is not a tested source or green run. **At that checkpoint native
+fixture validation remained blocked pending creator review**, and no user-host
+build/reprints were requested.
 
 The creator subsequently reviewed that failed attempt and authorized **one
 fresh** follow-up after the surgical test-only `objbase.h` include. Microsoft's
@@ -204,6 +204,44 @@ requirements specify that include and `Ole32.lib`; the fixture-test target
 already explicitly links `ole32` in CMake. No mapping, expected content/bounds,
 assertions or comparator changes accompany this repair. The follow-up's new
 source/result must be identified separately; the failed attempt remains failed.
+
+### Successful separately authorized producer-unit follow-up
+
+The fresh manual run
+[40825887654](https://github.com/miyako/4d-pdf-printer/actions/runs/40825887654)
+passed at exact source **`b33b741f0a51fcbbbbb21e958014879facb5328e`**.
+It is a new source/run, not a stale rerun or relabeling of 40825481671.
+
+| Target | Actual executed checks |
+|---|---|
+| x64 job123288712939 | Own-code compile/native PE checks; both CTests passed, including actual generation/inspection of six EMFs; PowerShell seven consent/subprocess plus nine post-control JSON/report cases; Python 48 discovered, 47 passed/one actual-Poppler smoke skipped. |
+| Native ARM64 job123288713299 | Same two native CTests and actual six-EMF generation/inspection; same seven-plus-nine PowerShell and Python 47 passed/one skipped. |
+
+[x64 build receipt](evidence/40825887654-x64.json) and
+[ARM64 build receipt](evidence/40825887654-arm64.json) record clean source and
+hashes of both proof and fixture-test executables. The
+[synthetic fixture-unit receipt](evidence/40825887654-fixtures.json) matches
+both native CTest logs: their actual reference DCs were 1024-by-768 pixels and
+271-by-203mm; emitted windows were 27100-by-20300 logical .01mm units, and
+viewports 1024-by-768. All six pages retained full headings/page numbers,
+expected text/graphics and physical content bounds inside the unchanged A4
+frame. Text pages contained 21 text records each; vector/mixed pages two each.
+Lower rectangle/gradient/alpha/image/ellipse coverage and manifest hashes were
+checked; synthetic scratch cleanup completed.
+
+The only code repair after the failed source was the explicit COM declaration
+include; mapping and assertions were not changed or disabled. Local portable
+guards passed and the existing explicit Ole32 linkage was verified before this
+one separately authorized follow-up. No further dispatch/rerun followed it.
+Final checkpoint changes are documentation/evidence only relative to the tested
+source. Only synthetic metadata/JSON/text evidence was uploaded, **not EMFs,
+fonts, renders, binaries or private copied input/report data**.
+
+This establishes actual fixture production/record bounds on these two hosted
+native architectures, not printing, PSA activation, PDF fidelity/size,
+Windows worker memory/lifetime behavior or a user-host result. The original
+clipped files remain diagnostic history, the create-new JSON fix is retained,
+and no user-host build/reprint/continuation or milestone-B work follows.
 
 **Paper-grid limitation, unchanged comparator:** the observed PSA path uses
 300dpi and 2480 pixels across, represented as 793.6 XPS units / 595.2pt; Microsoft

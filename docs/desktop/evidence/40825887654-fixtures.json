@@ -1,0 +1,16 @@
+{
+  "schema": "4d-pdf-printer.fixture-generation-unit",
+  "version": 1,
+  "printing_performed": false,
+  "productUsable": false,
+  "pages": [
+    {"id":"text","page":1,"reference_pixels_x":1024,"reference_pixels_y":768,"reference_mm_x":271,"reference_mm_y":203,"window_x":27100,"window_y":20300,"viewport_x":1024,"viewport_y":768,"content_right_pixels":698,"content_bottom_pixels":680,"text_records":21,"full_heading":true,"intended_graphics":true,"physical_bounds_inside_frame":true},
+    {"id":"text","page":2,"reference_pixels_x":1024,"reference_pixels_y":768,"reference_mm_x":271,"reference_mm_y":203,"window_x":27100,"window_y":20300,"viewport_x":1024,"viewport_y":768,"content_right_pixels":698,"content_bottom_pixels":680,"text_records":21,"full_heading":true,"intended_graphics":true,"physical_bounds_inside_frame":true},
+    {"id":"vectors","page":1,"reference_pixels_x":1024,"reference_pixels_y":768,"reference_mm_x":271,"reference_mm_y":203,"window_x":27100,"window_y":20300,"viewport_x":1024,"viewport_y":768,"content_right_pixels":699,"content_bottom_pixels":907,"text_records":2,"full_heading":true,"intended_graphics":true,"physical_bounds_inside_frame":true},
+    {"id":"vectors","page":2,"reference_pixels_x":1024,"reference_pixels_y":768,"reference_mm_x":271,"reference_mm_y":203,"window_x":27100,"window_y":20300,"viewport_x":1024,"viewport_y":768,"content_right_pixels":699,"content_bottom_pixels":907,"text_records":2,"full_heading":true,"intended_graphics":true,"physical_bounds_inside_frame":true},
+    {"id":"mixed","page":1,"reference_pixels_x":1024,"reference_pixels_y":768,"reference_mm_x":271,"reference_mm_y":203,"window_x":27100,"window_y":20300,"viewport_x":1024,"viewport_y":768,"content_right_pixels":679,"content_bottom_pixels":831,"text_records":2,"full_heading":true,"intended_graphics":true,"physical_bounds_inside_frame":true},
+    {"id":"mixed","page":2,"reference_pixels_x":1024,"reference_pixels_y":768,"reference_mm_x":271,"reference_mm_y":203,"window_x":27100,"window_y":20300,"viewport_x":1024,"viewport_y":768,"content_right_pixels":679,"content_bottom_pixels":831,"text_records":2,"full_heading":true,"intended_graphics":true,"physical_bounds_inside_frame":true}
+  ],
+  "result": "passed",
+  "cleanup_complete": true
+}
