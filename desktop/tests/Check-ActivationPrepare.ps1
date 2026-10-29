@@ -153,10 +153,13 @@ function Invoke-PrepareCase([string]$Name, [string]$Mode, [string[]]$Collisions 
     }
     if ($Mode -cin @('success', 'native-error') -and 'prepare.stderr.private' -notin $Collisions -and
         'prepare.stdout.private' -notin $Collisions) {
-        $actual = [Text.UTF8Encoding]::new($false, $true).GetString(
-            [IO.File]::ReadAllBytes((Join-Path $PrivateOutputRoot 'prepare.stderr.private')))
-        $expected = [string][char]0x65e5 + [char]0x672c + [char]0x8a9e
-        if ($actual -cne $expected) { throw 'Raw private Unicode stderr was lost.' }
+        $actual = [IO.File]::ReadAllBytes((Join-Path $PrivateOutputRoot 'prepare.stderr.private'))
+        $expected = [byte[]]@(0xe6, 0x97, 0xa5, 0xe6, 0x9c, 0xac, 0xe8, 0xaa, 0x9e)
+        if ([Convert]::ToBase64String($actual) -cne [Convert]::ToBase64String($expected)) {
+            # Only the controlled child's fixed synthetic fixture is eligible for byte diagnostics.
+            $prefix = if ($actual.Length) { [BitConverter]::ToString($actual, 0, [Math]::Min(32, $actual.Length)) } else { 'EMPTY' }
+            throw "Synthetic UTF8 stderr mismatch case=$Name expectedHex=$([BitConverter]::ToString($expected)) actualBytes=$($actual.Length) actualPrefixHex=$prefix"
+        }
     }
 }
 try {

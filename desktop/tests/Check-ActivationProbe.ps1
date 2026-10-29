@@ -62,3 +62,4 @@ try {
     Remove-Item -LiteralPath $root
 }
 & (Join-Path $PSScriptRoot 'Check-ActivationPrepare.ps1')
+& (Join-Path $PSScriptRoot 'Check-ProductProof.ps1')

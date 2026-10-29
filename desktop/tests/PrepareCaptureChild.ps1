@@ -7,6 +7,12 @@ $record = [ordered]@{
     pdfProduced = $false; activationGatePassed = $false
 }
 $unicode = [string][char]0x65e5 + [char]0x672c + [char]0x8a9e
+function Write-SyntheticUnicodeStderr {
+    $bytes = [Text.UTF8Encoding]::new($false, $true).GetBytes($unicode)
+    $stream = [Console]::OpenStandardError()
+    $stream.Write($bytes, 0, $bytes.Length)
+    $stream.Flush()
+}
 switch ($Mode) {
     'native-error' {
         $record.Remove('job_id')
@@ -16,7 +22,7 @@ switch ($Mode) {
             stage = 'current.token'; api = 'GetTokenInformation'; object = 'token-user'
             origin = 'validation'; reason = 'token-size-probe'; code = 6; codeKind = 'win32'
         }
-        [Console]::Error.Write($unicode)
+        Write-SyntheticUnicodeStderr
     }
     'diagnostic-unsafe' {
         $record.Remove('job_id')
@@ -55,7 +61,7 @@ switch ($Mode) {
     'stderr-flood' { [Console]::Error.Write('x' * 20000); exit 0 }
     'invalid-utf8' { [Console]::OpenStandardOutput().WriteByte(255); exit 0 }
     'timeout' { Start-Sleep -Seconds 10; exit 0 }
-    'success' { [Console]::Error.Write($unicode) }
+    'success' { Write-SyntheticUnicodeStderr }
     default { throw 'Unknown controlled preparation case.' }
 }
 [Console]::Write((ConvertTo-Json -InputObject $record -Compress))
