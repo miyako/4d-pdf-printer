@@ -16,8 +16,10 @@ namespace activation
             Step(diagnostic, L"prepare.security", L"package-sid");
             PSID package = nullptr;
             Point(diagnostic, L"DeriveAppContainerSidFromAppContainerName", L"win32");
-            CheckResult(DeriveAppContainerSidFromAppContainerName(context.family.c_str(), &package), diagnostic);
-            packageSid = CopySid(package, diagnostic);
+            auto result = DeriveAppContainerSidFromAppContainerName(context.family.c_str(), &package);
+            DerivedSidResult(diagnostic, static_cast<uint32_t>(result), package != nullptr);
+            CheckResult(result, diagnostic);
+            packageSid = CopySid(package, diagnostic, diagnostic ? &diagnostic->derivation.output : nullptr);
             FreeSid(package);
             LPWSTR userText = nullptr, packageText = nullptr;
             Step(diagnostic, L"prepare.security", L"user-sid");

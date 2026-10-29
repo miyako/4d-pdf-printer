@@ -7,7 +7,7 @@ normal-desktop observation. Native compilation and controlled-child units cannot
 pass that gate. Full B, comparison continuation, destinations/UI and services
 remain paused. No PDF is produced; the PSA deliberately completes Failed/Canceled.
 
-**Latest scoped validation passed:** manual
+**Version0.2.1 scoped validation passed:** manual
 [40852574080](https://github.com/miyako/4d-pdf-printer/actions/runs/40852574080)
 tested clean source `6ed19cbd71758e4d26a5ef6dc3dd4529475664e9`.
 Both x64/native ARM64 passed complete controlled native units, unsigned package
@@ -16,6 +16,14 @@ TokenElevation helper and diagnostic/test surfaces, **not** normal packaged
 preparation or the actual PSA callback. The next host boundary is parent-reviewed
 **preparation only**, never printing automatically.
 [Exact receipt](evidence/40852574080.json). All failures below remain historical.
+
+**New version0.2.2 diagnostics pending validation:** a subsequent actual ARM64
+preparation-only attempt with the user's locally built/signed0.2.1 passed
+`Current(false)` but stopped at `prepare.security` / `package-sid` /
+`IsValidSid` / `sid-validity`. No observer, print or callback occurred. This
+does not distinguish null output from a nonnull invalid SID, nor prove a
+derivation/lifetime defect. Version0.2.2 is diagnostic only; no host update
+is authorized by the source change.
 
 **Historical first-attempt STOP checkpoint:** the initially authorized native batch
 [40832146213](https://github.com/miyako/4d-pdf-printer/actions/runs/40832146213)
@@ -404,6 +412,53 @@ no same-version overwrite, uninstall, new identity or diagnostic-family change.
 Then, only after separate consent, one new-root preparation-only call using the
 new local receipt/wrapper may expose the first failing API/guard. No printing or
 activation pass follows from compilation or preparation.
+
+## Version0.2.2: bounded family-SID postcondition diagnostics
+
+`Context` owns identity bytes and family strings; it has no derived package-SID
+pointer. `Security` derives a separate pointer, copies it before `FreeSid`, then
+uses the owned bytes for SID-to-string conversion and ACL construction. The
+[derivation contract](https://learn.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-deriveappcontainersidfromappcontainername)
+requires `FreeSid`, matching this path. An ordinary full-trust token's empty
+AppContainer SID is not the package-family SID input. No missing-token, dangling
+pointer, incorrect deallocator or stale role has been established.
+
+The ctor role audit finds one `CopySid`/`IsValidSid` site immediately after
+derivation under `package-sid`. User and package SID string conversions each
+set their own role and `ConvertSidToStringSidW` API; SYSTEM SID construction is
+later, outside this ctor. No role changes or reordered security checks are
+needed. Old tests already call the real derivation API with a dummy family;
+they did not cover the actual family input or a normal packaged caller.
+
+The new per-invocation `error_context.derivation` snapshot contains only exact
+unsigned HRESULT, `outputPresent`, `validityChecked` and `valid`. Nonnegative
+results other than S_OK are retained, not normalized. Null input still fails
+E_ACCESSDENIED but is labeled `validation` / `sid-missing`, without claiming
+`IsValidSid` was called. Nonnull invalid input still fails E_ACCESSDENIED at
+`IsValidSid` / `sid-validity`. API failures retain their original HRESULT;
+no failure is bypassed, principal substituted, profile created or ACL relaxed.
+The wrapperVersion4 summary strictly allowlists these numeric/Boolean fields,
+separately from the current per-call role/API. Raw pointers, SID contents and
+family/path strings are not reported.
+
+Regression additions use the actual development family and real process
+identity in the production `Security` ctor with returned/copied/moved/temporary
+Contexts. An independent direct API reference records exact HRESULT and guarded
+postconditions, frees its allocation, and returns owned SID bytes. Tests compare
+validity/EqualSid and SID-to-string conversion after ctor/helper return and
+Context/Security destruction, without publishing contents. Fixed synthetic
+null, nonnull-invalid and S_FALSE observations retain failure predicates.
+The25 actual PowerShell body cases cover those distinctions, API HRESULTs,
+later user-SID conversion role preservation and unsafe metadata rejection.
+These are not actual packaged `Current()` or PSA proof.
+
+Manifest, builder and wrapper require same-family/publisher **0.2.2.0**.
+Package-full-name binding, expiry, admission and record rules are unchanged:
+old state is never rewritten or pruned, expired valid records remain/count8,
+fresh records remain busy, and old package-hash callbacks remain rejected.
+Any future update must preserve the user's signed0.2.1 MSIX, build receipt,
+CTest log, all earlier versions/three private attempt roots, certificate/trust
+and healthy diagnostic package/queues. No same-version overwrite or uninstall.
 
 ## Supported primitives, not an assumed callback result
 

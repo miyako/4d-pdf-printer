@@ -129,7 +129,7 @@ try {
     if ($Mode -ceq 'ActivationProbe') {
         $printers = @($packagedManifest.SelectNodes("//*[local-name()='PrintSupportVirtualPrinter']"))
         $hosts = @($packagedManifest.SelectNodes("//*[local-name()='Extension' and @Category='windows.fullTrustProcess']"))
-        if ($packagedManifest.Package.Identity.Version -cne '0.2.1.0' -or $printers.Count -ne 1 -or
+        if ($packagedManifest.Package.Identity.Version -cne '0.2.2.0' -or $printers.Count -ne 1 -or
             $printers[0].HasAttribute('OutputFileTypes') -or $hosts.Count -ne 1 -or
             $hosts[0].Executable -cne 'DesktopPdfProbeHost.exe') { throw 'Activation probe manifest wiring changed.' }
     }

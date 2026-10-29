@@ -133,6 +133,16 @@ namespace activation
             Number(value, L"code", diagnostic.code);
             Text(value, L"codeKind", diagnostic.codeKind);
         }
+        if (diagnostic.derivation.recorded)
+        {
+            auto const& source = diagnostic.derivation;
+            JsonObject derivation;
+            Number(derivation, L"hresult", source.hresult);
+            Flag(derivation, L"outputPresent", source.output.present);
+            Flag(derivation, L"validityChecked", source.output.checked);
+            Flag(derivation, L"valid", source.output.valid);
+            value.Insert(L"derivation", derivation);
+        }
         report.Insert(L"error_context", value);
     }
     inline JsonObject Bound(Context const& context, std::wstring const& id, wchar_t const* kind,

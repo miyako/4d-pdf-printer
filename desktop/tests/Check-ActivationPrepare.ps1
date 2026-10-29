@@ -72,7 +72,7 @@ function Invoke-PrepareCase([string]$Name, [string]$Mode, [string[]]$Collisions 
     $caught = $null
     try { . $flow 2>$null } catch { $caught = $_ }
     if ($unexpectedProcessCalls.Count -ne 0 -or $stage -cne 'prepare' -or $processes.Count -ne 0 -or
-        $report.mode -cne 'preparation-only-not-activation' -or $report.wrapperVersion -ne 3 -or
+        $report.mode -cne 'preparation-only-not-activation' -or $report.wrapperVersion -ne 4 -or
         $report.wrapperSha256 -cne (Get-FileHash -LiteralPath $program -Algorithm SHA256).Hash.ToLowerInvariant()) {
         throw "Preparation-only escaped its branch or lost wrapper identity in $Name."
     }
@@ -128,6 +128,49 @@ function Invoke-PrepareCase([string]$Name, [string]$Mode, [string[]]$Collisions 
             $context.origin -cne 'validation' -or $context.reason -cne 'token-fixed-size' -or
             $context.Contains('code') -or $context.Contains('codeKind')) { throw 'Size guard was confused with API failure.' }
     }
+    if ($Mode -clike 'sid-*') {
+        $context = $report.prepare.native.errorContext
+        if ($context.stage -cne 'prepare.security' -or
+            $context.object -cne $(if ($Mode -ceq 'sid-valid-prior') { 'user-sid' } else { 'package-sid' })) {
+            throw 'Derivation snapshot relabeled the current SID role.'
+        }
+        if ($report.prepare.native.hresult -cne $(if ($Mode -ceq 'sid-api-error') { '0x80070057' } else { '0x80070005' })) {
+            throw 'Derivation metadata changed the primary HRESULT.'
+        }
+        if ($Mode -ceq 'sid-unsafe') {
+            if ($context.Contains('derivation') -or
+                $report.prepare.native.rejectedDiagnosticFields -cnotcontains 'derivation') {
+                throw 'Untrusted SID postconditions were copied.'
+            }
+        } else {
+            $snapshot = $context.derivation
+            $expectedHresult = switch ($Mode) {
+                'sid-nonzero-success-null' { '0x00000001' }
+                'sid-api-error' { '0x80070057' }
+                default { '0x00000000' }
+            }
+            $checked = $Mode -cin @('sid-invalid', 'sid-valid-prior')
+            if ($snapshot.hresult -cne $expectedHresult -or $snapshot.outputPresent -ne $checked -or
+                $snapshot.validityChecked -ne $checked -or $snapshot.valid -ne ($Mode -ceq 'sid-valid-prior')) {
+                throw 'Exact derivation HRESULT/present/checked/valid metadata changed.'
+            }
+            if ($Mode -cin @('sid-null', 'sid-nonzero-success-null') -and
+                ($context.api -cne 'validation' -or $context.reason -cne 'sid-missing')) {
+                throw 'Null SID incorrectly implied IsValidSid was called.'
+            }
+            if ($Mode -ceq 'sid-invalid' -and ($context.api -cne 'IsValidSid' -or $context.reason -cne 'sid-validity')) {
+                throw 'Nonnull invalid SID lost the actual validity check.'
+            }
+            if ($Mode -ceq 'sid-api-error' -and ($context.api -cne 'DeriveAppContainerSidFromAppContainerName' -or
+                $context.origin -cne 'win32' -or $context.codeKind -cne 'hresult' -or $context.code -ne 2147942487)) {
+                throw 'Derivation API failure lost its original API/code origin.'
+            }
+            if ($Mode -ceq 'sid-valid-prior' -and ($context.api -cne 'ConvertSidToStringSidW' -or
+                $context.origin -cne 'win32' -or $context.Contains('arbitrary') -or $snapshot.Contains('arbitrary'))) {
+                throw 'Prior derivation obscured the current API or leaked unknown fields.'
+            }
+        }
+    }
     if ($Mode -cin @('flood', 'stderr-flood') -and $report.prepare.failureReason -cne 'capture-limit') {
         throw 'Stream flood was not classified as a capture limit.'
     }
@@ -167,6 +210,9 @@ try {
     Invoke-PrepareCase 'native-error' 'native-error'; ++$checks
     Invoke-PrepareCase 'elevation-api-error' 'elevation-api-error'; ++$checks
     Invoke-PrepareCase 'elevation-size-error' 'elevation-size-error'; ++$checks
+    foreach ($mode in @('sid-null', 'sid-invalid', 'sid-nonzero-success-null', 'sid-api-error', 'sid-valid-prior', 'sid-unsafe')) {
+        Invoke-PrepareCase $mode $mode; ++$checks
+    }
     Invoke-PrepareCase 'diagnostic-unsafe' 'diagnostic-unsafe'; ++$checks
     foreach ($mode in @('empty', 'malformed', 'array', 'bad-stage', 'bad-id', 'flood', 'stderr-flood',
         'invalid-utf8', 'timeout', 'start-failure')) {

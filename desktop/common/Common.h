@@ -105,10 +105,19 @@ namespace desktop
         return data;
     }
 
-    inline std::vector<uint8_t> CopySid(PSID sid, Diagnostic* diagnostic = nullptr)
+    inline std::vector<uint8_t> CopySid(PSID sid, Diagnostic* diagnostic = nullptr,
+        SidValidity* observation = nullptr)
     {
+        if (!sid)
+        {
+            if (observation) *observation = {};
+            Point(diagnostic, L"validation", L"validation", L"sid-missing");
+            throw winrt::hresult_error(E_ACCESSDENIED);
+        }
         Point(diagnostic, L"IsValidSid", L"validation", L"sid-validity");
-        if (!sid || !IsValidSid(sid)) throw winrt::hresult_error(E_ACCESSDENIED);
+        bool valid = IsValidSid(sid) != FALSE;
+        if (observation) *observation = {true, true, valid};
+        if (!valid) throw winrt::hresult_error(E_ACCESSDENIED);
         Point(diagnostic, L"GetLengthSid", L"win32");
         auto length = GetLengthSid(sid);
         Point(diagnostic, L"buffer-allocation", L"cpp");

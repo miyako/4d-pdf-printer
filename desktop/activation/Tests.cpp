@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <source_location>
 #include <string>
+#include <utility>
 namespace
 {
     struct UnitAssertion { uint_least32_t line; };
@@ -23,18 +24,26 @@ namespace
         uint_least32_t assertionLine = 0, uint32_t hresult = 0)
     {
         auto const& diagnostic = test.diagnostic;
-        char assertion[48]{}, error[32]{};
+        char assertion[48]{}, error[32]{}, derivation[256]{};
         if (assertionLine) std::snprintf(assertion, sizeof(assertion), " assertion_line=%u",
             static_cast<unsigned>(assertionLine));
         if (hresult) std::snprintf(error, sizeof(error), " HRESULT=0x%08X", static_cast<unsigned>(hresult));
+        if (diagnostic.derivation.recorded)
+        {
+            auto const& source = diagnostic.derivation;
+            std::snprintf(derivation, sizeof(derivation),
+                " derivation_hresult=0x%08X output_present=%u validity_checked=%u sid_valid=%u",
+                static_cast<unsigned>(source.hresult), static_cast<unsigned>(source.output.present),
+                static_cast<unsigned>(source.output.checked), static_cast<unsigned>(source.output.valid));
+        }
         return std::snprintf(output, capacity,
             "Activation probe unit failure kind=%s case=%s case_line=%u%s%s"
             " context_stage=%ls api=%ls object=%ls origin=%ls reason=%ls has_code=%u code=%u code_kind=%ls"
-            "; no PSA/printing performed.\n",
+            "%s; no PSA/printing performed.\n",
             kind, test.name, static_cast<unsigned>(test.line), assertion, error,
             diagnostic.stage, diagnostic.api, diagnostic.object,
             diagnostic.origin, diagnostic.reason, static_cast<unsigned>(diagnostic.hasCode),
-            diagnostic.hasCode ? static_cast<unsigned>(diagnostic.code) : 0u, diagnostic.codeKind);
+            diagnostic.hasCode ? static_cast<unsigned>(diagnostic.code) : 0u, diagnostic.codeKind, derivation);
     }
     void ReportFailure(FILE* output, UnitCase const& test, char const* kind,
         uint_least32_t assertionLine = 0, uint32_t hresult = 0)
@@ -101,6 +110,12 @@ namespace
         desktop::Point(&first, L"validation", L"validation", L"owner");
         Expect(!first.hasCode && std::wstring_view(first.reason) == L"owner" &&
             std::wstring_view(second.stage) == L"control");
+        desktop::DerivedSidResult(&first, 1, false);
+        Expect(first.derivation.recorded && first.derivation.hresult == 1 &&
+            !first.derivation.output.present && !first.derivation.output.checked &&
+            !first.derivation.output.valid && !second.derivation.recorded);
+        desktop::Point(&first, L"validation", L"validation", L"sid-missing");
+        Expect(first.derivation.hresult == 1);
     }
 }
 #ifndef _WIN32
@@ -141,6 +156,126 @@ namespace
         DWORD length = GetModuleFileNameW(nullptr, name.data(), static_cast<DWORD>(name.size()));
         Expect(length > 0 && length < name.size());
         return {name.data(), length};
+    }
+    constexpr wchar_t ActualFamily[] = L"Miyako.DesktopPdfPrototype_hjw4whvmzr08m";
+    activation::Context FamilyContext(desktop::Diagnostic* diagnostic)
+    {
+        activation::Context result;
+        result.identity = desktop::CurrentIdentity(diagnostic);
+        result.family = ActualFamily;
+        return result;
+    }
+    activation::Security ReturnedSecurity(activation::Context const& context, desktop::Diagnostic* diagnostic)
+    { return activation::Security(context, diagnostic); }
+    void CheckOwnedFamilySid(std::vector<uint8_t> const& actual, std::vector<uint8_t> const& reference,
+        desktop::Diagnostic* diagnostic)
+    {
+        using namespace activation;
+        Step(diagnostic, L"prepare.security", L"package-sid");
+        Point(diagnostic, L"IsValidSid", L"validation", L"sid-validity");
+        auto sid = const_cast<uint8_t*>(actual.data());
+        auto expected = const_cast<uint8_t*>(reference.data());
+        Expect(!actual.empty() && IsValidSid(sid) && !reference.empty() && IsValidSid(expected) && EqualSid(sid, expected));
+        LPWSTR text = nullptr;
+        Point(diagnostic, L"ConvertSidToStringSidW", L"win32");
+        Check(ConvertSidToStringSidW(sid, &text) != FALSE, diagnostic);
+        struct FreeText { LPWSTR value; ~FreeText() { LocalFree(value); } } free{text};
+        Expect(text && text[0] != L'\0');
+    }
+    std::vector<uint8_t> FamilySidReference(UnitCase& test)
+    {
+        using namespace activation;
+        auto& diagnostic = test.diagnostic;
+        test.At("sid.real-family.direct-reference");
+        Step(&diagnostic, L"prepare.security", L"package-sid");
+        Point(&diagnostic, L"DeriveAppContainerSidFromAppContainerName", L"win32");
+        PSID sid = nullptr;
+        auto result = DeriveAppContainerSidFromAppContainerName(ActualFamily, &sid);
+        DerivedSidResult(&diagnostic, static_cast<uint32_t>(result), sid != nullptr);
+        auto& observed = diagnostic.derivation.output;
+        observed.checked = SUCCEEDED(result) && observed.present;
+        observed.valid = observed.checked && IsValidSid(sid) != FALSE;
+        std::printf("Real-family direct SID HRESULT=0x%08X output_present=%u validity_checked=%u valid=%u\n",
+            static_cast<unsigned>(result), static_cast<unsigned>(observed.present),
+            static_cast<unsigned>(observed.checked), static_cast<unsigned>(observed.valid));
+        std::fflush(stdout);
+        CheckResult(result, &diagnostic);
+        Expect(result == S_OK && observed.present && observed.checked && observed.valid);
+        struct FreeDerived { PSID value; ~FreeDerived() { FreeSid(value); } } free{sid};
+        Point(&diagnostic, L"GetLengthSid", L"win32");
+        auto bytes = GetLengthSid(sid);
+        std::vector<uint8_t> reference(bytes);
+        Point(&diagnostic, L"CopySid", L"win32");
+        Check(::CopySid(bytes, reference.data(), sid) != FALSE, &diagnostic);
+        return reference;
+    }
+    void RealFamilySidTests(UnitCase& test)
+    {
+        using namespace activation;
+        auto& diagnostic = test.diagnostic;
+        auto reference = FamilySidReference(test);
+        test.At("sid.real-family.context-copy-move");
+        std::vector<uint8_t> owned;
+        {
+            auto returned = FamilyContext(&diagnostic);
+            auto copied = returned;
+            auto moved = std::move(copied);
+            returned = Context{};
+            auto security = ReturnedSecurity(moved, &diagnostic);
+            moved = Context{};
+            Expect(diagnostic.derivation.recorded && diagnostic.derivation.hresult == static_cast<uint32_t>(S_OK) &&
+                diagnostic.derivation.output.present && diagnostic.derivation.output.checked &&
+                diagnostic.derivation.output.valid);
+            test.At("sid.real-family.after-ctor-return", false);
+            CheckOwnedFamilySid(security.packageSid, reference, &diagnostic);
+            owned = security.packageSid;
+        }
+        test.At("sid.real-family.after-security-destruction");
+        CheckOwnedFamilySid(owned, reference, &diagnostic);
+        test.At("sid.real-family.temporary-context");
+        Security temporary(FamilyContext(&diagnostic), &diagnostic);
+        CheckOwnedFamilySid(temporary.packageSid, reference, &diagnostic);
+        std::puts("Real-family production Security ctor, real process identity, copied/moved/returned Context and owned SID post-return/string checks passed; NOT packaged Current.");
+    }
+    void SidPostconditionTests(UnitCase& test)
+    {
+        using namespace activation;
+        auto& diagnostic = test.diagnostic;
+        for (auto result : {S_OK, S_FALSE})
+        {
+            test.At("sid.null-output");
+            Step(&diagnostic, L"prepare.security", L"package-sid");
+            DerivedSidResult(&diagnostic, static_cast<uint32_t>(result), false);
+            CheckResult(result, &diagnostic);
+            bool rejected = false;
+            try { desktop::CopySid(nullptr, &diagnostic, &diagnostic.derivation.output); }
+            catch (hresult_error const& error) { rejected = error.code() == E_ACCESSDENIED; }
+            Expect(rejected && diagnostic.derivation.hresult == static_cast<uint32_t>(result) &&
+                !diagnostic.derivation.output.present && !diagnostic.derivation.output.checked &&
+                !diagnostic.derivation.output.valid && std::wstring_view(diagnostic.api) == L"validation" &&
+                std::wstring_view(diagnostic.reason) == L"sid-missing");
+            auto report = activation::Record(L"control-arguments");
+            DiagnosticRecord(report, diagnostic);
+            auto snapshot = report.GetNamedObject(L"error_context").GetNamedObject(L"derivation");
+            Expect(Integer(snapshot, L"hresult") == static_cast<uint32_t>(result) &&
+                !snapshot.GetNamedBoolean(L"outputPresent") && !snapshot.GetNamedBoolean(L"validityChecked"));
+        }
+        test.At("sid.nonnull-invalid-output");
+        SID invalid{};
+        DerivedSidResult(&diagnostic, 0, true);
+        bool rejected = false;
+        try { desktop::CopySid(&invalid, &diagnostic, &diagnostic.derivation.output); }
+        catch (hresult_error const& error) { rejected = error.code() == E_ACCESSDENIED; }
+        Expect(rejected && diagnostic.derivation.output.present && diagnostic.derivation.output.checked &&
+            !diagnostic.derivation.output.valid && std::wstring_view(diagnostic.api) == L"IsValidSid");
+        test.At("sid.failing-api-hresult");
+        Point(&diagnostic, L"DeriveAppContainerSidFromAppContainerName", L"win32");
+        DerivedSidResult(&diagnostic, static_cast<uint32_t>(E_INVALIDARG), false);
+        rejected = false;
+        try { CheckResult(E_INVALIDARG, &diagnostic); }
+        catch (hresult_error const& error) { rejected = error.code() == E_INVALIDARG; }
+        Expect(rejected && diagnostic.derivation.hresult == static_cast<uint32_t>(E_INVALIDARG) &&
+            !diagnostic.derivation.output.checked && diagnostic.code == static_cast<uint32_t>(E_INVALIDARG));
     }
     constexpr std::array TokenKinds{TokenUser, TokenSessionId, TokenIsAppContainer, TokenAppContainerSid,
         TokenType, TokenImpersonationLevel, TokenElevation};
@@ -338,7 +473,7 @@ namespace
         rejected = false;
         try { desktop::CopySid(nullptr, &diagnostic); }
         catch (hresult_error const& error) { rejected = error.code() == E_ACCESSDENIED; }
-        Expect(rejected && !diagnostic.hasCode && std::wstring_view(diagnostic.reason) == L"sid-validity");
+        Expect(rejected && !diagnostic.hasCode && std::wstring_view(diagnostic.reason) == L"sid-missing");
         test.At("diagnostic.hresult-error");
         Point(&diagnostic, L"DeriveAppContainerSidFromAppContainerName", L"win32");
         rejected = false;
@@ -382,9 +517,9 @@ namespace
         Point(&diagnostic, L"StorageFolder.GetFolderFromPathAsync", L"winrt");
         context.cache = StorageFolder::GetFolderFromPathAsync(cache.wstring()).get();
         test.At("state.package-hashes");
-        context.packageHash = Hash(L"new-full-package-name-0.2.1.0-unit", &diagnostic);
+        context.packageHash = Hash(L"new-full-package-name-0.2.2.0-unit", &diagnostic);
         auto previousContext = context;
-        previousContext.packageHash = Hash(L"old-full-package-name-0.2.0.0-unit", &diagnostic);
+        previousContext.packageHash = Hash(L"old-full-package-name-0.2.1.0-unit", &diagnostic);
         test.At("state.old-record");
         Point(&diagnostic, L"StorageFolder.Path", L"winrt");
         auto folder = Base(context);
@@ -448,6 +583,8 @@ int wmain(int count, wchar_t** args)
         }
         test.At("arguments");
         Expect(count == 1);
+        SidPostconditionTests(test);
+        RealFamilySidTests(test);
         InvalidTokenTests(test);
         ElevationSizeTests(test);
         ValidTokenTests(test);

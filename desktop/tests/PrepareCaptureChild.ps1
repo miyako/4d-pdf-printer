@@ -7,6 +7,7 @@ $record = [ordered]@{
     pdfProduced = $false; activationGatePassed = $false
 }
 $unicode = [string][char]0x65e5 + [char]0x672c + [char]0x8a9e
+$sidModes = @('sid-null', 'sid-invalid', 'sid-nonzero-success-null', 'sid-api-error', 'sid-valid-prior', 'sid-unsafe')
 function Write-SyntheticUnicodeStderr {
     $bytes = [Text.UTF8Encoding]::new($false, $true).GetBytes($unicode)
     $stream = [Console]::OpenStandardError()
@@ -14,6 +15,41 @@ function Write-SyntheticUnicodeStderr {
     $stream.Flush()
 }
 switch ($Mode) {
+    { $_ -cin $sidModes } {
+        $record.Remove('job_id')
+        $record.stage = 'control-arguments'
+        $record.hresult = 2147942405
+        $snapshot = [ordered]@{ hresult = 0; outputPresent = $false; validityChecked = $false; valid = $false }
+        $context = [ordered]@{
+            stage = 'prepare.security'; api = 'validation'; object = 'package-sid'
+            origin = 'validation'; reason = 'sid-missing'; derivation = $snapshot
+        }
+        switch ($Mode) {
+            'sid-invalid' {
+                $snapshot.outputPresent = $true; $snapshot.validityChecked = $true
+                $context.api = 'IsValidSid'; $context.reason = 'sid-validity'
+            }
+            'sid-nonzero-success-null' { $snapshot.hresult = 1 }
+            'sid-api-error' {
+                $record.hresult = 2147942487; $snapshot.hresult = 2147942487
+                $context.api = 'DeriveAppContainerSidFromAppContainerName'; $context.origin = 'win32'
+                $context.reason = 'none'; $context.code = 2147942487; $context.codeKind = 'hresult'
+            }
+            'sid-valid-prior' {
+                $snapshot.outputPresent = $true; $snapshot.validityChecked = $true; $snapshot.valid = $true
+                $snapshot.arbitrary = 'must-not-be-published'
+                $context.object = 'user-sid'; $context.api = 'ConvertSidToStringSidW'; $context.origin = 'win32'
+                $context.reason = 'none'; $context.code = 5; $context.codeKind = 'win32'
+            }
+            'sid-unsafe' {
+                $context.derivation = @{
+                    hresult = 'must-not-be-published'; outputPresent = 'raw-user-sid'
+                    validityChecked = 1; valid = 'private-path-not-an-api'; arbitrary = 'must-not-be-published'
+                }
+            }
+        }
+        $record.error_context = $context
+    }
     'native-error' {
         $record.Remove('job_id')
         $record.stage = 'control-arguments'
@@ -65,4 +101,5 @@ switch ($Mode) {
     default { throw 'Unknown controlled preparation case.' }
 }
 [Console]::Write((ConvertTo-Json -InputObject $record -Compress))
-if ($Mode -cin @('native-error', 'diagnostic-unsafe', 'elevation-api-error', 'elevation-size-error')) { exit 1 }
+if ($Mode -cin @('native-error', 'diagnostic-unsafe', 'elevation-api-error', 'elevation-size-error') -or
+    $Mode -cin $sidModes) { exit 1 }

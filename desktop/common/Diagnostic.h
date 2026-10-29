@@ -3,6 +3,16 @@
 
 namespace desktop
 {
+    struct SidValidity
+    {
+        bool present = false, checked = false, valid = false;
+    };
+    struct SidDerivation
+    {
+        bool recorded = false;
+        uint32_t hresult = 0;
+        SidValidity output;
+    };
     struct Diagnostic
     {
         wchar_t const* stage = L"control";
@@ -13,7 +23,12 @@ namespace desktop
         uint32_t code = 0;
         bool hasCode = false;
         wchar_t const* codeKind = L"none";
+        SidDerivation derivation;
     };
+    inline void DerivedSidResult(Diagnostic* value, uint32_t result, bool present) noexcept
+    {
+        if (value) value->derivation = {true, result, {present, false, false}};
+    }
     inline void Step(Diagnostic* value, wchar_t const* stage, wchar_t const* object) noexcept
     {
         if (value) { value->stage = stage; value->object = object; }

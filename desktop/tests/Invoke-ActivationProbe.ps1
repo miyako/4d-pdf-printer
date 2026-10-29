@@ -15,7 +15,7 @@ $primary = $null
 $reportWriteFailure = $null
 $report = [ordered]@{
     schema = '4d-pdf-printer.activation-probe-desktop'; version = 1
-    wrapperVersion = 3
+    wrapperVersion = 4
     wrapperSha256 = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash.ToLowerInvariant()
     mode = $(if ($PreparationOnly) { 'preparation-only-not-activation' } else { 'one-synthetic-print' })
     result = 'blocked'; activationGatePassed = $false; pdfProduced = $false
@@ -127,8 +127,8 @@ try {
         throw 'Use a non-elevated desktop shell.'
     }
     $package = @(Get-AppxPackage -Name Miyako.DesktopPdfPrototype)
-    if ($package.Count -ne 1 -or $package[0].Version -ne [version]'0.2.1.0') {
-        throw 'The separately installed/signed current-user development activation package0.2.1.0 is required.'
+    if ($package.Count -ne 1 -or $package[0].Version -ne [version]'0.2.2.0') {
+        throw 'The separately installed/signed current-user development activation package0.2.2.0 is required.'
     }
     if (-not $BuildEvidencePath -or (Get-Item -LiteralPath $BuildEvidencePath).Length -gt 16384) {
         throw 'The exact local activation-build-evidence.json receipt is required.'
@@ -237,7 +237,7 @@ try {
                 'JsonObject.Insert', 'HashAlgorithmNames.Sha256', 'HashAlgorithmProvider.OpenAlgorithm',
                 'CryptographicBuffer.ConvertStringToBinary', 'HashAlgorithmProvider.HashData',
                 'CryptographicBuffer.EncodeToHexString', 'CryptographicBuffer.GenerateRandom')
-            reason = @('none', 'size-query', 'token-size-probe', 'value-query', 'token-fixed-size', 'sid-validity',
+            reason = @('none', 'size-query', 'token-size-probe', 'value-query', 'token-fixed-size', 'sid-validity', 'sid-missing',
                 'integer-type', 'integer-range', 'not-elevated', 'native-machine', 'package-name',
                 'package-publisher', 'container-context', 'interactive-session', 'no-reparse', 'object-type',
                 'owner', 'dacl-present', 'dacl-protected', 'ace-count', 'ace-type', 'ace-mask', 'ace-principal',
@@ -259,6 +259,29 @@ try {
                 if (($code -is [int] -or $code -is [long]) -and $code -ge 0 -and $code -le [uint32]::MaxValue) {
                     $safe.code = $code
                 } else { $rejected += 'code' }
+            }
+            if ($null -ne $context.PSObject.Properties['derivation']) {
+                $derivation = $context.derivation
+                $valid = $derivation -is [pscustomobject]
+                if ($valid) {
+                    foreach ($key in @('hresult', 'outputPresent', 'validityChecked', 'valid')) {
+                        if ($null -eq $derivation.PSObject.Properties[$key]) { $valid = $false }
+                    }
+                }
+                if ($valid) {
+                    $value = $derivation.hresult
+                    $valid = ($value -is [int] -or $value -is [long]) -and $value -ge 0 -and
+                        $value -le [uint32]::MaxValue -and $derivation.outputPresent -is [bool] -and
+                        $derivation.validityChecked -is [bool] -and $derivation.valid -is [bool]
+                }
+                if ($valid) {
+                    $safe.derivation = [ordered]@{
+                        hresult = ('0x{0:X8}' -f [uint32]$derivation.hresult)
+                        outputPresent = $derivation.outputPresent
+                        validityChecked = $derivation.validityChecked
+                        valid = $derivation.valid
+                    }
+                } else { $rejected += 'derivation' }
             }
         } else { $rejected += 'error_context' }
         $native.errorContext = $safe
