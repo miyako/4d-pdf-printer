@@ -273,6 +273,26 @@ PowerShell17+7+9 cases passed, but do not cover these Win32 calls.
 Stopped for parent review before a targeted fixed-size-query repair, any retry
 or user update. Version0.2.1 remains not ready for host action.
 
+**Reviewed TokenElevation-only repair:** that information class now uses a real
+`TOKEN_ELEVATION` buffer of its documented size, rather than a generic zero
+probe. Failed BOOL queries immediately retain the actual Win32 DWORD and
+HRESULT with `value-query`/`win32` context. Invalid handles therefore no longer
+manufacture E_ACCESSDENIED from the zero-probe error; their mapping follows the
+same fixed-buffer direct API reference. Successful results must return exactly
+`sizeof(TOKEN_ELEVATION)`; wrong sizes remain fail-closed E_ACCESSDENIED with
+`token-fixed-size`/`validation` context and no fabricated API error.
+
+The [documented DWORD member](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-token_elevation)
+defines zero versus any nonzero value, not just0/1. Its representation is copied
+unchanged. The sole production caller, `Current(false)`, still requires
+`TokenIsElevated == 0`; no caller privilege, impersonation, architecture, identity
+or ACL check changes. Every other `TokenData` class retains its old path.
+Regression coverage now includes direct fixed-buffer invalid-handle comparison,
+valid-token typed reference, exact-size rejection/preservation, and19 actual
+PowerShell preparation/report cases distinguishing fixed-query API failure from
+size validation. Portable checks passed; native completion is still required
+before any user handoff. No new library or package capability is introduced.
+
 **Conditional user handoff, not authorization:** only after native validation and
 parent review, preserve the complete old native output directory (including
 signed0.2.0 MSIX, build receipt and CTest LastTest.log) and every existing proof/

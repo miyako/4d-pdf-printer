@@ -237,7 +237,7 @@ try {
                 'JsonObject.Insert', 'HashAlgorithmNames.Sha256', 'HashAlgorithmProvider.OpenAlgorithm',
                 'CryptographicBuffer.ConvertStringToBinary', 'HashAlgorithmProvider.HashData',
                 'CryptographicBuffer.EncodeToHexString', 'CryptographicBuffer.GenerateRandom')
-            reason = @('none', 'size-query', 'token-size-probe', 'value-query', 'sid-validity',
+            reason = @('none', 'size-query', 'token-size-probe', 'value-query', 'token-fixed-size', 'sid-validity',
                 'integer-type', 'integer-range', 'not-elevated', 'native-machine', 'package-name',
                 'package-publisher', 'container-context', 'interactive-session', 'no-reparse', 'object-type',
                 'owner', 'dacl-present', 'dacl-protected', 'ace-count', 'ace-type', 'ace-mask', 'ace-principal',

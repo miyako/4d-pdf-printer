@@ -28,6 +28,24 @@ switch ($Mode) {
             arbitrary = 'must-not-be-published'
         }
     }
+    'elevation-api-error' {
+        $record.Remove('job_id')
+        $record.stage = 'control-arguments'
+        $record.hresult = 2147942406
+        $record.error_context = [ordered]@{
+            stage = 'current.token'; api = 'GetTokenInformation'; object = 'token-elevation'
+            origin = 'win32'; reason = 'value-query'; code = 6; codeKind = 'win32'
+        }
+    }
+    'elevation-size-error' {
+        $record.Remove('job_id')
+        $record.stage = 'control-arguments'
+        $record.hresult = 2147942405
+        $record.error_context = [ordered]@{
+            stage = 'current.token'; api = 'validation'; object = 'token-elevation'
+            origin = 'validation'; reason = 'token-fixed-size'
+        }
+    }
     'empty' { exit 0 }
     'malformed' { [Console]::Write('{ invalid'); exit 0 }
     'array' { [Console]::Write('[]'); exit 0 }
@@ -41,4 +59,4 @@ switch ($Mode) {
     default { throw 'Unknown controlled preparation case.' }
 }
 [Console]::Write((ConvertTo-Json -InputObject $record -Compress))
-if ($Mode -cin @('native-error', 'diagnostic-unsafe')) { exit 1 }
+if ($Mode -cin @('native-error', 'diagnostic-unsafe', 'elevation-api-error', 'elevation-size-error')) { exit 1 }

@@ -168,6 +168,23 @@ namespace
         for (auto kind : TokenKinds)
         {
             test.At("diagnostic.token-error-reference");
+            if (kind == TokenElevation)
+            {
+                TOKEN_ELEVATION value{};
+                auto reference = DirectTokenQuery(INVALID_HANDLE_VALUE, kind, &value,
+                    static_cast<DWORD>(sizeof(value)));
+                QueryEvidence("invalid.fixed", kind, static_cast<DWORD>(sizeof(value)), reference);
+                Expect(!reference.returned);
+                bool rejected = false;
+                try { TokenData(INVALID_HANDLE_VALUE, kind, &diagnostic); }
+                catch (hresult_error const& error) { rejected = error.code() == HRESULT_FROM_WIN32(reference.error); }
+                Expect(rejected && diagnostic.hasCode && diagnostic.code == reference.error &&
+                    std::wstring_view(diagnostic.object) == TokenRole(kind) &&
+                    std::wstring_view(diagnostic.api) == L"GetTokenInformation" &&
+                    std::wstring_view(diagnostic.origin) == L"win32" &&
+                    std::wstring_view(diagnostic.reason) == L"value-query");
+                continue;
+            }
             auto reference = DirectTokenQuery(INVALID_HANDLE_VALUE, kind, nullptr, 0);
             QueryEvidence("invalid.zero", kind, 0, reference);
             Expect(!reference.returned);
@@ -187,6 +204,29 @@ namespace
             Expect(rejected && diagnostic.hasCode && diagnostic.code == expected.error &&
                 std::wstring_view(diagnostic.object) == TokenRole(kind) &&
                 std::wstring_view(diagnostic.reason) == (admitted ? L"value-query" : L"token-size-probe"));
+        }
+    }
+    void ElevationSizeTests(UnitCase& test)
+    {
+        auto& diagnostic = test.diagnostic;
+        auto exact = static_cast<DWORD>(sizeof(TOKEN_ELEVATION));
+        for (DWORD size : std::array<DWORD, 4>{0, exact - 1, exact + 1, MAXDWORD})
+        {
+            test.At("elevation.returned-size-rejected");
+            TOKEN_ELEVATION value{};
+            bool rejected = false;
+            try { desktop::TokenElevationData(value, size, &diagnostic); }
+            catch (winrt::hresult_error const& error) { rejected = error.code() == E_ACCESSDENIED; }
+            Expect(rejected && !diagnostic.hasCode && std::wstring_view(diagnostic.origin) == L"validation" &&
+                std::wstring_view(diagnostic.reason) == L"token-fixed-size");
+        }
+        for (DWORD flag : std::array<DWORD, 3>{0, 1, MAXDWORD})
+        {
+            test.At("elevation.exact-size-dword-preserved");
+            TOKEN_ELEVATION value{flag};
+            auto data = desktop::TokenElevationData(value, exact, &diagnostic);
+            Expect(data.size() == sizeof(value) &&
+                reinterpret_cast<TOKEN_ELEVATION const*>(data.data())->TokenIsElevated == flag);
         }
     }
     DWORD ReferenceCapacity(TOKEN_INFORMATION_CLASS kind, DWORD required)
@@ -409,6 +449,7 @@ int wmain(int count, wchar_t** args)
         test.At("arguments");
         Expect(count == 1);
         InvalidTokenTests(test);
+        ElevationSizeTests(test);
         ValidTokenTests(test);
         NativeDiagnosticTests(context, test);
         test.At("files.security");

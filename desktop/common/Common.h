@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
@@ -64,11 +65,30 @@ namespace desktop
         default: return L"token-information";
         }
     }
+    inline std::vector<uint8_t> TokenElevationData(TOKEN_ELEVATION const& value, DWORD bytes,
+        Diagnostic* diagnostic = nullptr)
+    {
+        static_assert(sizeof(TOKEN_ELEVATION) == sizeof(DWORD));
+        Step(diagnostic, L"current.token", L"token-elevation");
+        Point(diagnostic, L"validation", L"validation", L"token-fixed-size");
+        if (bytes != sizeof(value)) throw winrt::hresult_error(E_ACCESSDENIED);
+        Point(diagnostic, L"buffer-allocation", L"cpp");
+        std::vector<uint8_t> data(sizeof(value));
+        std::memcpy(data.data(), &value, sizeof(value));
+        return data;
+    }
     inline std::vector<uint8_t> TokenData(HANDLE token, TOKEN_INFORMATION_CLASS kind,
         Diagnostic* diagnostic = nullptr)
     {
         DWORD bytes = 0;
         Step(diagnostic, L"current.token", TokenRole(kind));
+        if (kind == TokenElevation)
+        {
+            TOKEN_ELEVATION value{};
+            Point(diagnostic, L"GetTokenInformation", L"win32", L"value-query");
+            Check(GetTokenInformation(token, kind, &value, static_cast<DWORD>(sizeof(value)), &bytes) != FALSE, diagnostic);
+            return TokenElevationData(value, bytes, diagnostic);
+        }
         Point(diagnostic, L"GetTokenInformation", L"win32", L"size-query");
         auto succeeded = GetTokenInformation(token, kind, nullptr, 0, &bytes);
         auto error = succeeded ? ERROR_SUCCESS : GetLastError();

@@ -115,6 +115,19 @@ function Invoke-PrepareCase([string]$Name, [string]$Mode, [string[]]$Collisions 
     }
     if ($Mode -ceq 'diagnostic-unsafe' -and ($report.prepare.native.errorContext.Count -ne 0 -or
         $report.prepare.native.rejectedDiagnosticFields.Count -ne 7)) { throw 'Unknown native diagnostic fields were copied.' }
+    if ($Mode -cin @('elevation-api-error', 'elevation-size-error')) {
+        $context = $report.prepare.native.errorContext
+        if ($context.stage -cne 'current.token' -or $context.object -cne 'token-elevation' -or
+            -not $report.prepare.processExitObserved -or $report.prepare.exitCode -ne 1 -or
+            $report.prepare.native.Contains('rejectedDiagnosticFields')) { throw 'Elevation context was lost/rejected.' }
+        if ($Mode -ceq 'elevation-api-error') {
+            if ($report.prepare.native.hresult -cne '0x80070006' -or $context.api -cne 'GetTokenInformation' -or
+                $context.origin -cne 'win32' -or $context.reason -cne 'value-query' -or
+                $context.code -ne 6 -or $context.codeKind -cne 'win32') { throw 'Actual fixed-query error was masked.' }
+        } elseif ($report.prepare.native.hresult -cne '0x80070005' -or $context.api -cne 'validation' -or
+            $context.origin -cne 'validation' -or $context.reason -cne 'token-fixed-size' -or
+            $context.Contains('code') -or $context.Contains('codeKind')) { throw 'Size guard was confused with API failure.' }
+    }
     if ($Mode -cin @('flood', 'stderr-flood') -and $report.prepare.failureReason -cne 'capture-limit') {
         throw 'Stream flood was not classified as a capture limit.'
     }
@@ -149,6 +162,8 @@ function Invoke-PrepareCase([string]$Name, [string]$Mode, [string[]]$Collisions 
 try {
     Invoke-PrepareCase 'success' 'success' -Success; ++$checks
     Invoke-PrepareCase 'native-error' 'native-error'; ++$checks
+    Invoke-PrepareCase 'elevation-api-error' 'elevation-api-error'; ++$checks
+    Invoke-PrepareCase 'elevation-size-error' 'elevation-size-error'; ++$checks
     Invoke-PrepareCase 'diagnostic-unsafe' 'diagnostic-unsafe'; ++$checks
     foreach ($mode in @('empty', 'malformed', 'array', 'bad-stage', 'bad-id', 'flood', 'stderr-flood',
         'invalid-utf8', 'timeout', 'start-failure')) {
