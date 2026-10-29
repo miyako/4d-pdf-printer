@@ -13,11 +13,22 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $stage = 'consent'
 $created = $false
+$primaryFailure = $null
+$reportWriteFailure = $null
 $deadline = [Diagnostics.Stopwatch]::StartNew()
 $report = [ordered]@{
     schema = '4d-pdf-printer.product-proof-batch'; version = 1
     result = 'blocked'; productUsable = $false; psaPipelineTested = $false
     manualReviewRequired = $true; error = $null; native = @()
+}
+function Write-NewProofJson([string]$Path, [object]$Value, [int]$Depth = 8) {
+    $json = ConvertTo-Json -InputObject $Value -Depth $Depth
+    $bytes = [Text.UTF8Encoding]::new($false, $true).GetBytes($json + [Environment]::NewLine)
+    $file = [IO.File]::Open($Path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    try {
+        $file.Write($bytes, 0, $bytes.Length)
+        $file.Flush($true)
+    } finally { $file.Dispose() }
 }
 function Assert-LocalPath([string]$Path, [switch]$New) {
     if (-not [IO.Path]::IsPathFullyQualified($Path) -or $Path.StartsWith('\\')) {
@@ -215,16 +226,18 @@ try {
     $report.controls = $controls
     $stage = 'worker-lifecycle'
     $inputManifest = Join-Path $PrivateOutputRoot 'inputs.json'
-    [ordered]@{ schema = '4d-pdf-printer.proof-inputs'; version = 1; inputs = $inputs } |
-        ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $inputManifest -Encoding utf8 -NoClobber
+    Write-NewProofJson $inputManifest ([ordered]@{
+        schema = '4d-pdf-printer.proof-inputs'; version = 1; inputs = $inputs
+    })
     $workerArguments = @('--repeat', '--runtime', $RuntimeRoot, '--manifest', $inputManifest,
         '--directory', (Join-Path $PrivateOutputRoot 'worker'), '--report', (Join-Path $PrivateOutputRoot 'worker-report.json'))
     if ($VerboseLocal) { $workerArguments += @('--verbose-log', (Join-Path $PrivateOutputRoot 'verbose.jsonl')) }
     Invoke-Bounded $ProofExecutable $workerArguments (Join-Path $PrivateOutputRoot 'worker-report.json') 900 | Out-Null
     $stage = 'read-only-fidelity-size'
     $comparisonManifest = Join-Path $PrivateOutputRoot 'comparison-inputs.json'
-    [ordered]@{ schema = '4d-pdf-printer.proof-comparison'; version = 1; fixtures = $comparisons } |
-        ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $comparisonManifest -Encoding utf8 -NoClobber
+    Write-NewProofJson $comparisonManifest ([ordered]@{
+        schema = '4d-pdf-printer.proof-comparison'; version = 1; fixtures = $comparisons
+    })
     $comparisonReport = Join-Path $PrivateOutputRoot 'comparison.json'
     $arguments = @((Join-Path $PSScriptRoot 'compare_pdfs.py'), '--manifest', $comparisonManifest,
         '--output', $comparisonReport, '--render-directory', (Join-Path $PrivateOutputRoot 'renders'))
@@ -232,6 +245,7 @@ try {
     $report.comparison = Invoke-Bounded $PythonPath $arguments $comparisonReport 900
     $report.result = 'automated-observations-complete-manual-review-required'
 } catch {
+    $primaryFailure = $_
     $report.error = [ordered]@{
         stage = $stage; exceptionType = $_.Exception.GetType().FullName
         hresult = ('0x{0:X8}' -f ($_.Exception.HResult -band 0xffffffffL))
@@ -241,9 +255,27 @@ try {
     $report.elapsedMilliseconds = $deadline.ElapsedMilliseconds
     if ($created) {
         $path = Join-Path $PrivateOutputRoot 'batch.json'
-        $report | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $path -Encoding utf8 -NoClobber
+        try { Write-NewProofJson $path $report 30 } catch {
+            $reportWriteFailure = $_
+            $report.reportWriteError = [ordered]@{
+                stage = 'batch-report'; exceptionType = $_.Exception.GetType().FullName
+                hresult = ('0x{0:X8}' -f ($_.Exception.HResult -band 0xffffffffL))
+            }
+            if ($null -eq $primaryFailure) {
+                $report.result = 'blocked'
+                $report.error = $report.reportWriteError
+            }
+            Write-Error -ErrorAction Continue 'Product proof batch report could not be written; no overwrite or retry was performed. Any primary failure is retained.'
+        }
     }
 }
-if ($report.result -cne 'automated-observations-complete-manual-review-required') {
-    throw 'Product proof did not complete; no upload, fallback, installation or retry was performed.'
+if ($null -ne $primaryFailure -or $null -ne $reportWriteFailure -or
+    $report.result -cne 'automated-observations-complete-manual-review-required') {
+    $cause = if ($null -ne $primaryFailure) { $primaryFailure.Exception }
+        elseif ($null -ne $reportWriteFailure) { $reportWriteFailure.Exception } else { $null }
+    $failure = [InvalidOperationException]::new(
+        'Product proof did not complete; no upload, fallback, installation or retry was performed.', $cause)
+    $failure.Data['ProofError'] = $report.error
+    if ($null -ne $reportWriteFailure) { $failure.Data['ReportWriteError'] = $report.reportWriteError }
+    throw $failure
 }

@@ -69,6 +69,7 @@ try {
     }
     ++$checks
     Write-Output "$checks proof consent/subprocess unit cases passed; NOT Windows/renderer/printing evidence."
+    & (Join-Path $PSScriptRoot 'Check-ProofJson.ps1')
 } finally {
     foreach ($file in Get-ChildItem -LiteralPath $root -File) { Remove-Item -LiteralPath $file.FullName }
     Remove-Item -LiteralPath $root

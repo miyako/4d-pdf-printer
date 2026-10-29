@@ -1,9 +1,11 @@
 # Product proof harness (milestone A)
 
-**The own-code harness is Windows-native compiled and unit-checked; the actual
-product experiment is unexecuted. No product size, fidelity or repeated-printing
-result is claimed.** Normal-desktop execution and a matching **locally
-available** renderer require separate creator approval. No installation,
+**The own-code harness is Windows-native compiled and unit-checked. A creator-
+reported real desktop attempt reached `worker-lifecycle` after all three
+diagnostic controls, then hit the script JSON-write bug below. Retained files
+have not yet been inspected; no comparison or worker-lifecycle result is
+claimed.** Any continuation requires separate creator/host approval.
+No installation,
 signing, trust change, runtime download or dependency build is authorized by this
 document.
 The creator separately authorized the initial own-code-only compile/unit batch
@@ -100,6 +102,85 @@ it is not another green run. Actual desktop comparison, real worker
 repetitions/faults/resource behavior and manual fidelity remain **unexecuted**.
 No size/lifecycle claim, product acceptance, milestone-B progression or host-run
 permission follows from these compile/unit results.
+
+## Script-only JSON correction and reported desktop stop
+
+The reported desktop run failed at `worker-lifecycle` because `Set-Content`
+does **not** support `-NoClobber`. The same invalid call also affected
+`comparison-inputs.json` and the final `batch.json`, masking the initial failure.
+This is a harness bug, not evidence of failed PSA activation or rendering.
+Preserve the complete original attempt, including any incomplete files/errors;
+do not rerun the six print submissions, delete artifacts or recreate its
+`batch.json` as though the attempt had succeeded.
+
+All three writes now use one small UTF-8/no-BOM JSON writer with exclusive
+`FileMode.CreateNew`, following the existing printer reference-control write
+pattern. It never opens an existing file for truncation/overwrite. A failed
+write may leave a new partial file: stop and preserve it, never retry over it.
+If final reporting also fails, the terminal exception retains the primary
+exception and typed `ProofError`; a separate typed `ReportWriteError` records
+the secondary failure. A report-only failure also remains a real failure.
+Normal terminal messages do not print private paths or raw upstream errors.
+
+**Coverage gap:** the earlier seven consent/subprocess tests and native compile
+checks did not execute these post-control JSON/report paths. They did not test
+this fix. Targeted local PowerShell 7.2.6 tests now execute the production
+post-control body and its actual catch/finally/terminal block, with only native
+worker/comparator calls substituted. Nine cases cover all three real writes,
+UTF-8/Unicode/depth/parse integrity, each existing-file collision with exact
+bytes unchanged, and primary worker/comparator/write failures plus reporting
+failure. `Check-ProductProof.ps1` runs those nine cases alongside its seven
+existing cases. No new native build, CI dispatch or user-host action is part of
+this script-only correction; native sources/binaries and historical receipts
+are unchanged.
+
+### Minimal no-reprint continuation proposal -- review only
+
+There is **no resume switch/platform**, and this is not permission or a command
+to continue. First obtain a read-only listing of the retained root through the
+creator. Do not infer the contents of missing/masked reports from the stage
+message alone. Only after inspecting that state and separate explicit host
+consent, prepare one reviewed, file-specific command block:
+
+- Require the existing ordinary signed-in native desktop and matching local
+  proof executable/build receipt, renderer tree/native receipt and inspection
+  tools. Compare executable hashes/architecture with the retained native
+  reports, and the renderer inventory hash with `runtime.json`; retain the
+  runtime validation/pinning performed by the existing `--repeat`. No rebuild,
+  installation, elevation, package update or trust change.
+- Read `fixtures-report.json` and `fixtures/fixtures.json`; require matching
+  fixture records and exact `text`, `vectors`, `mixed` order. Check every
+  original EMF against its recorded `source_sha256`, expected text and vector
+  requirements. Reject changed/ambiguous source identity.
+- Require all three control and baseline submission reports with successful raw
+  StartDoc/EndDoc returns and matching executable/context/physical-page records.
+  Bind each control's `title_sha256` to exactly one existing capture in the
+  expected diagnostic package's LocalState. Require its successful
+  `job.json`/`completion.txt`, interactive OXPS endpoint, source byte count and
+  SHA256 equality between retained OXPS and that capture's `source.oxps`.
+  Require all three nonempty Microsoft PDFs; submission/file presence alone
+  never establishes valid PDF content or completed comparison.
+- Stop for reconciliation if any prior worker/report/staging or live-process
+  evidence is present or ambiguous. Do not blindly retry conversions. Preserve
+  every old file and record a read-only hash/size inventory of the selected
+  old reports, source files, captures and baselines in a **new** private,
+  unsynced, user/SYSTEM-protected continuation directory under a validated
+  trusted parent; reject reparse/collision/unexpected-writer paths.
+- Write only new `inputs.json`/`comparison-inputs.json` there, pointing at the
+  preserved OXPS/Microsoft PDFs and new worker outputs. Call the existing native
+  `--repeat`, then the existing read-only comparator, with new worker, report,
+  verbose and render paths. Reuse existing bounded invocation behavior: one
+  900s continuation budget, native 60s/1GiB per-worker limits, bounded pipes,
+  kill/reap and explicit stop on real errors. No `--fixtures` or `--print`.
+- Keep a separate continuation record linking the failed attempt by hashes,
+  without rewriting its outcome. Recheck old input hashes after inspection;
+  preserve new failure/partial artifacts too. Completion remains
+  `productUsable:false`, manual review required; no size/lifecycle claim or
+  milestone-B progression.
+
+The actual retained listing/identities and permission remain outstanding. If
+they cannot establish this chain, report the gap rather than guess, reprint,
+overwrite or build a general recovery mechanism.
 
 ## What this measures
 
