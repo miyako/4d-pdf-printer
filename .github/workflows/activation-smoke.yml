@@ -7,7 +7,7 @@ permissions:
 jobs:
   native:
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         include:
           - runner: windows-2022

@@ -12,7 +12,11 @@ try {
     Invoke-SmokeBody -Executable $Fixture -Arguments @('--fixture') -Evidence $good -DeadlineMs 5000
     $bytes = [IO.File]::ReadAllBytes((Join-Path $good 'stdout.txt'))
     $expected = [byte[]](123,34,109,101,115,115,97,103,101,34,58,34,230,151,165,230,156,172,34,125,10)
-    Check ([Convert]::ToHexString($bytes) -ceq [Convert]::ToHexString($expected)) 'raw known UTF8 bytes'
+    $matches = [Convert]::ToHexString($bytes) -ceq [Convert]::ToHexString($expected)
+    if (-not $matches) {
+        [Console]::Error.WriteLine("Synthetic fixture only: expectedLength=$($expected.Length) expectedHex=$([Convert]::ToHexString($expected)) actualLength=$($bytes.Length) actualHexPrefix128=$([Convert]::ToHexString($bytes, 0, [Math]::Min(128, $bytes.Length)))")
+    }
+    Check $matches 'raw known UTF8 bytes'
     $report = Get-Content -LiteralPath (Join-Path $good 'wrapper.json') -Raw | ConvertFrom-Json
     Check ($report.exitCode -eq 0 -and $null -eq $report.primaryError -and -not $report.pdfProduced) 'actual report JSON'
     Check ([IO.File]::ReadAllText((Join-Path $good 'stderr.txt')).Contains('fixture stderr')) 'raw stderr'

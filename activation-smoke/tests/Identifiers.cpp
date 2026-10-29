@@ -3,11 +3,37 @@
 #include <cstdio>
 #include <thread>
 #include <chrono>
+#ifdef _WIN32
+#include <io.h>
+#include <fcntl.h>
+#include <cerrno>
+#endif
 
 int main(int argc, char** argv)
 {
     if (argc == 2 && std::string_view(argv[1]) == "--fixture")
     {
+#ifdef _WIN32
+        for (auto stream : {stdout, stderr})
+        {
+            int descriptor = _fileno(stream);
+            int error = errno;
+            if (descriptor == -1)
+            {
+                std::fprintf(stderr, "case=fixture assertion-line=%d API=_fileno stream=%s errno=%d\n",
+                    __LINE__, stream == stdout ? "stdout" : "stderr", error);
+                return 1;
+            }
+            int previous = _setmode(descriptor, _O_BINARY);
+            error = errno;
+            if (previous == -1)
+            {
+                std::fprintf(stderr, "case=fixture assertion-line=%d API=_setmode(_O_BINARY) stream=%s errno=%d\n",
+                    __LINE__, stream == stdout ? "stdout" : "stderr", error);
+                return 1;
+            }
+        }
+#endif
         constexpr char text[] = "{\"message\":\"\xe6\x97\xa5\xe6\x9c\xac\"}\n";
         constexpr char error[] = "fixture stderr \xc3\xa9\n";
         return std::fwrite(text, 1, sizeof(text) - 1, stdout) == sizeof(text) - 1 &&
