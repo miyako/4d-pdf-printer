@@ -561,15 +561,54 @@ int wmain(int count, wchar_t** args)
         Expect(replay);
         test.At("files.unprotected-directory-create");
         auto unprotected = base / L"unprotected-unit";
-        Point(&diagnostic, L"CreateDirectoryW", L"win32");
-        Check(CreateDirectoryW(unprotected.c_str(), nullptr) != FALSE, &diagnostic);
-        test.At("files.unprotected-directory-rejected");
-        rejected = false;
-        Step(&fileDiagnostic, L"prepare.existing", L"existing-job");
-        try { auto unsafe = OpenDirectory(unprotected, context, security, &fileDiagnostic); }
-        catch (hresult_error const&) { rejected = true; }
-        Expect(rejected && std::wstring_view(fileDiagnostic.origin) == L"validation" &&
-            std::wstring_view(fileDiagnostic.reason) == L"dacl-protected" && !fileDiagnostic.hasCode);
+        {
+            Point(&diagnostic, L"GetSecurityDescriptorLength", L"win32");
+            auto descriptorBytes = GetSecurityDescriptorLength(security.descriptor);
+            Check(descriptorBytes != 0, &diagnostic);
+            std::vector<uint8_t> descriptor(descriptorBytes);
+            std::memcpy(descriptor.data(), security.descriptor, descriptorBytes);
+            Point(&diagnostic, L"SetSecurityDescriptorControl", L"win32");
+            Check(SetSecurityDescriptorControl(descriptor.data(), SE_DACL_PROTECTED, 0) != FALSE, &diagnostic);
+            auto attributes = security.Attributes();
+            attributes.lpSecurityDescriptor = descriptor.data();
+            Point(&diagnostic, L"CreateDirectoryW", L"win32");
+            Check(CreateDirectoryW(unprotected.c_str(), &attributes) != FALSE, &diagnostic);
+            test.At("files.unprotected-directory-preconditions");
+            Point(&diagnostic, L"CreateFileW", L"win32");
+            HANDLE file = CreateFileW(unprotected.c_str(), READ_CONTROL | FILE_READ_ATTRIBUTES,
+                FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+            Check(file != INVALID_HANDLE_VALUE, &diagnostic);
+            desktop::handle pinned(file);
+            PSID owner = nullptr;
+            PSECURITY_DESCRIPTOR observed = nullptr;
+            Point(&diagnostic, L"GetSecurityInfo", L"win32");
+            auto error = GetSecurityInfo(file, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+                &owner, nullptr, nullptr, nullptr, &observed);
+            if (error)
+            {
+                ErrorCode(&diagnostic, error, L"win32");
+                throw hresult_error(HRESULT_FROM_WIN32(error));
+            }
+            struct FreeDescriptor { PSECURITY_DESCRIPTOR value; ~FreeDescriptor() { LocalFree(value); } } free{observed};
+            SECURITY_DESCRIPTOR_CONTROL control{};
+            DWORD revision = 0;
+            Point(&diagnostic, L"GetSecurityDescriptorControl", L"win32");
+            Check(GetSecurityDescriptorControl(observed, &control, &revision) != FALSE, &diagnostic);
+            bool ownerMatches = owner && EqualSid(owner, context.identity.user.data());
+            bool daclProtected = (control & SE_DACL_PROTECTED) != 0;
+            std::printf("Unprotected fixture preconditions owner_matches_current_user=%u dacl_protected=%u\n",
+                static_cast<unsigned>(ownerMatches), static_cast<unsigned>(daclProtected));
+            std::fflush(stdout);
+            Expect(ownerMatches && !daclProtected);
+            test.At("files.unprotected-directory-rejected");
+            rejected = false;
+            Step(&fileDiagnostic, L"prepare.existing", L"existing-job");
+            try { auto unsafe = OpenDirectory(unprotected, context, security, &fileDiagnostic); }
+            catch (hresult_error const&) { rejected = true; }
+            Expect(rejected && std::wstring_view(fileDiagnostic.origin) == L"validation" &&
+                std::wstring_view(fileDiagnostic.reason) == L"dacl-protected" && !fileDiagnostic.hasCode);
+        }
         test.At("files.unprotected-directory-cleanup");
         Point(&diagnostic, L"filesystem.remove", L"cpp");
         std::filesystem::remove(unprotected);
