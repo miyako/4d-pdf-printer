@@ -31,10 +31,20 @@ try {
     $rejected = $false
     try { & $script -PrivateOutputRoot $blocked 2>$null } catch { $rejected = $true }
     if (-not $rejected -or (Test-Path -LiteralPath $blocked)) { throw 'Missing consent caused work.' }
+    $rejected = $false
+    try { & $script -PrivateOutputRoot $blocked -PreparationOnly -AllowOneSyntheticPrint 2>$null } catch {
+        $rejected = $_.Exception.Data['ProbeError'].stage -ceq 'consent'
+    }
+    if (-not $rejected -or (Test-Path -LiteralPath $blocked)) { throw 'Preparation-only lacked its separate write consent.' }
     if (-not $IsWindows) {
         $rejected = $false
         try { & $script -PrivateOutputRoot $blocked -AllowOneSyntheticPrint 2>$null } catch { $rejected = $true }
         if (-not $rejected -or (Test-Path -LiteralPath $blocked)) { throw 'Non-Windows preflight caused work.' }
+        $rejected = $false
+        try { & $script -PrivateOutputRoot $blocked -PreparationOnly -AllowPackagePreparation 2>$null } catch {
+            $rejected = $_.Exception.Data['ProbeError'].stage -ceq 'desktop-preflight'
+        }
+        if (-not $rejected -or (Test-Path -LiteralPath $blocked)) { throw 'Preparation-only platform guard caused work.' }
     }
     [xml]$manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../package/activation/AppxManifest.xml') -Raw
     $queues = @($manifest.SelectNodes("//*[local-name()='PrintSupportVirtualPrinter']"))
@@ -51,3 +61,4 @@ try {
     }
     Remove-Item -LiteralPath $root
 }
+& (Join-Path $PSScriptRoot 'Check-ActivationPrepare.ps1')

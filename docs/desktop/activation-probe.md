@@ -38,8 +38,89 @@ This resolves the compile blocker, **not the actual PSA activation gate**.
 No AppContainer file sharing, system FullTrust launch, package installation,
 printing or consented Windows wrapper body was exercised. The normal-desktop
 procedure below is ready for **parent review only**, not authorized execution.
-Development-family and signing-certificate state are still unknown; discover
-them read-only only when the parent starts the separately approved instructions.
+At that compile checkpoint, development-family and signing-certificate state
+were still unknown. The later supervised desktop state is described below.
+
+### Subsequent actual desktop preparation stop
+
+The separately supervised native ARM64 desktop attempt with the user's clean
+`b8f4b7b` build subsequently installed the new development package and passed
+identity/hash preflight, but stopped at **prepare**, before any observer,
+synthetic submission or actual PSA callback. The first result/old directories
+must remain preserved. A subsequent existing-output-directory rejection did not
+replace that first result. This is not an activation failure or evidence against
+the healthy diagnostic package. Certificate/trust/installation are not repeated
+by the preparation-diagnostic fix.
+
+Source inspection finds the native `--prepare` dispatch and expected
+`prepared-private-correlation`/64-lowercase-hex contract agree. A native failure
+returns exit1 and a JSON HRESULT, often still at `control-arguments` even when
+`Current()`/`Prepare()` failed; that stage alone does not identify the failing API.
+The old wrapper consumed stdout into an unsaved private variable and discarded
+native exit/error details when its generic contract check or JSON parsing failed.
+Its saved PowerShell RuntimeException `0x80131501` is **not** a Win32 or launcher
+root cause.
+
+The masking was reproduced locally by executing the actual original
+prepare/catch/finally/report body with a simulated native exit1/JSON
+`0x80070005`: only generic `0x80131501` survived. That access-denied value is
+**synthetic test data, not the user's observed native error**. The actual native
+cause remains unknown.
+
+The narrow PowerShell-only correction uses the existing subprocess stream-pump
+pattern, with fixed alias/`--prepare`, separate create-new
+`prepare.stdout.private`/`prepare.stderr.private` files, at most16KiB retained
+per stream, a45s capture deadline and bounded exact-client exit observation.
+It records process start/exit/exit code, byte counts, capture API/limit/deadline
+failures and allowlisted native stage/HRESULT without publishing job IDs, raw
+stdout/stderr, paths or exception messages. It no longer relies on ambient
+`$LASTEXITCODE`. `failure.private.json` preserves the bounded original exception
+message; a result-write collision retains the primary exception and typed
+secondary `ReportWriteError`. Existing files are never overwritten.
+Native code, package/alias registration, protocol, ACLs and request expiry are
+unchanged. This capture behavior has **not** been exercised against the Windows
+AppExecutionAlias; no native rebuild, CI dispatch or host retry is included.
+
+`Check-ActivationProbe.ps1` now also runs16 actual production prepare/parser/
+catch/finally/report cases: valid preparation, native JSON error/exit1,
+empty/malformed/array output, wrong stage/ID, stdout/stderr floods, invalid UTF8,
+timeout, process-start error and stdout/stderr/private-error/result collisions.
+Only the native executable is replaced by a controlled local PowerShell child;
+capture, real file I/O and terminal error handling are production code.
+Preflight/ACL checks are outside that extracted test segment, not bypassed in
+production. Neither observer/print execution nor Windows alias behavior is
+proven by these tests. The retained7+9 harness cases still pass locally.
+
+No large ACL/metadata collection is requested to infer a discarded HRESULT;
+existing metadata cannot reconstruct it. Preserve all first-attempt records.
+The parent-authorized **source change**, not host execution, adds the small
+`-PreparationOnly` branch with separate `-AllowPackagePreparation` consent.
+Native preparation writes package-local state, so this is not a read-only
+diagnostic. It uses the same production capture/contract/error path and all
+existing desktop/package/build/hash/path/ACL checks, but cannot reach either
+`--observe` or `--print`, even if preparation succeeds or print consent was also
+supplied. It always reports `activationGatePassed:false`, `pdfProduced:false`
+and mode `preparation-only-not-activation`; valid preparation gets that result
+label, while errors remain blocked with explicit diagnostics. No expired job
+records are removed, request replaced, or result overwritten. A fresh protected
+output root is still required.
+
+The report separately records `wrapperVersion:2` and the SHA256 of the executing
+wrapper. Existing `sourceCommit`/own-code hashes continue to identify the
+unchanged native build/installed package, not the updated script. The16 actual
+body tests now execute the preparation-only branch with the real alternative
+print branch present and trap any observer/submission process call; success,
+native error, malformed output, timeout and collision paths all keep the gate
+false. Separate real-script tests enforce the new explicit consent and platform
+guards. No C++ change, native rebuild, CI dispatch or user execution is included.
+Only the parent may review and seek consent for one subsequent preparation-only
+call; the full synthetic-print procedure below remains paused. Do not retry
+preparation, reinstall, alter certificates/COM/profile/DPI or print automatically.
+
+Future parent command blocks must use an enclosing `& { ... }` so a terminating
+guard error aborts the whole pasted block; independently pasted top-level
+statements in an interactive shell can otherwise continue after a prior error.
+This does not blame the caller or authorize reusing the preserved output root.
 
 ## Supported primitives, not an assumed callback result
 
