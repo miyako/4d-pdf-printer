@@ -35,7 +35,7 @@ int main()
     catch (...) { std::fputs("Portable activation protocol failure.\n", stderr); return 1; }
 }
 #else
-#include "Files.h"
+#include "Controller.h"
 #include <objbase.h>
 #include <array>
 
