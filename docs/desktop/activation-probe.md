@@ -154,7 +154,7 @@ full-package-name hashes after update. Missing/partial/bad-ACL/invalid-time old
 records can still block admission; diagnostics identify `existing-job` or
 `existing-request`, but do not delete, normalize or rewrite them.
 
-Deterministic native tests cover preserved API/validation HRESULTs, all queried
+Deterministic native tests target preserved API/validation HRESULTs, all queried
 token-information roles, SID validity, invalid file handles, JSON numeric guards
 and serialization. Synthetic old-version records test actual admission with
 unchanged bytes, fresh-request rejection and old-hash replay rejection.
@@ -163,7 +163,38 @@ packaged `Current()` or AppContainer access. No restricted-token or real-caller
 coverage is claimed. Existing API libraries remain WindowsApp/Advapi32/Userenv/
 Ole32/Shell32; the new context is standard C++ data, not a runtime dependency.
 
-**Conditional user handoff, not authorization:** after the exact new batch and
+**Resumed validation STOP:** saved source `582d45b006749e1268d2e6f893fe1cb38fe4811f`
+was tested in [40841276658](https://github.com/miyako/4d-pdf-printer/actions/runs/40841276658),
+then canceled at the user's pause request. It remains **cancelled**, not verified
+or successful. Its preserved partial logs nevertheless show C3861 at Tests.cpp:130
+(`Base`) and139/142 (`Prepare`): the new compatibility test included `Files.h`
+instead of the declaring `Controller.h`. The four payload targets linked on
+both architectures; the unit target did not. No native CTest or packaging
+was established. [Canceled-attempt receipt](evidence/40841276658.json).
+
+On explicit resume, the only code change was that one include. Local portable
+C++20 protocol/diagnostic cases, actual PowerShell preparation/report17 cases,
+writer/consent/manifest guards and retained7+9 harness cases passed. These do not
+exercise Windows-only code. Fresh manual
+[40847288110](https://github.com/miyako/4d-pdf-printer/actions/runs/40847288110)
+tested source `2b16916e4d4040c0f6462fad0d453d02b38ffb99`: all five own-code
+targets compiled and linked on x64 and native ARM64, but the native CTest
+**failed on both**, after0.07s/0.03s, with exactly
+`Activation probe unit failed HRESULT=0x80070057; no PSA/printing performed.`
+CTest exited8. The unit catch does not identify a subcase/API; do not infer one
+or equate its E_INVALIDARG with the user's preparation E_ACCESSDENIED.
+Unsigned packaging and subsequent hosted script checks were not reached.
+See the [fresh failure receipt](evidence/40847288110.json) and unmodified
+[x64](evidence/40847288110-x64-LastTest.log) /
+[ARM64](evidence/40847288110-arm64-LastTest.log) CTest logs.
+
+Work stopped at this first fresh native failure: no repair/retry, host build,
+signing, installation, preparation or printing followed. Version0.2.1 diagnostics
+are **not ready for user update**. The actual desktop E_ACCESSDENIED cause is
+still unknown; the actual PSA callback gate is still unexercised. Historical
+receipts, old roots and installed0.2.0/certificate/diagnostic queues are unchanged.
+
+**Conditional user handoff, not authorization:** only after native validation and
 parent review, preserve the complete old native output directory (including
 signed0.2.0 MSIX, build receipt and CTest LastTest.log) and every existing proof/
 preparation root. Prefer a fresh detached source worktree at the approved SHA
