@@ -196,6 +196,15 @@ checkpoint is not a tested source or green run. **Native fixture validation
 remains blocked pending creator review**, and no user-host build/reprints are
 requested.
 
+The creator subsequently reviewed that failed attempt and authorized **one
+fresh** follow-up after the surgical test-only `objbase.h` include. Microsoft's
+[CoCreateGuid](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-cocreateguid)
+and [StringFromGUID2](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-stringfromguid2)
+requirements specify that include and `Ole32.lib`; the fixture-test target
+already explicitly links `ole32` in CMake. No mapping, expected content/bounds,
+assertions or comparator changes accompany this repair. The follow-up's new
+source/result must be identified separately; the failed attempt remains failed.
+
 **Paper-grid limitation, unchanged comparator:** the observed PSA path uses
 300dpi and 2480 pixels across, represented as 793.6 XPS units / 595.2pt; Microsoft
 uses 600dpi and 4961 pixels / 595.32pt. The same nominal A4 therefore differs by

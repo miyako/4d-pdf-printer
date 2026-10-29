@@ -41,6 +41,7 @@ int main()
 }
 #else
 #include "../proof/Fixtures.h"
+#include <objbase.h>
 #include <array>
 #include <exception>
 #include <memory>
