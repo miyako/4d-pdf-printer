@@ -7,6 +7,16 @@ normal-desktop observation. Native compilation and controlled-child units cannot
 pass that gate. Full B, comparison continuation, destinations/UI and services
 remain paused. No PDF is produced; the PSA deliberately completes Failed/Canceled.
 
+**Latest scoped validation passed:** manual
+[40852574080](https://github.com/miyako/4d-pdf-printer/actions/runs/40852574080)
+tested clean source `6ed19cbd71758e4d26a5ef6dc3dd4529475664e9`.
+Both x64/native ARM64 passed complete controlled native units, unsigned package
+checks and actual PowerShell19+7+9 cases. This verifies the narrowly repaired
+TokenElevation helper and diagnostic/test surfaces, **not** normal packaged
+preparation or the actual PSA callback. The next host boundary is parent-reviewed
+**preparation only**, never printing automatically.
+[Exact receipt](evidence/40852574080.json). All failures below remain historical.
+
 **Historical first-attempt STOP checkpoint:** the initially authorized native batch
 [40832146213](https://github.com/miyako/4d-pdf-printer/actions/runs/40832146213)
 tested source `765d6a75064e63beb961822771d8793a4f67fdbf` and **failed
@@ -352,6 +362,36 @@ did not. [Overall failure receipt](evidence/40851551623.json).
 Stopped without script repair/retry or user action. Native pass alone is not
 full validation or a user-update/actual-callback gate pass.
 
+**Separately reviewed test-only UTF8 repair and overall pass:** the controlled
+producer now emits explicit UTF8-no-BOM bytes through `OpenStandardError.Write`.
+The assertion compares captured bytes to an independent fixed nine-byte
+reference, without transcoding, trimming or normalizing production capture.
+Only this known synthetic fixture may produce bounded32-byte hex diagnostics
+on mismatch. Invalid-UTF8/flood/timeout/collision cases and native sources remain
+unchanged. The existing guard entry point now reuses the retained7+9 harness
+checks, so the existing ActivationProbe matrix verifies all of them without
+workflow changes or renderer/comparator work.
+
+Fresh [40852574080](https://github.com/miyako/4d-pdf-printer/actions/runs/40852574080)
+at `6ed19cbd71758e4d26a5ef6dc3dd4529475664e9` passed **overall** on x64
+job123375458729 and native ARM64 job123375459252: complete native CTests
+3.30s/3.35s, unsigned MSIX/PE/manifest/PRI, script/consent guards,19 actual
+preparation/report cases and retained7+9 cases on each runner. The fixture
+readback remains owner-matches1/protected0, and exact DACL rejection plus
+missing-observer/no-ack cases passed. Original
+[x64](evidence/40852574080-x64.json) /
+[ARM64](evidence/40852574080-arm64.json) build receipts and raw
+[x64](evidence/40852574080-x64-LastTest.log) /
+[ARM64](evidence/40852574080-arm64-LastTest.log) CTest logs are preserved with the
+[overall receipt](evidence/40852574080.json). These are not signed host binaries.
+
+After production repair `b464d37`, only test sources changed; the latest delta
+from the native-pass checkpoint is three PowerShell test scripts. The original
+Unicode failure's bytes were not retained, so its encoding cause is still not
+asserted. CI success does not prove the user's first failing operation, real
+medium packaged `Current()`, alias preparation or actual activation. No user
+build/update/preparation/printing followed; all old state and failures remain.
+
 **Conditional user handoff, not authorization:** only after native validation and
 parent review, preserve the complete old native output directory (including
 signed0.2.0 MSIX, build receipt and CTest LastTest.log) and every existing proof/
@@ -472,62 +512,60 @@ unprotected ACL rejection, child acknowledgment+exit0, and missing-observer
 bounded exit1/no acknowledgment. They do not validate AppContainer broker ACL
 inheritance or real package activation; those are precisely the desktop gate.
 
-## Parent-reviewed procedure: one native ARM64 desktop observation
+## Parent-review handoff: one preparation-only ARM64 desktop observation
 
 **Not authorization to execute. Parent supplies commands only after review.**
 Use a normal signed-in, non-elevated native PowerShell7 desktop on the existing
 Windows11 ARM64 machine, VS2022/v143/SDK26100. No renderer/Python/Poppler work.
 
-1. Record the approved source SHA and clean source state. Record
+1. Use a **new source worktree** at tested
+   `6ed19cbd71758e4d26a5ef6dc3dd4529475664e9`, not the original worktree/output.
+   Preserve the old signed0.2.0 MSIX, build receipt, CTest LastTest.log, all
+   private attempt roots and package state. A separately named verified archive
+   before any overwrite is an alternative, not a cleanup/resume mechanism.
+   Record clean source state and
    `Get-AppxPackage` identity/version/status for BOTH `Miyako.PsaFeasibility` and
-   `Miyako.DesktopPdfPrototype`, plus their existing queues. Preserve all old
-   roots/receipts. Stop if the probe package is already version0.2.1.0 or newer,
+   `Miyako.DesktopPdfPrototype`, plus their existing queues.
+   Parent command blocks must enclose all guards/actions in `& { ... }`.
+   Stop if the probe package is already version0.2.1.0 or newer,
    has another publisher, or existing development state cannot be preserved;
    never solve an update error by uninstalling.
 2. Build only `./desktop/build.ps1 -Mode ActivationProbe -Architecture ARM64
-   -VisualStudioVersion 2022 -CertificateThumbprint <explicit development cert>`.
-   The build does not create certificates/trust/install. A matching
-   `CN=DesktopPdfPrototypeDev` signing certificate with private key and explicitly
-   arranged development trust are necessary. If absent, separately review the
-   smallest development certificate and MSIX trust setup first, including the
-   required trust store/elevation as a separate explicit decision; do not
-   reuse/re-sign the healthy diagnostic package or purchase signing.
+   -VisualStudioVersion 2022 -CertificateThumbprint <EXISTING approved cert>`.
+   Use the existing same-user `CN=DesktopPdfPrototypeDev` private key/trust;
+   create or change neither. Stop if missing. Preserve this new local native
+   test log/receipt/signed-MSIX hash separately; CI binary hashes are not the
+   user's local-build identity.
 3. Explicitly approve and current-user install/update ONLY
    `desktop/out/arm64/DesktopPdfActivationProbe.msix`. Same development identity
    version0.2.1.0 preserves its LocalState/LocalCache on an ordinary update; it
-   retains the0.2.0 automation endpoint and alias `4dpdf-probe.exe`. An update
-   from the historical0.1 development gate instead replaces its old endpoints
-   with that single automation endpoint. This is not a side-by-side update of the old
-   development gate. The diagnostic family/queues remain separate. Verify
+   retains the0.2.0 automation endpoint and alias `4dpdf-probe.exe`. Do not
+   uninstall, overwrite the same version, change identity or touch the healthy
+   diagnostic family/queues. Verify version/status/family/publisher and
    registration and the development no-file-UI queue; stop if missing. Do not
    launch the ordinary desktop app as a substitute activation test.
 4. Choose ONE new absolute local private report directory under the current
-   user's protected profile, not any old proof root. After explicit print
-   consent, run `desktop/tests/Invoke-ActivationProbe.ps1` with
+   user's protected profile, not any old root and not precreated. After separate
+   preparation-write consent, run `desktop/tests/Invoke-ActivationProbe.ps1` with
    `-PrivateOutputRoot <NEW directory> -BuildEvidencePath
-   desktop/out/arm64/activation-build-evidence.json -AllowOneSyntheticPrint`.
+   desktop/out/arm64/activation-build-evidence.json -PreparationOnly
+   -AllowPackagePreparation`. Do **not** supply `-AllowOneSyntheticPrint`.
    It first verifies installed own-code hashes against that clean local build
-   receipt and native architecture. This prepares
-   once, starts the observer and submits exactly one original page to the fixed
-   development queue. No Save As, PDF, destination or document fixture is involved.
-5. Preserve results on success **or failure**; no automatic reprint/retry.
-   Review sanitized `result.json`, observer/submission results, raw immediate
-   StartDoc/EndDoc returns and private package-local callback/host records as
-   needed. Verify exact callback hash/ID bindings, launch result, host entry,
-   ack, exit and CompleteJob(Failed) separately. A spooler failure is expected;
-   only `activationGatePassed:true` with exact process exit evidence passes
-   this narrow gate. Missing callback evidence is **inconclusive about desktop
-   architecture**, not failure of the user's healthy diagnostic package.
+   receipt and native architecture, then performs one bounded native preparation.
+   No observer, submission, callback/host launch, Save As or PDF is authorized.
+5. Preserve results on success **or failure**; no automatic retry. Review safe
+   `result.json` native HRESULT/stage/API/object/origin/reason/code and bounded
+   private captures. Preparation success still reports gate/PDF false and
+   `preparation-only-not-activation`; a blocked result is evidence, not permission
+   to relax guards, clear records or elevate the caller. Old expired records
+   remain/count toward cap8; fresh or malformed old state may still block.
+   Review that result before separately considering any actual PSA print gate.
 
-**Rollback:** first preserve evidence and observe no matching probe host/client
-remaining. Never remove by process name or touch `Miyako.PsaFeasibility`, its
-certificates/queues or original roots. If the development family did not exist
-before this test, removing only its exact recorded package full name is an
-optional separately approved cleanup; removal deletes its state. Remove only
-a newly created certificate's exact thumbprint if separately approved and not
-used elsewhere. If updating a preexisting development family, do not uninstall
-or downgrade automatically: retain state and request an explicit rollback plan.
-Do not delete package-local records while a system launch might still arrive.
+**Rollback boundary:** no automatic uninstall, downgrade, certificate/trust
+change or deletion of package-local/attempt records. This is an update of an
+existing development family, not a disposable new identity. Preserve evidence
+and known-process exit observations; any later rollback requires its own
+state-preserving review. The diagnostic family/queues are never cleanup targets.
 
 Historical producer success `b33b741`/40825887654, failed40825481671 and the
 NoClobber fix remain unchanged. Actual product size/fidelity/native worker
