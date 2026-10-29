@@ -293,6 +293,35 @@ PowerShell preparation/report cases distinguishing fixed-query API failure from
 size validation. Portable checks passed; native completion is still required
 before any user handoff. No new library or package capability is introduced.
 
+**Fixed-query validation advanced, then STOP:** fresh manual
+[40850726709](https://github.com/miyako/4d-pdf-printer/actions/runs/40850726709)
+tested source `b464d37119c899887b8d9f944353ee2298268f65`. All five native
+targets compiled/linked on both architectures. The fixed-buffer invalid-token
+reference/error mapping, exact-size/representation cases and seven valid-token
+direct/helper comparisons passed, including TokenElevation. Synthetic diagnostic
+and retained-state compatibility cases also passed, followed by the first
+controlled fake-callback child acknowledgment/observed exit0/replay stages.
+These remain controlled-unit evidence, not actual package/callback proof.
+
+The next first failure is **an assertion** at Tests.cpp:571, case
+`files.unprotected-directory-rejected` (case line566), on both architectures:
+stage `prepare.existing`, API `validation`, object `existing-job`, origin
+`validation`, observed reason `owner`, no API code. The fixture is created by
+`CreateDirectoryW(..., nullptr)`; the assertion expects `dacl-protected`.
+Production inspection checks owner before protected-DACL, so the actual fixture
+was rejected earlier. No raw owner was collected, no specific owner identity is
+inferred, and this is not evidence about the user's package owner or a failed
+production deny check. The assertion/fixture/production guards were not changed.
+
+The suite failed after0.70s/0.34s; the missing-observer child branch and unsigned
+packaging were not reached. [Exact receipt](evidence/40850726709.json), unmodified
+[x64](evidence/40850726709-x64-LastTest.log) /
+[ARM64](evidence/40850726709-arm64-LastTest.log) logs retain the outcome.
+Local PowerShell19+7+9 and portable C++ checks passed. Stopped at this new failure
+without repair/retry or any host action. Version0.2.1 is still **not ready for
+user update**; the actual user's first failing operation and PSA gate remain
+unproven.
+
 **Conditional user handoff, not authorization:** only after native validation and
 parent review, preserve the complete old native output directory (including
 signed0.2.0 MSIX, build receipt and CTest LastTest.log) and every existing proof/
