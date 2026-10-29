@@ -1,10 +1,16 @@
 # Desktop PDF development
 
-**Current code is the early handoff gate, not a PDF printer.** It deliberately
+**Current work is the [minimal actual-callback activation probe](activation-probe.md),
+not a PDF printer.** Its isolated `ActivationProbe` mode bypasses RPC/rendering.
+Only a genuine PSA callback, protected acknowledgment and observed exact-host
+exit can pass; compile/unit success cannot. User-host installation/printing
+requires the parent-reviewed single-test procedure and separate consent.
+Historical early gate code remains available, but is not the selected path.
+The probe deliberately
 completes every workflow as failed/canceled and produces no output file. Do not
 use either prototype queue for real documents.
 
-The approved desktop-first direction is a thin AppContainer PSA, same-package
+The retained historical desktop-first design used a thin AppContainer PSA, same-package
 on-demand full-trust coordinator, authenticated local RPC and a fresh external
 worker-v1 process for each conversion. Interactive Save As and explicit silent
 destinations follow only after the actual background activation/authentication/
@@ -12,7 +18,7 @@ exact-title gate passes. No tray, startup service or foreground fallback is used
 The installed `Miyako.PsaFeasibility` OXPS diagnostic package is not updated,
 re-signed, uninstalled or repurposed by this separate development identity.
 
-**Activation is blocked in the hosted experiments.** See
+**Historical hosted experiments did not establish callback activation.** See
 [measured results and unverified gates](validation.md). No user-host execution
 or trust change is requested by these results.
 
@@ -27,7 +33,7 @@ pass/fail gates; completed measurements still require manual review and report
 `productUsable:false`. Exact tested sources and preserved receipts are linked
 from the harness document.
 
-## Early gate
+## Historical early gate (not the current execution procedure)
 
 Build on a matching native Windows machine with SDK 26100 and MSVC v143:
 
@@ -55,7 +61,7 @@ desktop can run:
 This installs only the new current-user development package, preserves its
 state, submits original synthetic GDI pages and writes sanitized evidence.
 It refuses to remove an existing prototype to get installation to succeed.
-The native submitter is bounded by an external watchdog. The public workflow
+The native submitter is bounded by an external watchdog. The historical workflow
 explicitly signs/trusts a temporary certificate **only on a disposable hosted
 runner**, then removes that exact certificate. No user-host trust is automated.
 
@@ -67,8 +73,9 @@ The PSA drains bounded OXPS bytes without saving them, calls CompleteJob(Failed)
 and acknowledges that failure completion returned. A passed gate is **not**
 conversion, successful printing, provider publication or Windows-service proof.
 
-The current `desktop-windows.yml` is **manual-only own-code proof compile/unit
-checking**, with no activation, package, installation or signing steps.
+The current `desktop-windows.yml` is **manual-only own-code compile/unit
+checking**. `ActivationProbe` additionally validates unsigned packaging; neither
+mode installs, signs or activates anything.
 The historical `d58bb2f` workflow used separate disposable ARM64 jobs to isolate
 desktop launch and the actual PSA path; those attempts are preserved in
 [validation.md](validation.md), not repeated by the current workflow.

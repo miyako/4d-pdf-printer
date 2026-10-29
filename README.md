@@ -14,7 +14,8 @@ packages/probes; ARM64 is a compatibility/control test, not a proven queue fix.
 
 **Desktop-first; Windows-service printing is deferred.** The
 [separate desktop development package](docs/desktop/README.md) is implementing
-the early actual PSA/full-trust/RPC/exact-job handoff gate. It currently produces
+the [minimal actual PSA-to-one-shot-host activation probe](docs/desktop/activation-probe.md),
+separate from the preserved historical RPC gate. It currently produces
 **no PDFs** and deliberately fails workflow completion; it is not a working
 pipeline or 4D integration.
 

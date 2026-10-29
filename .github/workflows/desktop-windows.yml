@@ -1,6 +1,14 @@
 name: Desktop Windows own-code proof
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Own-code scope only
+        type: choice
+        default: Proof
+        options:
+          - Proof
+          - ActivationProbe
 permissions:
   contents: read
 jobs:
@@ -24,13 +32,19 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Own-code compile, protocol and actual EMF-generation units (no printing)
+      - name: Selected own-code compile and units (no installation or printing)
         shell: pwsh
-        run: ./desktop/build.ps1 -Mode Proof -Architecture ${{ matrix.architecture }} -VisualStudioVersion ${{ matrix.visualStudio }}
+        run: ./desktop/build.ps1 -Mode ${{ inputs.mode }} -Architecture ${{ matrix.architecture }} -VisualStudioVersion ${{ matrix.visualStudio }}
+      - name: Activation script and manifest guards (no activation)
+        if: inputs.mode == 'ActivationProbe'
+        shell: pwsh
+        run: ./desktop/tests/Check-ActivationProbe.ps1
       - name: Consent and subprocess units (no printing or renderer)
+        if: inputs.mode != 'ActivationProbe'
         shell: pwsh
         run: ./desktop/tests/Check-ProductProof.ps1
       - name: Read-only comparator units (not product evidence)
+        if: inputs.mode != 'ActivationProbe'
         shell: pwsh
         run: |
           python -B -m unittest discover -s desktop/tests -p test_compare_pdfs.py
@@ -42,4 +56,6 @@ jobs:
           path: |
             desktop/out/*/proof-build-evidence.json
             desktop/out/*/proof-build/Testing/Temporary/LastTest.log
+            desktop/out/*/activation-build-evidence.json
+            desktop/out/*/activation-build/Testing/Temporary/LastTest.log
           if-no-files-found: warn
