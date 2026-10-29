@@ -41,6 +41,8 @@ if ($Mode -ceq 'Proof') {
     if ($plan.TestExecution -cne 'native') { throw 'The product proof requires matching native execution.' }
     $probe = Join-Path $build 'Release/DesktopPdfProof.exe'
     Assert-PrinterPeMachine -Bytes ([IO.File]::ReadAllBytes($probe)) -Architecture $Architecture -Name 'DesktopPdfProof.exe'
+    $fixtureTest = Join-Path $build 'Release/DesktopPdfFixtureTests.exe'
+    Assert-PrinterPeMachine -Bytes ([IO.File]::ReadAllBytes($fixtureTest)) -Architecture $Architecture -Name 'DesktopPdfFixtureTests.exe'
     Invoke-Checked ctest @('--test-dir', $build, '-C', 'Release', '--output-on-failure', '--no-tests=error')
     Copy-Item -LiteralPath $probe -Destination (Join-Path $out 'DesktopPdfProof.exe')
     $sourceCommit = & git -C (Split-Path -Parent $PSScriptRoot) rev-parse HEAD
@@ -50,7 +52,9 @@ if ($Mode -ceq 'Proof') {
     [ordered]@{
         schema = '4d-pdf-printer.desktop-proof-build'; version = 1
         architecture = $Architecture.ToLowerInvariant(); nativeContractTest = 'passed'
+        nativeFixtureTest = 'passed'
         executableSha256 = (Get-FileHash -LiteralPath $probe -Algorithm SHA256).Hash.ToLowerInvariant()
+        fixtureTestExecutableSha256 = (Get-FileHash -LiteralPath $fixtureTest -Algorithm SHA256).Hash.ToLowerInvariant()
         sourceCommit = $sourceCommit; sourceDirty = ($sourceChanges.Count -gt 0); productUsable = $false
     } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $out 'proof-build-evidence.json') -Encoding utf8
     return

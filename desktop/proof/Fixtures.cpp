@@ -1,4 +1,5 @@
 #include "Fixtures.h"
+#include "PhysicalMapping.h"
 #include "../../printer/probe/Evidence.h"
 #include <winspool.h>
 #include <array>
@@ -10,6 +11,7 @@ namespace proof
     namespace
     {
         struct DeleteDc { void operator()(std::remove_pointer_t<HDC>* value) const { if (value) DeleteDC(value); } };
+        struct ReleaseScreenDc { void operator()(std::remove_pointer_t<HDC>* value) const { if (value) ReleaseDC(nullptr, value); } };
         struct DeleteEmf { void operator()(std::remove_pointer_t<HENHMETAFILE>* value) const { if (value) DeleteEnhMetaFile(value); } };
         using Dc = std::unique_ptr<std::remove_pointer_t<HDC>, DeleteDc>;
         using Emf = std::unique_ptr<std::remove_pointer_t<HENHMETAFILE>, DeleteEmf>;
@@ -19,15 +21,21 @@ namespace proof
         }
         void Page(std::filesystem::path const& path, std::wstring const& id, int page)
         {
+            std::unique_ptr<std::remove_pointer_t<HDC>, ReleaseScreenDc> reference(GetDC(nullptr));
+            Check(reference != nullptr, "fixture-reference-dc");
+            auto mapping = MappingFromReference(GetDeviceCaps(reference.get(), HORZRES),
+                GetDeviceCaps(reference.get(), VERTRES), GetDeviceCaps(reference.get(), HORZSIZE),
+                GetDeviceCaps(reference.get(), VERTSIZE));
+            Require(mapping.has_value(), "fixture-reference-metrics", ERROR_INVALID_DATA);
             RECT physical{0, 0, 21000, 29700};
-            HDC dc = CreateEnhMetaFileW(nullptr, path.c_str(), &physical,
+            HDC dc = CreateEnhMetaFileW(reference.get(), path.c_str(), &physical,
                 L"4D PDF proof\0Original synthetic fixture\0");
             Check(dc != nullptr, "emf-create");
             try
             {
                 Check(SetMapMode(dc, MM_ANISOTROPIC) != 0, "mapping");
-                Check(SetWindowExtEx(dc, 21000, 29700, nullptr), "mapping");
-                Check(SetViewportExtEx(dc, 2100, 2970, nullptr), "mapping");
+                Check(SetWindowExtEx(dc, mapping->windowX, mapping->windowY, nullptr), "mapping");
+                Check(SetViewportExtEx(dc, mapping->viewportX, mapping->viewportY, nullptr), "mapping");
                 HFONT font = CreateFontW(-420, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                     DEFAULT_CHARSET, OUT_TT_ONLY_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
                     DEFAULT_PITCH, L"Segoe UI");

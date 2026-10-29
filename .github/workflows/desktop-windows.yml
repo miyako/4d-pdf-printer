@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Own-code native compile and protocol unit
+      - name: Own-code compile, protocol and actual EMF-generation units (no printing)
         shell: pwsh
         run: ./desktop/build.ps1 -Mode Proof -Architecture ${{ matrix.architecture }} -VisualStudioVersion ${{ matrix.visualStudio }}
       - name: Consent and subprocess units (no printing or renderer)

@@ -4,7 +4,9 @@
 reported real desktop attempt reached `worker-lifecycle` after all three
 diagnostic controls, then hit the script JSON-write bug below. Retained files
 have not yet been inspected; no comparison or worker-lifecycle result is
-claimed.** Any continuation requires separate creator/host approval.
+claimed. The retained fixtures were subsequently found to be physically
+mis-mapped and clipped; they are diagnostic input, not the intended fidelity
+corpus.** Any new host run requires separate creator/host approval.
 No installation,
 signing, trust change, runtime download or dependency build is authorized by this
 document.
@@ -134,13 +136,59 @@ existing cases. No new native build, CI dispatch or user-host action is part of
 this script-only correction; native sources/binaries and historical receipts
 are unchanged.
 
-### Minimal no-reprint continuation proposal -- review only
+## Fixture producer physical-units correction
+
+The creator inspected read-only copies of the original attempt: EMF hashes and
+fixture records match, all control/baseline submissions succeeded, and the
+script failed before creating worker inputs/state. However, the original
+fixture producer mapped its .01mm logical coordinates to a fixed 2100-by-2970
+pixel viewport, despite the EMF recording a different reference device's
+physical resolution. Thus the intended drawings exceeded the 210-by-297mm
+frame: even the Microsoft baseline and OXPS already clip headings/lower-page
+content. This is a producer bug, not evidence of converter fidelity loss.
+Keep those files and receipts unchanged; do not rescale/rewrite old files or
+weaken expected full headings/page numbers/graphics to match their clipping.
+
+The correction acquires one explicit display reference DC, uses it for both
+`CreateEnhMetaFileW` and `GetDeviceCaps`, and derives the anisotropic mapping
+from its actual pixel and millimeter spans. The logical window is that physical
+span in hundredths of a millimeter; the viewport is that same device's pixel
+span. Nonpositive dimensions and integer overflow are rejected explicitly.
+No hardcoded display DPI, global DPI/profile/printer change or postprocessing.
+
+Sources: [CreateEnhMetaFileW reference device and .01mm frame](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createenhmetafilew),
+[window/viewport extents](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-setwindowextex)
+and [emitted EMF reference metrics/frame/bounds](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-enhmetaheader).
+
+Portable local metric guards are not generated-EMF evidence. The new native
+CTest actually calls the production fixture generator for all six pages and
+inspects the emitted headers and drawing records: reference/map physical
+consistency, the unchanged A4 frame, complete headings/body text, expected
+rectangle/ellipse/line/gradient/alpha/image records, and full/lower content
+bounds inside the frame. It checks generated hashes and cleans its own new
+synthetic scratch files. Its stdout receipt contains synthetic metadata only;
+CI uploads neither EMFs/fonts/rasters nor binaries. A separately authorized
+single manual x64/native-ARM64 own-code compile/unit batch includes this test;
+it performs **no printing, PSA activation or renderer/dependency/runtime build**.
+The exact result/source is recorded separately after that attempt.
+
+**Paper-grid limitation, unchanged comparator:** the observed PSA path uses
+300dpi and 2480 pixels across, represented as 793.6 XPS units / 595.2pt; Microsoft
+uses 600dpi and 4961 pixels / 595.32pt. The same nominal A4 therefore differs by
+0.12pt horizontally. This exceeds the current 0.1pt media comparison tolerance;
+do not silently relax it, resize output or attribute that difference to backend
+content loss. It needs explicit subsequent review. Private Mac conversions of
+the clipped inputs are diagnostics only, not complete-corpus fidelity or
+native-Windows memory/lifetime proof; those files/reports remain private.
+
+### Paused no-reprint continuation proposal -- historical review only
 
 There is **no resume switch/platform**, and this is not permission or a command
-to continue. First obtain a read-only listing of the retained root through the
-creator. Do not infer the contents of missing/masked reports from the stage
-message alone. Only after inspecting that state and separate explicit host
-consent, prepare one reviewed, file-specific command block:
+to continue. The creator has now inspected retained copies; no new listing is
+requested. **Pause this proposal:** continuing the clipped fixtures must not be
+presented as the intended-corpus proof. The earlier guard checklist below is
+retained for context, not an instruction to build/run a continuation script.
+Any future use requires explicit review and host consent:
 
 - Require the existing ordinary signed-in native desktop and matching local
   proof executable/build receipt, renderer tree/native receipt and inspection
@@ -178,9 +226,8 @@ consent, prepare one reviewed, file-specific command block:
   `productUsable:false`, manual review required; no size/lifecycle claim or
   milestone-B progression.
 
-The actual retained listing/identities and permission remain outstanding. If
-they cannot establish this chain, report the gap rather than guess, reprint,
-overwrite or build a general recovery mechanism.
+No user-host rebuild/reprint/continuation is authorized by the producer unit
+check. Do not guess, overwrite or build a general recovery mechanism.
 
 ## What this measures
 
