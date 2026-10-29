@@ -194,6 +194,36 @@ are **not ready for user update**. The actual desktop E_ACCESSDENIED cause is
 still unknown; the actual PSA callback gate is still unexercised. Historical
 receipts, old roots and installed0.2.0/certificate/diagnostic queues are unchanged.
 
+**Separately authorized observability-only follow-up:** source
+`07ebd9b36f8e05eb29391dba83939a384a839589` changes only Tests.cpp: named subcases,
+`source_location` assertion lines, separate assertion/production-exception
+reporting and stack-local safe diagnostic context passed through existing
+optional helper arguments. Existing predicates and production behavior remain
+unchanged. Portable tests execute assertion capture/exact line, separate kinds,
+preserved HRESULT, bounded formatting without source paths and context reset.
+No static logic fix was proven before the batch.
+
+Fresh manual [40848598469](https://github.com/miyako/4d-pdf-printer/actions/runs/40848598469)
+compiled/linked all five targets on x64 and native ARM64, then **failed** the
+same CTest after0.07s/0.03s. The now-specific first failure on both is
+`kind=assertion case=diagnostic.token-size-error case_line=171 assertion_line=175`,
+with `context_stage=current.token api=GetTokenInformation object=token-elevation
+origin=validation reason=token-size-probe has_code=1 code=24 code_kind=win32`.
+The invalid-handle/zero-buffer test expects `ERROR_INVALID_HANDLE`6 for every
+information class; the observed `TokenElevation` call instead returned
+`ERROR_BAD_LENGTH`24, making that code predicate false. This is a **test
+assertion**, not a new native E_INVALIDARG, the user's actual preparation result,
+or proof of what a valid-token query would return. The production guard's
+original E_ACCESSDENIED mapping and captured raw DWORD are unchanged.
+
+The state-compatibility/controlled-child cases and unsigned packaging were not
+reached. [Exact receipt](evidence/40848598469.json) and unmodified
+[x64](evidence/40848598469-x64-LastTest.log) /
+[ARM64](evidence/40848598469-arm64-LastTest.log) logs preserve the result.
+Again stopped without changing the assertion, production code or security,
+or dispatching a retry. Version0.2.1 remains **not ready for user update**;
+actual user cause and PSA gate remain unknown/unexercised.
+
 **Conditional user handoff, not authorization:** only after native validation and
 parent review, preserve the complete old native output directory (including
 signed0.2.0 MSIX, build receipt and CTest LastTest.log) and every existing proof/

@@ -1,0 +1,99 @@
+{
+  "schema": "4d-pdf-printer.activation-probe-attempt",
+  "version": 1,
+  "sourceCommit": "07ebd9b36f8e05eb29391dba83939a384a839589",
+  "developmentPackageVersion": "0.2.1.0",
+  "wrapperVersion": 3,
+  "run": 40848598469,
+  "event": "workflow_dispatch",
+  "mode": "ActivationProbe",
+  "result": "failed-native-unit-assertion",
+  "previousFailureRun": 40847288110,
+  "sourceDelta": "Tests.cpp only: case/source_location assertion reporting and per-invocation safe diagnostic context; existing predicates unchanged, no production fix.",
+  "jobs": [
+    {
+      "architecture": "x64",
+      "id": 123362152986,
+      "result": "failure",
+      "nativeCompileAndLinkPassed": true,
+      "ctest": {
+        "name": "desktop-activation-probe-units",
+        "result": "failed",
+        "seconds": 0.07,
+        "ctestExitCode": 8
+      },
+      "rawCTestLog": "40848598469-x64-LastTest.log",
+      "rawCTestLogSha256": "881cf49935a98002425040b040bcc22017f97c55ef455acbdc44622b52a6dc57"
+    },
+    {
+      "architecture": "arm64",
+      "id": 123362152604,
+      "result": "failure",
+      "nativeCompileAndLinkPassed": true,
+      "ctest": {
+        "name": "desktop-activation-probe-units",
+        "result": "failed",
+        "seconds": 0.03,
+        "ctestExitCode": 8
+      },
+      "rawCTestLog": "40848598469-arm64-LastTest.log",
+      "rawCTestLogSha256": "2e3ddf3485be5451fa8b40213390c54d5bfda6175975b7207a8b32a47cba9b4a"
+    }
+  ],
+  "compiledAndLinkedOnBothArchitectures": [
+    "DesktopPdfApp.exe",
+    "DesktopPdfProbeCtl.exe",
+    "DesktopPdfProbeHost.exe",
+    "DesktopPdfProbeTask.dll",
+    "DesktopPdfProbeTests.exe"
+  ],
+  "primaryDiagnostic": {
+    "kind": "assertion",
+    "file": "desktop/activation/Tests.cpp",
+    "case": "diagnostic.token-size-error",
+    "caseLine": 171,
+    "assertionLine": 175,
+    "contextStage": "current.token",
+    "api": "GetTokenInformation",
+    "object": "token-elevation",
+    "origin": "validation",
+    "reason": "token-size-probe",
+    "hasCode": true,
+    "code": 24,
+    "codeKind": "win32",
+    "observedCodeSymbol": "ERROR_BAD_LENGTH",
+    "expectedCode": 6,
+    "expectedCodeSymbol": "ERROR_INVALID_HANDLE",
+    "falsePredicate": "diagnostic.code == ERROR_INVALID_HANDLE",
+    "scope": "Unit invalid-handle zero-buffer query, NOT actual packaged Current() or user's preparation.",
+    "assertionIsNotNativeApiHresult": true
+  },
+  "productionContractUnchanged": "TokenData rejects unexpected size-probe results with E_ACCESSDENIED while retaining the actual failed DWORD; no permissions, guards or HRESULT mapping changed.",
+  "stateCompatibilityCasesExecuted": false,
+  "controlledChildUnitsExecuted": false,
+  "nativeUnitSuitePassed": false,
+  "msixPackagingExecuted": false,
+  "successBuildReceiptProduced": false,
+  "hostedPowerShellStepsExecuted": false,
+  "uploadedArtifactCount": 2,
+  "uploadedContent": "Unmodified hosted CTest text only; no binaries, MSIX, corpus or private data.",
+  "fullDownloadedLogSha256": "52cc691ba75436949c9e567cb9b8c595092ac5cc6e8af2a8b259eec73c67b0e7",
+  "localExecutedChecks": [
+    "clang++ C++20 with -Wall -Wextra -Werror",
+    "portable protocol and diagnostic isolation",
+    "actual assertion capture/exact source line, separate failure kinds, preserved HRESULT, bounded format, no source path and case reset regression",
+    "unchanged PowerShell writer/consent/manifest guards and 17 preparation/report cases",
+    "unchanged retained 7 consent/subprocess and 9 post-control JSON/report cases",
+    "git diff --check"
+  ],
+  "userPreparationAccessDeniedCauseIdentified": false,
+  "certificateOrTrustChanged": false,
+  "packageInstalled": false,
+  "printingPerformed": false,
+  "actualPsaCallbackExercised": false,
+  "rendererOrDependenciesBuilt": false,
+  "rerunDispatched": false,
+  "activationGatePassed": false,
+  "productUsable": false,
+  "stopReason": "Informative batch identified the first false assertion; no expectation repair, production change or retry without parent review."
+}
