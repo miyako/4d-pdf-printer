@@ -7,6 +7,18 @@ normal-desktop observation. Native compilation and controlled-child units cannot
 pass that gate. Full B, comparison continuation, destinations/UI and services
 remain paused. No PDF is produced; the PSA deliberately completes Failed/Canceled.
 
+**STOP checkpoint:** the single authorized native batch
+[40832146213](https://github.com/miyako/4d-pdf-printer/actions/runs/40832146213)
+tested source `765d6a75064e63beb961822771d8793a4f67fdbf` and **failed
+compilation on x64 and ARM64**. `handle` is ambiguous between the existing
+`desktop::handle` and imported `winrt::handle`, first at Contract.h:68, with
+further occurrences and cascading reset/nullptr errors. The App bootstrap and
+PSA DLL linked on both architectures, but host/control/unit compilation did not
+complete. Native units, MSIX packaging and activation were **not executed**.
+[Exact failure receipt](evidence/40832146213.json). Portable checks passed;
+they did not cover Windows-only name lookup or the consented Windows wrapper.
+No repair/rerun was performed. **Not ready for any user-host procedure below.**
+
 ## Supported primitives, not an assumed callback result
 
 The [PSA v4 guide](https://learn.microsoft.com/en-us/windows-hardware/drivers/devapps/print-support-app-v4-design-guide)
@@ -131,7 +143,8 @@ Windows11 ARM64 machine, VS2022/v143/SDK26100. No renderer/Python/Poppler work.
    The build does not create certificates/trust/install. A matching
    `CN=DesktopPdfPrototypeDev` signing certificate with private key and explicitly
    arranged development trust are necessary. If absent, separately review the
-   smallest current-user development certificate/trust setup first; do not
+   smallest development certificate and MSIX trust setup first, including the
+   required trust store/elevation as a separate explicit decision; do not
    reuse/re-sign the healthy diagnostic package or purchase signing.
 3. Explicitly approve and current-user install/update ONLY
    `desktop/out/arm64/DesktopPdfActivationProbe.msix`. Same development identity
