@@ -15,7 +15,7 @@ $primary = $null
 $reportWriteFailure = $null
 $report = [ordered]@{
     schema = '4d-pdf-printer.activation-probe-desktop'; version = 1
-    wrapperVersion = 2
+    wrapperVersion = 3
     wrapperSha256 = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash.ToLowerInvariant()
     mode = $(if ($PreparationOnly) { 'preparation-only-not-activation' } else { 'one-synthetic-print' })
     result = 'blocked'; activationGatePassed = $false; pdfProduced = $false
@@ -127,8 +127,8 @@ try {
         throw 'Use a non-elevated desktop shell.'
     }
     $package = @(Get-AppxPackage -Name Miyako.DesktopPdfPrototype)
-    if ($package.Count -ne 1 -or $package[0].Version -ne [version]'0.2.0.0') {
-        throw 'The separately installed/signed current-user development activation package0.2.0.0 is required.'
+    if ($package.Count -ne 1 -or $package[0].Version -ne [version]'0.2.1.0') {
+        throw 'The separately installed/signed current-user development activation package0.2.1.0 is required.'
     }
     if (-not $BuildEvidencePath -or (Get-Item -LiteralPath $BuildEvidencePath).Length -gt 16384) {
         throw 'The exact local activation-build-evidence.json receipt is required.'
@@ -211,6 +211,59 @@ try {
         $native.hresult = ('0x{0:X8}' -f [uint32]$private.hresult)
     }
     $report.prepare.native = $native
+    if ($null -ne $private.PSObject.Properties['error_context']) {
+        $allowed = @{
+            stage = @('control', 'control.apartment', 'control.output', 'current.token', 'current.guard',
+                'current.package', 'current.hash', 'current.cache', 'prepare.security', 'prepare.base',
+                'prepare.admission', 'prepare.scan', 'prepare.existing', 'prepare.created', 'prepare.expires',
+                'prepare.new-job', 'prepare.request')
+            object = @('control', 'process-token', 'token-user', 'token-session', 'token-container-flag',
+                'token-container-sid', 'token-type', 'token-impersonation', 'token-elevation', 'token-information',
+                'package', 'identity-hash', 'cache', 'package-sid', 'user-sid', 'descriptor', 'base',
+                'admission', 'existing-job', 'existing-request', 'new-job', 'new-request')
+            origin = @('validation', 'win32', 'winrt', 'cpp')
+            api = @('none', 'validation', 'GetTokenInformation', 'buffer-allocation', 'IsValidSid',
+                'GetLengthSid', 'CopySid', 'OpenProcessToken', 'string-allocation', 'IsWow64Process2',
+                'Package.Current', 'Package.Id', 'PackageId.Name', 'PackageId.Publisher', 'PackageId.FamilyName',
+                'UserHash', 'PackageId.FullName', 'ApplicationData.Current', 'ApplicationData.LocalCacheFolder',
+                'JsonObject.GetNamedValue', 'JsonValue.ValueType', 'JsonValue.GetNumber',
+                'DeriveAppContainerSidFromAppContainerName', 'ConvertSidToStringSidW',
+                'ConvertStringSecurityDescriptorToSecurityDescriptorW', 'GetFileInformationByHandleEx',
+                'GetSecurityInfo', 'GetSecurityDescriptorControl', 'CreateWellKnownSid', 'GetAce',
+                'CreateFileW', 'CreateDirectoryW', 'JsonObject.Stringify/UTF8', 'path-allocation',
+                'WriteFile', 'FlushFileBuffers', 'MoveFileExW', 'GetFileSizeEx', 'ReadFile',
+                'JsonObject.Parse/UTF8', 'StorageFolder.Path', 'directory_iterator', 'directory_entry.path',
+                'directory_iterator.increment', 'RandomToken', 'Bound/JsonObject', 'init_apartment',
+                'JsonObject.Insert', 'HashAlgorithmNames.Sha256', 'HashAlgorithmProvider.OpenAlgorithm',
+                'CryptographicBuffer.ConvertStringToBinary', 'HashAlgorithmProvider.HashData',
+                'CryptographicBuffer.EncodeToHexString', 'CryptographicBuffer.GenerateRandom')
+            reason = @('none', 'size-query', 'token-size-probe', 'value-query', 'sid-validity',
+                'integer-type', 'integer-range', 'not-elevated', 'native-machine', 'package-name',
+                'package-publisher', 'container-context', 'interactive-session', 'no-reparse', 'object-type',
+                'owner', 'dacl-present', 'dacl-protected', 'ace-count', 'ace-type', 'ace-mask', 'ace-principal',
+                'ace-principals-complete', 'open-directory', 'create-pending', 'record-size', 'write-complete',
+                'read-record', 'read-complete', 'open-admission', 'directory-token', 'request-not-fresh', 'admission-cap')
+            codeKind = @('win32', 'hresult', 'system', 'generic')
+        }
+        $safe = [ordered]@{}
+        $rejected = @()
+        $context = $private.error_context
+        if ($context -is [pscustomobject]) {
+            foreach ($key in @('stage', 'object', 'origin', 'api', 'reason', 'codeKind')) {
+                if ($null -eq $context.PSObject.Properties[$key]) { continue }
+                if ($context.$key -is [string] -and $context.$key -cin $allowed[$key]) { $safe[$key] = $context.$key }
+                else { $rejected += $key }
+            }
+            if ($null -ne $context.PSObject.Properties['code']) {
+                $code = $context.code
+                if (($code -is [int] -or $code -is [long]) -and $code -ge 0 -and $code -le [uint32]::MaxValue) {
+                    $safe.code = $code
+                } else { $rejected += 'code' }
+            }
+        } else { $rejected += 'error_context' }
+        $native.errorContext = $safe
+        if ($rejected.Count) { $native.rejectedDiagnosticFields = $rejected }
+    }
     $report.prepare.failureReason = 'native-exit'
     if ($report.prepare.exitCode -ne 0) { throw 'Preparation process failed; retain private stdout/stderr. No print was attempted.' }
     $report.prepare.failureReason = 'success-contract'

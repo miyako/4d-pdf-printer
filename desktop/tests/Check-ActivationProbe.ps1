@@ -50,7 +50,7 @@ try {
     $queues = @($manifest.SelectNodes("//*[local-name()='PrintSupportVirtualPrinter']"))
     $hostExtensions = @($manifest.SelectNodes("//*[local-name()='Extension' and @Category='windows.fullTrustProcess']"))
     if ($manifest.Package.Identity.Name -cne 'Miyako.DesktopPdfPrototype' -or
-        $manifest.Package.Identity.Version -cne '0.2.0.0' -or $queues.Count -ne 1 -or
+        $manifest.Package.Identity.Version -cne '0.2.1.0' -or $queues.Count -ne 1 -or
         $queues[0].HasAttribute('OutputFileTypes') -or $hostExtensions.Count -ne 1 -or
         $hostExtensions[0].Executable -cne 'DesktopPdfProbeHost.exe') { throw 'Fixed probe manifest contract changed.' }
     Write-Output 'Probe script: actual writer Unicode/collision/bound, consent and platform guards, fixed manifest passed. NO native/printing/activation evidence.'

@@ -11,114 +11,153 @@ namespace activation
     {
         PSECURITY_DESCRIPTOR descriptor = nullptr;
         std::vector<uint8_t> packageSid;
-        explicit Security(Context const& context)
+        explicit Security(Context const& context, Diagnostic* diagnostic = nullptr)
         {
+            Step(diagnostic, L"prepare.security", L"package-sid");
             PSID package = nullptr;
-            check_hresult(DeriveAppContainerSidFromAppContainerName(context.family.c_str(), &package));
-            packageSid = CopySid(package);
+            Point(diagnostic, L"DeriveAppContainerSidFromAppContainerName", L"win32");
+            CheckResult(DeriveAppContainerSidFromAppContainerName(context.family.c_str(), &package), diagnostic);
+            packageSid = CopySid(package, diagnostic);
             FreeSid(package);
             LPWSTR userText = nullptr, packageText = nullptr;
-            Check(ConvertSidToStringSidW(const_cast<uint8_t*>(context.identity.user.data()), &userText) != FALSE);
+            Step(diagnostic, L"prepare.security", L"user-sid");
+            Point(diagnostic, L"ConvertSidToStringSidW", L"win32");
+            Check(ConvertSidToStringSidW(const_cast<uint8_t*>(context.identity.user.data()), &userText) != FALSE, diagnostic);
+            Point(diagnostic, L"string-allocation", L"cpp");
             std::wstring user(userText); LocalFree(userText);
-            Check(ConvertSidToStringSidW(packageSid.data(), &packageText) != FALSE);
+            Step(diagnostic, L"prepare.security", L"package-sid");
+            Point(diagnostic, L"ConvertSidToStringSidW", L"win32");
+            Check(ConvertSidToStringSidW(packageSid.data(), &packageText) != FALSE, diagnostic);
+            Point(diagnostic, L"string-allocation", L"cpp");
             std::wstring sid(packageText); LocalFree(packageText);
+            Step(diagnostic, L"prepare.security", L"descriptor");
             auto text = L"O:" + user + L"D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;" + user +
                 L")(A;OICI;FA;;;" + sid + L")S:(ML;OICI;NW;;;LW)";
+            Point(diagnostic, L"ConvertStringSecurityDescriptorToSecurityDescriptorW", L"win32");
             Check(ConvertStringSecurityDescriptorToSecurityDescriptorW(text.c_str(), SDDL_REVISION_1,
-                &descriptor, nullptr) != FALSE);
+                &descriptor, nullptr) != FALSE, diagnostic);
         }
         ~Security() { if (descriptor) LocalFree(descriptor); }
         Security(Security const&) = delete;
         Security& operator=(Security const&) = delete;
         SECURITY_ATTRIBUTES Attributes() const { return {sizeof(SECURITY_ATTRIBUTES), descriptor, FALSE}; }
     };
-    inline void InspectHandle(HANDLE file, Context const& context, Security const& security, bool directory)
+    inline void InspectHandle(HANDLE file, Context const& context, Security const& security, bool directory,
+        Diagnostic* diagnostic = nullptr)
     {
         FILE_ATTRIBUTE_TAG_INFO attributes{};
-        Check(GetFileInformationByHandleEx(file, FileAttributeTagInfo, &attributes, sizeof(attributes)) != FALSE);
-        Require(!(attributes.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
-            !!(attributes.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) == directory, E_ACCESSDENIED);
+        Point(diagnostic, L"GetFileInformationByHandleEx", L"win32");
+        Check(GetFileInformationByHandleEx(file, FileAttributeTagInfo, &attributes, sizeof(attributes)) != FALSE, diagnostic);
+        Guard(!(attributes.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT), E_ACCESSDENIED, diagnostic, L"no-reparse");
+        Guard(!!(attributes.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) == directory,
+            E_ACCESSDENIED, diagnostic, L"object-type");
         PSID owner = nullptr;
         PACL acl = nullptr;
         PSECURITY_DESCRIPTOR descriptor = nullptr;
+        Point(diagnostic, L"GetSecurityInfo", L"win32");
         auto error = GetSecurityInfo(file, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
             &owner, nullptr, &acl, nullptr, &descriptor);
-        if (error) throw hresult_error(HRESULT_FROM_WIN32(error));
+        if (error)
+        {
+            ErrorCode(diagnostic, error, L"win32");
+            throw hresult_error(HRESULT_FROM_WIN32(error));
+        }
         struct Free { PSECURITY_DESCRIPTOR value; ~Free() { LocalFree(value); } } free{descriptor};
-        Require(owner && EqualSid(owner, const_cast<uint8_t*>(context.identity.user.data())) && acl, E_ACCESSDENIED);
+        Guard(owner && EqualSid(owner, const_cast<uint8_t*>(context.identity.user.data())),
+            E_ACCESSDENIED, diagnostic, L"owner");
+        Guard(acl != nullptr, E_ACCESSDENIED, diagnostic, L"dacl-present");
         SECURITY_DESCRIPTOR_CONTROL control{};
         DWORD revision = 0;
-        Check(GetSecurityDescriptorControl(descriptor, &control, &revision) != FALSE);
-        if (directory) Require((control & SE_DACL_PROTECTED) != 0, E_ACCESSDENIED);
+        Point(diagnostic, L"GetSecurityDescriptorControl", L"win32");
+        Check(GetSecurityDescriptorControl(descriptor, &control, &revision) != FALSE, diagnostic);
+        if (directory) Guard((control & SE_DACL_PROTECTED) != 0, E_ACCESSDENIED, diagnostic, L"dacl-protected");
+        Point(diagnostic, L"buffer-allocation", L"cpp");
         auto system = std::vector<uint8_t>(SECURITY_MAX_SID_SIZE);
         DWORD bytes = static_cast<DWORD>(system.size());
-        Check(CreateWellKnownSid(WinLocalSystemSid, nullptr, system.data(), &bytes) != FALSE);
+        Point(diagnostic, L"CreateWellKnownSid", L"win32");
+        Check(CreateWellKnownSid(WinLocalSystemSid, nullptr, system.data(), &bytes) != FALSE, diagnostic);
         bool userSeen = false, packageSeen = false, systemSeen = false;
-        Require(acl->AceCount == 3, E_ACCESSDENIED);
+        Guard(acl->AceCount == 3, E_ACCESSDENIED, diagnostic, L"ace-count");
         for (DWORD index = 0; index < acl->AceCount; ++index)
         {
             void* entry = nullptr;
-            Check(GetAce(acl, index, &entry) != FALSE);
+            Point(diagnostic, L"GetAce", L"win32");
+            Check(GetAce(acl, index, &entry) != FALSE, diagnostic);
             auto ace = static_cast<ACCESS_ALLOWED_ACE*>(entry);
-            Require(ace->Header.AceType == ACCESS_ALLOWED_ACE_TYPE &&
-                (ace->Mask & FILE_ALL_ACCESS) == FILE_ALL_ACCESS, E_ACCESSDENIED);
+            Guard(ace->Header.AceType == ACCESS_ALLOWED_ACE_TYPE, E_ACCESSDENIED, diagnostic, L"ace-type");
+            Guard((ace->Mask & FILE_ALL_ACCESS) == FILE_ALL_ACCESS, E_ACCESSDENIED, diagnostic, L"ace-mask");
             PSID sid = &ace->SidStart;
             if (EqualSid(sid, const_cast<uint8_t*>(context.identity.user.data()))) userSeen = true;
             else if (EqualSid(sid, const_cast<uint8_t*>(security.packageSid.data()))) packageSeen = true;
             else if (EqualSid(sid, system.data())) systemSeen = true;
-            else throw hresult_access_denied();
+            else Guard(false, E_ACCESSDENIED, diagnostic, L"ace-principal");
         }
-        Require(userSeen && packageSeen && systemSeen, E_ACCESSDENIED);
+        Guard(userSeen && packageSeen && systemSeen, E_ACCESSDENIED, diagnostic, L"ace-principals-complete");
     }
-    inline desktop::handle OpenDirectory(std::filesystem::path const& path, Context const& context, Security const& security)
+    inline desktop::handle OpenDirectory(std::filesystem::path const& path, Context const& context, Security const& security,
+        Diagnostic* diagnostic = nullptr)
     {
+        Point(diagnostic, L"CreateFileW", L"win32", L"open-directory");
         HANDLE file = CreateFileW(path.c_str(), READ_CONTROL | FILE_READ_ATTRIBUTES,
             FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
             FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
-        Check(file != INVALID_HANDLE_VALUE);
+        Check(file != INVALID_HANDLE_VALUE, diagnostic);
         desktop::handle owned(file);
-        InspectHandle(file, context, security, true);
+        InspectHandle(file, context, security, true, diagnostic);
         return owned;
     }
-    inline void NewDirectory(std::filesystem::path const& path, Security const& security)
+    inline void NewDirectory(std::filesystem::path const& path, Security const& security, Diagnostic* diagnostic = nullptr)
     {
         auto attributes = security.Attributes();
-        Check(CreateDirectoryW(path.c_str(), &attributes) != FALSE);
+        Point(diagnostic, L"CreateDirectoryW", L"win32");
+        Check(CreateDirectoryW(path.c_str(), &attributes) != FALSE, diagnostic);
     }
     inline void Atomic(std::filesystem::path const& root, wchar_t const* name, JsonObject const& value,
-        Security const& security)
+        Security const& security, Diagnostic* diagnostic = nullptr)
     {
+        Point(diagnostic, L"JsonObject.Stringify/UTF8", L"winrt");
         auto bytes = to_string(value.Stringify());
-        Require(bytes.size() <= RecordLimit, HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE));
+        Guard(bytes.size() <= RecordLimit, HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE), diagnostic, L"record-size");
+        Point(diagnostic, L"path-allocation", L"cpp");
         auto target = root / name;
         auto pending = root / (std::wstring(name) + L".pending");
         auto attributes = security.Attributes();
+        Point(diagnostic, L"CreateFileW", L"win32", L"create-pending");
         HANDLE file = CreateFileW(pending.c_str(), GENERIC_WRITE, 0, &attributes, CREATE_NEW,
             FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
-        Check(file != INVALID_HANDLE_VALUE);
+        Check(file != INVALID_HANDLE_VALUE, diagnostic);
         desktop::handle owned(file);
         DWORD written = 0;
-        Check(WriteFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr) != FALSE);
-        Require(written == bytes.size(), E_FAIL);
-        Check(FlushFileBuffers(file) != FALSE);
+        Point(diagnostic, L"WriteFile", L"win32");
+        Check(WriteFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr) != FALSE, diagnostic);
+        Guard(written == bytes.size(), E_FAIL, diagnostic, L"write-complete");
+        Point(diagnostic, L"FlushFileBuffers", L"win32");
+        Check(FlushFileBuffers(file) != FALSE, diagnostic);
         owned.reset();
-        Check(MoveFileExW(pending.c_str(), target.c_str(), MOVEFILE_WRITE_THROUGH) != FALSE);
+        Point(diagnostic, L"MoveFileExW", L"win32");
+        Check(MoveFileExW(pending.c_str(), target.c_str(), MOVEFILE_WRITE_THROUGH) != FALSE, diagnostic);
     }
     inline JsonObject Read(std::filesystem::path const& root, wchar_t const* name,
-        Context const& context, Security const& security)
+        Context const& context, Security const& security, Diagnostic* diagnostic = nullptr)
     {
+        Point(diagnostic, L"CreateFileW", L"win32", L"read-record");
         HANDLE file = CreateFileW((root / name).c_str(), GENERIC_READ | READ_CONTROL, FILE_SHARE_READ,
             nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
-        Check(file != INVALID_HANDLE_VALUE);
+        Check(file != INVALID_HANDLE_VALUE, diagnostic);
         desktop::handle owned(file);
-        InspectHandle(file, context, security, false);
+        InspectHandle(file, context, security, false, diagnostic);
         LARGE_INTEGER size{};
-        Check(GetFileSizeEx(file, &size) != FALSE);
-        Require(size.QuadPart > 0 && size.QuadPart <= static_cast<LONGLONG>(RecordLimit), E_INVALIDARG);
+        Point(diagnostic, L"GetFileSizeEx", L"win32");
+        Check(GetFileSizeEx(file, &size) != FALSE, diagnostic);
+        Guard(size.QuadPart > 0 && size.QuadPart <= static_cast<LONGLONG>(RecordLimit),
+            E_INVALIDARG, diagnostic, L"record-size");
+        Point(diagnostic, L"buffer-allocation", L"cpp");
         std::string bytes(static_cast<size_t>(size.QuadPart), '\0');
         DWORD count = 0;
-        Check(ReadFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &count, nullptr) != FALSE);
-        Require(count == bytes.size(), E_FAIL);
+        Point(diagnostic, L"ReadFile", L"win32");
+        Check(ReadFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &count, nullptr) != FALSE, diagnostic);
+        Guard(count == bytes.size(), E_FAIL, diagnostic, L"read-complete");
+        Point(diagnostic, L"JsonObject.Parse/UTF8", L"winrt");
         return JsonObject::Parse(to_hstring(bytes));
     }
     inline bool Exists(std::filesystem::path const& root, wchar_t const* name)

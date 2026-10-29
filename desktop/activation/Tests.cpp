@@ -1,4 +1,5 @@
 #include "Protocol.h"
+#include "../common/Diagnostic.h"
 #include <cstdio>
 #include <stdexcept>
 namespace
@@ -15,11 +16,22 @@ namespace
         Expect(!activation::Fresh(100, 30100, 30100) && !activation::Fresh(100, 30100, 99) &&
             !activation::Fresh(100, 30101, 100) && !activation::Fresh(100, 100, 100));
     }
+    void DiagnosticCoreTests()
+    {
+        desktop::Diagnostic first, second;
+        desktop::Step(&first, L"current.token", L"token-user");
+        desktop::Point(&first, L"GetTokenInformation", L"win32", L"value-query");
+        desktop::ErrorCode(&first, 5, L"win32");
+        Expect(first.hasCode && first.code == 5 && !second.hasCode);
+        desktop::Point(&first, L"validation", L"validation", L"owner");
+        Expect(!first.hasCode && std::wstring_view(first.reason) == L"owner" &&
+            std::wstring_view(second.stage) == L"control");
+    }
 }
 #ifndef _WIN32
 int main()
 {
-    try { ProtocolTests(); std::puts("Portable activation protocol cases passed; NOT actual PSA activation."); return 0; }
+    try { ProtocolTests(); DiagnosticCoreTests(); std::puts("Portable protocol/diagnostic isolation cases passed; NOT actual PSA activation."); return 0; }
     catch (...) { std::fputs("Portable activation protocol failure.\n", stderr); return 1; }
 }
 #else
@@ -45,6 +57,107 @@ namespace
         activation::Require(length > 0 && length < name.size());
         return {name.data(), length};
     }
+    void NativeDiagnosticTests(activation::Context const& context)
+    {
+        using namespace activation;
+        Diagnostic diagnostic;
+        Step(&diagnostic, L"current.token", L"process-token");
+        Point(&diagnostic, L"OpenProcessToken", L"win32");
+        SetLastError(ERROR_ACCESS_DENIED);
+        bool rejected = false;
+        try { Check(false, &diagnostic); }
+        catch (hresult_error const& error) { rejected = error.code() == E_ACCESSDENIED; }
+        Require(rejected && diagnostic.hasCode && diagnostic.code == ERROR_ACCESS_DENIED);
+        auto report = activation::Record(L"control-arguments");
+        DiagnosticRecord(report, diagnostic);
+        auto metadata = report.GetNamedObject(L"error_context");
+        Require(metadata.GetNamedString(L"origin") == L"win32" && Integer(metadata, L"code") == ERROR_ACCESS_DENIED);
+        rejected = false;
+        try { Guard(false, E_ACCESSDENIED, &diagnostic, L"owner"); }
+        catch (hresult_error const& error) { rejected = error.code() == E_ACCESSDENIED; }
+        Require(rejected && !diagnostic.hasCode && std::wstring_view(diagnostic.origin) == L"validation" &&
+            std::wstring_view(diagnostic.reason) == L"owner");
+        for (auto kind : {TokenUser, TokenSessionId, TokenIsAppContainer, TokenAppContainerSid,
+            TokenType, TokenImpersonationLevel, TokenElevation})
+        {
+            rejected = false;
+            try { TokenData(INVALID_HANDLE_VALUE, kind, &diagnostic); }
+            catch (hresult_error const& error) { rejected = error.code() == E_ACCESSDENIED; }
+            Require(rejected && diagnostic.hasCode && diagnostic.code == ERROR_INVALID_HANDLE &&
+                std::wstring_view(diagnostic.object) == TokenRole(kind) &&
+                std::wstring_view(diagnostic.reason) == L"token-size-probe");
+        }
+        rejected = false;
+        try { desktop::CopySid(nullptr, &diagnostic); }
+        catch (hresult_error const& error) { rejected = error.code() == E_ACCESSDENIED; }
+        Require(rejected && !diagnostic.hasCode && std::wstring_view(diagnostic.reason) == L"sid-validity");
+        Point(&diagnostic, L"DeriveAppContainerSidFromAppContainerName", L"win32");
+        rejected = false;
+        try { CheckResult(E_INVALIDARG, &diagnostic); }
+        catch (hresult_error const& error) { rejected = error.code() == E_INVALIDARG; }
+        Require(rejected && diagnostic.hasCode && diagnostic.code == static_cast<uint32_t>(E_INVALIDARG) &&
+            std::wstring_view(diagnostic.codeKind) == L"hresult");
+        Security security(context);
+        Step(&diagnostic, L"prepare.base", L"base");
+        rejected = false;
+        try { InspectHandle(INVALID_HANDLE_VALUE, context, security, true, &diagnostic); }
+        catch (hresult_error const& error) { rejected = error.code() == HRESULT_FROM_WIN32(ERROR_INVALID_HANDLE); }
+        Require(rejected && diagnostic.code == ERROR_INVALID_HANDLE &&
+            std::wstring_view(diagnostic.api) == L"GetFileInformationByHandleEx");
+        JsonObject value;
+        Text(value, L"created_ms", L"not-a-number");
+        Step(&diagnostic, L"prepare.created", L"existing-request");
+        rejected = false;
+        try { Integer(value, L"created_ms", &diagnostic); }
+        catch (hresult_error const& error) { rejected = error.code() == E_INVALIDARG; }
+        Require(rejected && std::wstring_view(diagnostic.reason) == L"integer-type");
+        value.Insert(L"created_ms", JsonValue::CreateNumberValue(-1));
+        rejected = false;
+        try { Integer(value, L"created_ms", &diagnostic); }
+        catch (hresult_error const& error) { rejected = error.code() == E_INVALIDARG; }
+        Require(rejected && std::wstring_view(diagnostic.reason) == L"integer-range");
+    }
+    void StateCompatibilityTest(std::filesystem::path const& base, activation::Context context,
+        activation::Security const& security)
+    {
+        using namespace activation;
+        auto cache = base / L"compatibility-cache";
+        NewDirectory(cache, security);
+        context.cache = StorageFolder::GetFolderFromPathAsync(cache.wstring()).get();
+        context.packageHash = Hash(L"new-full-package-name-0.2.1.0-unit");
+        auto previousContext = context;
+        previousContext.packageHash = Hash(L"old-full-package-name-0.2.0.0-unit");
+        auto folder = Base(context);
+        NewDirectory(folder, security);
+        auto oldId = RandomToken();
+        auto oldRoot = folder / oldId;
+        NewDirectory(oldRoot, security);
+        auto now = Now();
+        auto expired = Bound(previousContext, oldId, L"request", now - 60000, now - 30000);
+        Atomic(oldRoot, L"request.json", expired, security);
+        Diagnostic diagnostic;
+        auto newId = Prepare(context, &diagnostic);
+        Require(Read(oldRoot, L"request.json", context, security).Stringify() == expired.Stringify());
+        bool busy = false;
+        try { Prepare(context, &diagnostic); }
+        catch (hresult_error const& error) { busy = error.code() == HRESULT_FROM_WIN32(ERROR_BUSY); }
+        Require(busy && std::wstring_view(diagnostic.reason) == L"request-not-fresh");
+        auto liveNow = Now();
+        auto oldLive = Bound(previousContext, oldId, L"request", liveNow, liveNow + LifetimeMs);
+        Validate(oldLive, previousContext, oldId, L"request", liveNow);
+        bool replayRejected = false;
+        try { Validate(oldLive, context, oldId, L"request", Now()); }
+        catch (hresult_error const& error) { replayRejected = error.code() == E_ACCESSDENIED; }
+        Require(replayRejected);
+        context.cache = nullptr; previousContext.cache = nullptr;
+        for (auto const& id : {oldId, newId})
+        {
+            std::filesystem::remove(folder / id / L"request.json");
+            std::filesystem::remove(folder / id);
+        }
+        std::filesystem::remove(folder / L"admission.lock");
+        std::filesystem::remove(folder); std::filesystem::remove(cache);
+    }
 }
 int wmain(int count, wchar_t** args)
 {
@@ -54,10 +167,12 @@ int wmain(int count, wchar_t** args)
     {
         init_apartment();
         ProtocolTests();
+        DiagnosticCoreTests();
         auto context = UnitContext();
         if (count == 4 && std::wstring_view(args[1]) == L"--controlled-unit-child")
             return Host(context, args[2], args[3]);
         Require(count == 1);
+        NativeDiagnosticTests(context);
         Security security(context);
         GUID guid{};
         check_hresult(CoCreateGuid(&guid));
@@ -68,6 +183,7 @@ int wmain(int count, wchar_t** args)
         Require(length > 0 && length < temporary.size());
         base = std::filesystem::path(temporary.data()) / (L"activation-probe-unit-" + std::wstring(text));
         NewDirectory(base, security);
+        StateCompatibilityTest(base, context, security);
         auto id = RandomToken();
         auto root = base / id;
         NewDirectory(root, security);
@@ -80,7 +196,15 @@ int wmain(int count, wchar_t** args)
         auto copy = Read(root, L"request.json", context, security);
         Validate(copy, context, id, L"request", now);
         bool duplicate = false;
-        try { Atomic(root, L"request.json", request, security); } catch (hresult_error const&) { duplicate = true; }
+        Diagnostic fileDiagnostic;
+        Step(&fileDiagnostic, L"prepare.request", L"new-request");
+        try { Atomic(root, L"request.json", request, security, &fileDiagnostic); }
+        catch (hresult_error const& error)
+        {
+            duplicate = fileDiagnostic.hasCode &&
+                error.code() == HRESULT_FROM_WIN32(fileDiagnostic.code) &&
+                std::wstring_view(fileDiagnostic.api) == L"MoveFileExW";
+        }
         Require(duplicate && Read(root, L"request.json", context, security).Stringify() == copy.Stringify());
         auto wrong = copy;
         Number(wrong, L"session", context.identity.session + 1);
@@ -141,9 +265,11 @@ int wmain(int count, wchar_t** args)
         auto unprotected = base / L"unprotected-unit";
         Check(CreateDirectoryW(unprotected.c_str(), nullptr) != FALSE);
         rejected = false;
-        try { auto unsafe = OpenDirectory(unprotected, context, security); }
+        Step(&fileDiagnostic, L"prepare.existing", L"existing-job");
+        try { auto unsafe = OpenDirectory(unprotected, context, security, &fileDiagnostic); }
         catch (hresult_error const&) { rejected = true; }
-        Require(rejected);
+        Require(rejected && std::wstring_view(fileDiagnostic.origin) == L"validation" &&
+            std::wstring_view(fileDiagnostic.reason) == L"dacl-protected" && !fileDiagnostic.hasCode);
         std::filesystem::remove(unprotected);
         auto waitingId = RandomToken();
         auto waitingRoot = base / waitingId;
@@ -184,6 +310,8 @@ int wmain(int count, wchar_t** args)
         for (auto const& entryFile : std::filesystem::directory_iterator(waitingRoot)) std::filesystem::remove(entryFile.path());
         std::filesystem::remove(root); std::filesystem::remove(waitingRoot); std::filesystem::remove(base); base.clear();
         std::puts("Protected files, Unicode, duplicate/replay, expiry/session/request mismatch, unprotected ACL rejection: passed.");
+        std::puts("Diagnostic API/validation HRESULT preservation and retained old-version admission/replay cases: passed.");
+        std::puts("Fake UnitContext/temp files; NOT a real nonadmin packaged Current/AppContainer test.");
         std::puts("Controlled child ack+exit0 and missing-observer bounded exit1/no-ack: passed. NOT actual PSA activation.");
         return 0;
     }

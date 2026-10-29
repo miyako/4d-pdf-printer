@@ -8,7 +8,7 @@
          xmlns:psa="http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2"
          IgnorableNamespaces="uap uap5 uap10 desktop rescap psa">
   <Identity Name="Miyako.DesktopPdfPrototype" Publisher="CN=DesktopPdfPrototypeDev"
-            Version="0.2.0.0" ProcessorArchitecture="x64"/>
+            Version="0.2.1.0" ProcessorArchitecture="x64"/>
   <Properties>
     <DisplayName>Desktop PDF development - activation probe only</DisplayName>
     <PublisherDisplayName>Desktop PDF development</PublisherDisplayName>

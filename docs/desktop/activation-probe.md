@@ -122,6 +122,60 @@ guard error aborts the whole pasted block; independently pasted top-level
 statements in an interactive shell can otherwise continue after a prior error.
 This does not blame the caller or authorize reusing the preserved output root.
 
+### Version0.2.1 diagnostic update (not an access-denied fix)
+
+The subsequent preparation-only Windows observation established actual control
+exit1 with native `0x80070005`, complete captured JSON and observed process exit.
+It exercised neither observer, print, callback nor host launch. The outer
+PowerShell exception is separate. The reported Windows wrapper SHA is exactly
+the repository's version2 bytes converted to CRLF, verified locally.
+Installing as the same user from an elevated installer shell does not establish
+why the later non-elevated preparation failed; no reinstall/elevation/ACL change
+is prescribed.
+
+The narrowly approved next development version is **0.2.1.0**, same family and
+publisher. It adds per-invocation diagnostic context, not a guessed permission
+fix. The original HRESULT and compatibility stage remain; optional
+`error_context` supplies fixed stage/API/object-role/origin/reason and an
+immediate raw code only when one was returned. It distinguishes Win32 failures,
+WinRT failures, C++ filesystem operations and our own validation failures.
+Token size/value queries and SID copying inside the shared identity helpers are
+covered, not collapsed into `Current()`. Successful APIs do not sample
+GetLastError. The PowerShell version3 summary copies only enumerated safe fields;
+raw private captures and preparation-only isolation remain unchanged. No token,
+path, SID, descriptor or document content is added.
+
+**Preserved-state compatibility:** the existing admission scan does not call
+`Validate` or compare old package hashes. It still checks directory tokens,
+owner/DACL, request parsing and `created_ms`/`expires_ms` freshness. Expired
+well-formed0.2.0 requests remain untouched and count toward cap8; fresh requests
+remain busy. Actual callback/host validation continues to reject old
+full-package-name hashes after update. Missing/partial/bad-ACL/invalid-time old
+records can still block admission; diagnostics identify `existing-job` or
+`existing-request`, but do not delete, normalize or rewrite them.
+
+Deterministic native tests cover preserved API/validation HRESULTs, all queried
+token-information roles, SID validity, invalid file handles, JSON numeric guards
+and serialization. Synthetic old-version records test actual admission with
+unchanged bytes, fresh-request rejection and old-hash replay rejection.
+These still use fake UnitContext/temp files, **not** real medium/nonadmin
+packaged `Current()` or AppContainer access. No restricted-token or real-caller
+coverage is claimed. Existing API libraries remain WindowsApp/Advapi32/Userenv/
+Ole32/Shell32; the new context is standard C++ data, not a runtime dependency.
+
+**Conditional user handoff, not authorization:** after the exact new batch and
+parent review, preserve the complete old native output directory (including
+signed0.2.0 MSIX, build receipt and CTest LastTest.log) and every existing proof/
+preparation root. Prefer a fresh detached source worktree at the approved SHA
+and build there, leaving the old worktree/output untouched; alternatively use
+an explicitly new archive before any build can overwrite owned output files.
+Use existing VS2022/v143/SDK26100 and existing signing certificate/trust. No
+renderer build. Only an ordinary current-user0.2.0->0.2.1 update is contemplated;
+no same-version overwrite, uninstall, new identity or diagnostic-family change.
+Then, only after separate consent, one new-root preparation-only call using the
+new local receipt/wrapper may expose the first failing API/guard. No printing or
+activation pass follows from compilation or preparation.
+
 ## Supported primitives, not an assumed callback result
 
 The [PSA v4 guide](https://learn.microsoft.com/en-us/windows-hardware/drivers/devapps/print-support-app-v4-design-guide)
@@ -238,7 +292,7 @@ Windows11 ARM64 machine, VS2022/v143/SDK26100. No renderer/Python/Poppler work.
 1. Record the approved source SHA and clean source state. Record
    `Get-AppxPackage` identity/version/status for BOTH `Miyako.PsaFeasibility` and
    `Miyako.DesktopPdfPrototype`, plus their existing queues. Preserve all old
-   roots/receipts. Stop if the probe package is already version0.2.0.0 or newer,
+   roots/receipts. Stop if the probe package is already version0.2.1.0 or newer,
    has another publisher, or existing development state cannot be preserved;
    never solve an update error by uninstalling.
 2. Build only `./desktop/build.ps1 -Mode ActivationProbe -Architecture ARM64
@@ -251,9 +305,10 @@ Windows11 ARM64 machine, VS2022/v143/SDK26100. No renderer/Python/Poppler work.
    reuse/re-sign the healthy diagnostic package or purchase signing.
 3. Explicitly approve and current-user install/update ONLY
    `desktop/out/arm64/DesktopPdfActivationProbe.msix`. Same development identity
-   version0.2.0.0 preserves its LocalState/LocalCache on an ordinary update; it
-   replaces the old development endpoints with one automation endpoint and a
-   new alias `4dpdf-probe.exe`. This is not a side-by-side update of the old
+   version0.2.1.0 preserves its LocalState/LocalCache on an ordinary update; it
+   retains the0.2.0 automation endpoint and alias `4dpdf-probe.exe`. An update
+   from the historical0.1 development gate instead replaces its old endpoints
+   with that single automation endpoint. This is not a side-by-side update of the old
    development gate. The diagnostic family/queues remain separate. Verify
    registration and the development no-file-UI queue; stop if missing. Do not
    launch the ordinary desktop app as a substitute activation test.

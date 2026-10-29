@@ -8,42 +8,75 @@ namespace activation
 {
     inline std::filesystem::path Base(Context const& context)
     { return std::filesystem::path(std::wstring(context.cache.Path())) / Folder; }
-    inline std::wstring Prepare(Context const& context)
+    inline std::wstring Prepare(Context const& context, Diagnostic* diagnostic = nullptr)
     {
-        Security security(context);
+        Security security(context, diagnostic);
+        Step(diagnostic, L"prepare.base", L"base");
+        Point(diagnostic, L"StorageFolder.Path", L"winrt");
         auto base = Base(context);
         auto attributes = security.Attributes();
+        Point(diagnostic, L"CreateDirectoryW", L"win32");
         if (!CreateDirectoryW(base.c_str(), &attributes))
         {
             auto error = GetLastError();
-            if (error != ERROR_ALREADY_EXISTS) throw hresult_error(HRESULT_FROM_WIN32(error));
+            if (error != ERROR_ALREADY_EXISTS)
+            {
+                ErrorCode(diagnostic, error, L"win32");
+                throw hresult_error(HRESULT_FROM_WIN32(error));
+            }
         }
-        auto lock = OpenDirectory(base, context, security);
-        HANDLE admission = CreateFileW((base / L"admission.lock").c_str(),
+        auto lock = OpenDirectory(base, context, security, diagnostic);
+        Step(diagnostic, L"prepare.admission", L"admission");
+        Point(diagnostic, L"path-allocation", L"cpp");
+        auto admissionPath = base / L"admission.lock";
+        Point(diagnostic, L"CreateFileW", L"win32", L"open-admission");
+        HANDLE admission = CreateFileW(admissionPath.c_str(),
             GENERIC_READ | GENERIC_WRITE | READ_CONTROL, 0, &attributes, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        Check(admission != INVALID_HANDLE_VALUE);
+        Check(admission != INVALID_HANDLE_VALUE, diagnostic);
         desktop::handle owned(admission);
-        InspectHandle(admission, context, security, false);
+        InspectHandle(admission, context, security, false, diagnostic);
         size_t jobs = 0;
-        for (auto const& entry : std::filesystem::directory_iterator(base))
+        Step(diagnostic, L"prepare.scan", L"existing-job");
+        Point(diagnostic, L"directory_iterator", L"cpp");
+        auto iterator = std::filesystem::directory_iterator(base);
+        auto end = std::filesystem::directory_iterator{};
+        while (iterator != end)
         {
-            if (entry.path().filename() == L"admission.lock") continue;
-            Require(Token(entry.path().filename().wstring()), E_ACCESSDENIED);
-            auto previousLock = OpenDirectory(entry.path(), context, security);
-            auto previous = Read(entry.path(), L"request.json", context, security);
-            Require(!Fresh(Integer(previous, L"created_ms"), Integer(previous, L"expires_ms"), Now()),
-                HRESULT_FROM_WIN32(ERROR_BUSY));
-            ++jobs;
+            Step(diagnostic, L"prepare.scan", L"existing-job");
+            Point(diagnostic, L"directory_entry.path", L"cpp");
+            auto path = iterator->path();
+            if (path.filename() != L"admission.lock")
+            {
+                Guard(Token(path.filename().wstring()), E_ACCESSDENIED, diagnostic, L"directory-token");
+                Step(diagnostic, L"prepare.existing", L"existing-job");
+                auto previousLock = OpenDirectory(path, context, security, diagnostic);
+                Step(diagnostic, L"prepare.existing", L"existing-request");
+                auto previous = Read(path, L"request.json", context, security, diagnostic);
+                Step(diagnostic, L"prepare.created", L"existing-request");
+                auto created = Integer(previous, L"created_ms", diagnostic);
+                Step(diagnostic, L"prepare.expires", L"existing-request");
+                auto expires = Integer(previous, L"expires_ms", diagnostic);
+                Guard(!Fresh(created, expires, Now()), HRESULT_FROM_WIN32(ERROR_BUSY), diagnostic, L"request-not-fresh");
+                ++jobs;
+            }
+            Step(diagnostic, L"prepare.scan", L"existing-job");
+            Point(diagnostic, L"directory_iterator.increment", L"cpp");
+            ++iterator;
         }
-        Require(jobs < 8, HRESULT_FROM_WIN32(ERROR_TOO_MANY_CMDS));
-        auto id = RandomToken();
+        Guard(jobs < 8, HRESULT_FROM_WIN32(ERROR_TOO_MANY_CMDS), diagnostic, L"admission-cap");
+        Step(diagnostic, L"prepare.new-job", L"new-job");
+        Point(diagnostic, L"RandomToken", L"winrt");
+        auto id = RandomToken(diagnostic);
+        Point(diagnostic, L"path-allocation", L"cpp");
         auto root = base / id;
-        NewDirectory(root, security);
-        auto jobLock = OpenDirectory(root, context, security);
+        NewDirectory(root, security, diagnostic);
+        auto jobLock = OpenDirectory(root, context, security, diagnostic);
+        Step(diagnostic, L"prepare.request", L"new-request");
+        Point(diagnostic, L"Bound/JsonObject", L"winrt");
         auto now = Now();
         auto request = Bound(context, id, L"request", now, now + LifetimeMs);
         Text(request, L"endpoint", Endpoint);
-        Atomic(root, L"request.json", request, security);
+        Atomic(root, L"request.json", request, security, diagnostic);
         return id;
     }
     inline std::wstring ProcessPath(HANDLE process)

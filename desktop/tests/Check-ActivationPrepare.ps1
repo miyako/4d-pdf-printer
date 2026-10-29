@@ -72,7 +72,7 @@ function Invoke-PrepareCase([string]$Name, [string]$Mode, [string[]]$Collisions 
     $caught = $null
     try { . $flow 2>$null } catch { $caught = $_ }
     if ($unexpectedProcessCalls.Count -ne 0 -or $stage -cne 'prepare' -or $processes.Count -ne 0 -or
-        $report.mode -cne 'preparation-only-not-activation' -or $report.wrapperVersion -ne 2 -or
+        $report.mode -cne 'preparation-only-not-activation' -or $report.wrapperVersion -ne 3 -or
         $report.wrapperSha256 -cne (Get-FileHash -LiteralPath $program -Algorithm SHA256).Hash.ToLowerInvariant()) {
         throw "Preparation-only escaped its branch or lost wrapper identity in $Name."
     }
@@ -106,7 +106,15 @@ function Invoke-PrepareCase([string]$Name, [string]$Mode, [string[]]$Collisions 
         if ($report.prepare.native.hresult -cne '0x80070005' -or $report.prepare.exitCode -ne 1 -or
             $report.prepare.native.stage -cne 'control-arguments' -or
             -not $report.prepare.processExitObserved) { throw 'Native HRESULT/exit/stage was masked.' }
+        $context = $report.prepare.native.errorContext
+        if ($context.stage -cne 'current.token' -or $context.api -cne 'GetTokenInformation' -or
+            $context.object -cne 'token-user' -or $context.origin -cne 'validation' -or
+            $context.reason -cne 'token-size-probe' -or $context.code -ne 6 -or $context.codeKind -cne 'win32') {
+            throw 'Typed native diagnostics changed or hid the original HRESULT.'
+        }
     }
+    if ($Mode -ceq 'diagnostic-unsafe' -and ($report.prepare.native.errorContext.Count -ne 0 -or
+        $report.prepare.native.rejectedDiagnosticFields.Count -ne 7)) { throw 'Unknown native diagnostic fields were copied.' }
     if ($Mode -cin @('flood', 'stderr-flood') -and $report.prepare.failureReason -cne 'capture-limit') {
         throw 'Stream flood was not classified as a capture limit.'
     }
@@ -125,7 +133,8 @@ function Invoke-PrepareCase([string]$Name, [string]$Mode, [string[]]$Collisions 
     if ('result.json' -notin $Collisions) {
         $public = Get-Content -LiteralPath (Join-Path $PrivateOutputRoot 'result.json') -Raw
         if ($public.Contains('a' * 64) -or $public.Contains($PrivateOutputRoot) -or
-            $public.Contains('not-an-executed-windows-alias')) { throw 'Public report leaked private data.' }
+            $public.Contains('not-an-executed-windows-alias') -or $public.Contains('private-path-not-an-api') -or
+            $public.Contains('raw-user-sid') -or $public.Contains('must-not-be-published')) { throw 'Public report leaked private data.' }
         $value = $public | ConvertFrom-Json
         if ($value.activationGatePassed -or $value.pdfProduced) { throw 'Preparation alone reported activation/PDF success.' }
     }
@@ -140,6 +149,7 @@ function Invoke-PrepareCase([string]$Name, [string]$Mode, [string[]]$Collisions 
 try {
     Invoke-PrepareCase 'success' 'success' -Success; ++$checks
     Invoke-PrepareCase 'native-error' 'native-error'; ++$checks
+    Invoke-PrepareCase 'diagnostic-unsafe' 'diagnostic-unsafe'; ++$checks
     foreach ($mode in @('empty', 'malformed', 'array', 'bad-stage', 'bad-id', 'flood', 'stderr-flood',
         'invalid-utf8', 'timeout', 'start-failure')) {
         Invoke-PrepareCase $mode $mode; ++$checks

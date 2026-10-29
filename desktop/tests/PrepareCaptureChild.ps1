@@ -12,7 +12,21 @@ switch ($Mode) {
         $record.Remove('job_id')
         $record.stage = 'control-arguments'
         $record.hresult = 2147942405
+        $record.error_context = [ordered]@{
+            stage = 'current.token'; api = 'GetTokenInformation'; object = 'token-user'
+            origin = 'validation'; reason = 'token-size-probe'; code = 6; codeKind = 'win32'
+        }
         [Console]::Error.Write($unicode)
+    }
+    'diagnostic-unsafe' {
+        $record.Remove('job_id')
+        $record.stage = 'control-arguments'
+        $record.hresult = 2147942405
+        $record.error_context = @{
+            stage = ('a' * 64); api = 'private-path-not-an-api'; object = 'raw-user-sid'
+            origin = 'unknown'; reason = 'private-value'; codeKind = 'secret'; code = 'private-code'
+            arbitrary = 'must-not-be-published'
+        }
     }
     'empty' { exit 0 }
     'malformed' { [Console]::Write('{ invalid'); exit 0 }
@@ -27,4 +41,4 @@ switch ($Mode) {
     default { throw 'Unknown controlled preparation case.' }
 }
 [Console]::Write((ConvertTo-Json -InputObject $record -Compress))
-if ($Mode -ceq 'native-error') { exit 1 }
+if ($Mode -cin @('native-error', 'diagnostic-unsafe')) { exit 1 }

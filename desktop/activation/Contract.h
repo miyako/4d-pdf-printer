@@ -11,6 +11,16 @@ namespace activation
     using namespace Windows::Storage;
     inline void Require(bool value, HRESULT error = E_INVALIDARG)
     { if (!value) throw hresult_error(error); }
+    inline void Guard(bool value, HRESULT error, Diagnostic* diagnostic, wchar_t const* reason)
+    {
+        Point(diagnostic, L"validation", L"validation", reason);
+        Require(value, error);
+    }
+    inline void CheckResult(HRESULT result, Diagnostic* diagnostic)
+    {
+        if (FAILED(result)) ErrorCode(diagnostic, static_cast<uint32_t>(result), L"hresult");
+        check_hresult(result);
+    }
     inline uint64_t Now()
     {
         return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -34,21 +44,26 @@ namespace activation
         Flag(value, L"pdfProduced", false); Flag(value, L"activationGatePassed", false);
         return value;
     }
-    inline uint64_t Integer(JsonObject const& value, wchar_t const* key)
+    inline uint64_t Integer(JsonObject const& value, wchar_t const* key, Diagnostic* diagnostic = nullptr)
     {
+        Point(diagnostic, L"JsonObject.GetNamedValue", L"winrt");
         auto item = value.GetNamedValue(key);
-        Require(item.ValueType() == Windows::Data::Json::JsonValueType::Number);
+        Point(diagnostic, L"JsonValue.ValueType", L"winrt");
+        auto type = item.ValueType();
+        Guard(type == Windows::Data::Json::JsonValueType::Number, E_INVALIDARG, diagnostic, L"integer-type");
+        Point(diagnostic, L"JsonValue.GetNumber", L"winrt");
         auto number = item.GetNumber();
-        Require(number >= 0 && number <= 9007199254740991.0 &&
-            static_cast<double>(static_cast<uint64_t>(number)) == number);
+        Guard(number >= 0 && number <= 9007199254740991.0 &&
+            static_cast<double>(static_cast<uint64_t>(number)) == number, E_INVALIDARG, diagnostic, L"integer-range");
         return static_cast<uint64_t>(number);
     }
-    inline std::wstring UserHash(Identity const& identity)
+    inline std::wstring UserHash(Identity const& identity, Diagnostic* diagnostic = nullptr)
     {
+        Point(diagnostic, L"string-allocation", L"cpp");
         std::wstring bytes;
         constexpr wchar_t hex[] = L"0123456789abcdef";
         for (auto byte : identity.user) { bytes += hex[byte >> 4]; bytes += hex[byte & 15]; }
-        return Hash(bytes);
+        return Hash(bytes, diagnostic);
     }
     struct Context
     {
@@ -56,33 +71,69 @@ namespace activation
         std::wstring userHash, packageHash, family;
         StorageFolder cache{nullptr};
     };
-    inline Context Current(bool appContainer)
+    inline Context Current(bool appContainer, Diagnostic* diagnostic = nullptr)
     {
         Context context;
-        context.identity = CurrentIdentity();
+        context.identity = CurrentIdentity(diagnostic);
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
         if (!appContainer)
         {
             HANDLE token = nullptr;
-            Check(OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token) != FALSE);
+            Step(diagnostic, L"current.token", L"process-token");
+            Point(diagnostic, L"OpenProcessToken", L"win32");
+            Check(OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token) != FALSE, diagnostic);
             desktop::handle owned(token);
-            auto elevation = TokenData(token, TokenElevation);
-            Require(reinterpret_cast<TOKEN_ELEVATION*>(elevation.data())->TokenIsElevated == 0, E_ACCESSDENIED);
+            auto elevation = TokenData(token, TokenElevation, diagnostic);
+            Step(diagnostic, L"current.guard", L"process-token");
+            Guard(reinterpret_cast<TOKEN_ELEVATION*>(elevation.data())->TokenIsElevated == 0,
+                E_ACCESSDENIED, diagnostic, L"not-elevated");
             USHORT processMachine = 0, nativeMachine = 0;
-            Check(IsWow64Process2(GetCurrentProcess(), &processMachine, &nativeMachine) != FALSE);
-            Require(processMachine == IMAGE_FILE_MACHINE_UNKNOWN, E_ACCESSDENIED);
+            Point(diagnostic, L"IsWow64Process2", L"win32");
+            Check(IsWow64Process2(GetCurrentProcess(), &processMachine, &nativeMachine) != FALSE, diagnostic);
+            Guard(processMachine == IMAGE_FILE_MACHINE_UNKNOWN, E_ACCESSDENIED, diagnostic, L"native-machine");
         }
 #endif
-        auto package = Windows::ApplicationModel::Package::Current().Id();
-        Require(package.Name() == L"Miyako.DesktopPdfPrototype" &&
-            package.Publisher() == L"CN=DesktopPdfPrototypeDev" &&
-            context.identity.appContainer == appContainer && context.identity.session != 0,
-            E_ACCESSDENIED);
+        Step(diagnostic, L"current.package", L"package");
+        Point(diagnostic, L"Package.Current", L"winrt");
+        auto current = Windows::ApplicationModel::Package::Current();
+        Point(diagnostic, L"Package.Id", L"winrt");
+        auto package = current.Id();
+        Point(diagnostic, L"PackageId.Name", L"winrt");
+        auto name = package.Name();
+        Guard(name == L"Miyako.DesktopPdfPrototype", E_ACCESSDENIED, diagnostic, L"package-name");
+        Point(diagnostic, L"PackageId.Publisher", L"winrt");
+        auto publisher = package.Publisher();
+        Guard(publisher == L"CN=DesktopPdfPrototypeDev", E_ACCESSDENIED, diagnostic, L"package-publisher");
+        Guard(context.identity.appContainer == appContainer, E_ACCESSDENIED, diagnostic, L"container-context");
+        Guard(context.identity.session != 0, E_ACCESSDENIED, diagnostic, L"interactive-session");
+        Point(diagnostic, L"PackageId.FamilyName", L"winrt");
         context.family = std::wstring(package.FamilyName());
-        context.userHash = UserHash(context.identity);
-        context.packageHash = Hash(std::wstring(package.FullName()));
-        context.cache = ApplicationData::Current().LocalCacheFolder();
+        Step(diagnostic, L"current.hash", L"identity-hash");
+        Point(diagnostic, L"UserHash", L"winrt");
+        context.userHash = UserHash(context.identity, diagnostic);
+        Point(diagnostic, L"PackageId.FullName", L"winrt");
+        auto fullName = package.FullName();
+        Point(diagnostic, L"string-allocation", L"cpp");
+        context.packageHash = Hash(std::wstring(fullName), diagnostic);
+        Step(diagnostic, L"current.cache", L"cache");
+        Point(diagnostic, L"ApplicationData.Current", L"winrt");
+        auto data = ApplicationData::Current();
+        Point(diagnostic, L"ApplicationData.LocalCacheFolder", L"winrt");
+        context.cache = data.LocalCacheFolder();
         return context;
+    }
+    inline void DiagnosticRecord(JsonObject const& report, Diagnostic const& diagnostic)
+    {
+        JsonObject value;
+        Text(value, L"stage", diagnostic.stage); Text(value, L"api", diagnostic.api);
+        Text(value, L"object", diagnostic.object); Text(value, L"origin", diagnostic.origin);
+        Text(value, L"reason", diagnostic.reason);
+        if (diagnostic.hasCode)
+        {
+            Number(value, L"code", diagnostic.code);
+            Text(value, L"codeKind", diagnostic.codeKind);
+        }
+        report.Insert(L"error_context", value);
     }
     inline JsonObject Bound(Context const& context, std::wstring const& id, wchar_t const* kind,
         uint64_t created, uint64_t expires)
