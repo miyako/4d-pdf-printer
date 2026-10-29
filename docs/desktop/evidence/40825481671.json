@@ -1,0 +1,38 @@
+{
+  "schema": "4d-pdf-printer.fixture-check-attempt",
+  "version": 1,
+  "sourceCommit": "0e01f53b28b453818737d621d4ff11dc286e8daa",
+  "run": 40825481671,
+  "event": "workflow_dispatch",
+  "result": "failed-compile",
+  "jobs": [
+    { "architecture": "x64", "id": 123287431313, "result": "failure" },
+    { "architecture": "arm64", "id": 123287431152, "result": "failure" }
+  ],
+  "errors": [
+    {
+      "file": "desktop/tests/CheckPhysicalMapping.cpp",
+      "line": 219,
+      "code": "C3861",
+      "symbol": "CoCreateGuid",
+      "message": "identifier not found"
+    },
+    {
+      "file": "desktop/tests/CheckPhysicalMapping.cpp",
+      "line": 221,
+      "code": "C3861",
+      "symbol": "StringFromGUID2",
+      "message": "identifier not found"
+    }
+  ],
+  "proofTargetCompiled": true,
+  "fixtureTestTargetCompiled": false,
+  "nativeCTestExecuted": false,
+  "generatedEmfChecksExecuted": false,
+  "successBuildReceiptProduced": false,
+  "printingPerformed": false,
+  "psaActivated": false,
+  "rendererExecuted": false,
+  "rerunDispatched": false,
+  "productUsable": false
+}

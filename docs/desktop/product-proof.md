@@ -170,7 +170,31 @@ synthetic scratch files. Its stdout receipt contains synthetic metadata only;
 CI uploads neither EMFs/fonts/rasters nor binaries. A separately authorized
 single manual x64/native-ARM64 own-code compile/unit batch includes this test;
 it performs **no printing, PSA activation or renderer/dependency/runtime build**.
-The exact result/source is recorded separately after that attempt.
+
+### Single attempted producer-unit checkpoint -- blocked
+
+The authorized run
+[40825481671](https://github.com/miyako/4d-pdf-printer/actions/runs/40825481671)
+**failed compilation** at source
+`0e01f53b28b453818737d621d4ff11dc286e8daa`:
+x64 job123287431313 and ARM64 job123287431152 both report C3861 in the new
+`CheckPhysicalMapping.cpp`, lines219/221: `CoCreateGuid` and `StringFromGUID2`
+are undeclared. The unit omitted the explicit `objbase.h` declaration header
+under `WIN32_LEAN_AND_MEAN`. The producer executable target itself compiled on
+both architectures, but the fixture-test target did not, so **no CTest or
+generated-EMF checks ran**. Subsequent PowerShell/Python workflow steps were
+skipped; no success build receipt or artifact was produced. This is a new test
+compile defect, not observed failure/success of the corrected EMF mapping.
+
+The [failed-attempt record](evidence/40825481671.json) preserves the exact source,
+jobs and diagnostic locations separately from historical successful receipts.
+Local Clang metric guards and PowerShell seven-plus-nine cases passed before
+dispatch; they do not compile the Windows-only GUID calls or substitute for
+real EMF-generation evidence. One attempt only; the failure was reported to the
+creator, no rerun or post-attempt source repair was performed. The documentation
+checkpoint is not a tested source or green run. **Native fixture validation
+remains blocked pending creator review**, and no user-host build/reprints are
+requested.
 
 **Paper-grid limitation, unchanged comparator:** the observed PSA path uses
 300dpi and 2480 pixels across, represented as 793.6 XPS units / 595.2pt; Microsoft
