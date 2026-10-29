@@ -239,6 +239,40 @@ never token contents or SIDs. Production size-probe/deny conditions are unchange
 These are real process-token queries on CI, **not** normal packaged caller,
 AppContainer, preparation or activation proof.
 
+**Valid-token discrepancy reproduced; STOP:** fresh manual
+[40849698888](https://github.com/miyako/4d-pdf-printer/actions/runs/40849698888)
+tested source `c5612822f99589eaf07d21e791fdf0daccf8051f` without changing
+production code. All five targets compiled/linked on x64 and native ARM64.
+The corrected invalid-handle references passed for all seven classes.
+On the real valid process token, the first five direct/helper comparisons
+matched; primary-token impersonation queries failed87 as documented and their
+helper rejection matched. Then, on **both architectures**:
+
+| TokenElevation query | Input bytes | BOOL | Error | Required bytes |
+| --- | ---: | ---: | ---: | ---: |
+| Direct null/zero reference | 0 | 0 | 24 (`ERROR_BAD_LENGTH`) | 4 |
+| Direct `TOKEN_ELEVATION` reference | 4 | 1 | 0 | 4 |
+| Production `TokenData` size probe | 0 | rejected | captured24; HRESULT `0x80070005` | direct reference4 |
+
+The precise failure is `kind=production-exception case=valid-token.helper
+case_line=246`, stage `current.token`, API `GetTokenInformation`, object
+`token-elevation`, origin `validation`, reason `token-size-probe`, code24.
+This demonstrates an **own helper contract bug**: Common.h:75 requires
+`ERROR_INSUFFICIENT_BUFFER`122 for every size probe and throws at79, before
+querying this valid fixed-size class. `Current(false)` uses it at Contract.h:86.
+No production fix or guard relaxation has been made. This is stronger than the
+earlier invalid-handle observation, but still does **not** prove the user's
+discarded first failing API, normal nonadmin packaged context or actual callback.
+
+The CTest failed after0.34s/0.03s; remaining native diagnostic/security/state/
+child cases and packaging were not reached. See the
+[exact receipt](evidence/40849698888.json) and unmodified
+[x64](evidence/40849698888-x64-LastTest.log) /
+[ARM64](evidence/40849698888-arm64-LastTest.log) logs. Local portable C++ and
+PowerShell17+7+9 cases passed, but do not cover these Win32 calls.
+Stopped for parent review before a targeted fixed-size-query repair, any retry
+or user update. Version0.2.1 remains not ready for host action.
+
 **Conditional user handoff, not authorization:** only after native validation and
 parent review, preserve the complete old native output directory (including
 signed0.2.0 MSIX, build receipt and CTest LastTest.log) and every existing proof/

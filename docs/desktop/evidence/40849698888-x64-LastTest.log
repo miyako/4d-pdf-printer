@@ -1,0 +1,41 @@
+Start testing: Oct 29 09:28 Coordinated Universal Time
+----------------------------------------------------------
+1/1 Testing: desktop-activation-probe-units
+1/1 Test: desktop-activation-probe-units
+Command: "D:/a/4d-pdf-printer/4d-pdf-printer/desktop/out/x64/activation-build/Release/DesktopPdfProbeTests.exe"
+Directory: D:/a/4d-pdf-printer/4d-pdf-printer/desktop/out/x64/activation-build
+"desktop-activation-probe-units" start time: Oct 29 09:28 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+Token query context=invalid.zero class=token-user input_bytes=0 returned=0 error=6 required_bytes=0
+Token query context=invalid.zero class=token-session input_bytes=0 returned=0 error=6 required_bytes=0
+Token query context=invalid.zero class=token-container-flag input_bytes=0 returned=0 error=6 required_bytes=0
+Token query context=invalid.zero class=token-container-sid input_bytes=0 returned=0 error=6 required_bytes=0
+Token query context=invalid.zero class=token-type input_bytes=0 returned=0 error=6 required_bytes=0
+Token query context=invalid.zero class=token-impersonation input_bytes=0 returned=0 error=6 required_bytes=0
+Token query context=invalid.zero class=token-elevation input_bytes=0 returned=0 error=24 required_bytes=4
+Token query context=valid.primary-type class=token-type input_bytes=4 returned=1 error=0 required_bytes=4
+Token query context=valid.zero class=token-user input_bytes=0 returned=0 error=122 required_bytes=44
+Token query context=valid.value class=token-user input_bytes=44 returned=1 error=0 required_bytes=44
+Token query context=valid.zero class=token-session input_bytes=0 returned=0 error=122 required_bytes=4
+Token query context=valid.value class=token-session input_bytes=4 returned=1 error=0 required_bytes=4
+Token query context=valid.zero class=token-container-flag input_bytes=0 returned=0 error=122 required_bytes=4
+Token query context=valid.value class=token-container-flag input_bytes=4 returned=1 error=0 required_bytes=4
+Token query context=valid.zero class=token-container-sid input_bytes=0 returned=0 error=122 required_bytes=8
+Token query context=valid.value class=token-container-sid input_bytes=8 returned=1 error=0 required_bytes=8
+Token query context=valid.zero class=token-type input_bytes=0 returned=0 error=122 required_bytes=4
+Token query context=valid.value class=token-type input_bytes=4 returned=1 error=0 required_bytes=4
+Token query context=valid.zero class=token-impersonation input_bytes=0 returned=0 error=87 required_bytes=0
+Token query context=valid.value class=token-impersonation input_bytes=4 returned=0 error=87 required_bytes=0
+Token query context=valid.zero class=token-elevation input_bytes=0 returned=0 error=24 required_bytes=4
+Token query context=valid.value class=token-elevation input_bytes=4 returned=1 error=0 required_bytes=4
+Activation probe unit failure kind=production-exception case=valid-token.helper case_line=246 HRESULT=0x80070005 context_stage=current.token api=GetTokenInformation object=token-elevation origin=validation reason=token-size-probe has_code=1 code=24 code_kind=win32; no PSA/printing performed.
+<end of output>
+Test time =   0.34 sec
+----------------------------------------------------------
+Test Failed.
+"desktop-activation-probe-units" end time: Oct 29 09:28 Coordinated Universal Time
+"desktop-activation-probe-units" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 29 09:28 Coordinated Universal Time
