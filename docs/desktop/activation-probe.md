@@ -322,6 +322,36 @@ without repair/retry or any host action. Version0.2.1 is still **not ready for
 user update**; the actual user's first failing operation and PSA gate remain
 unproven.
 
+**Deterministic fixture repair; native pass but workflow STOP:** source
+`7718cb726c2a2f2c5816d72528a0a9422abd521d` changes only the synthetic unit fixture.
+It clones the existing explicitly owned descriptor, clears only the clone's
+`SE_DACL_PROTECTED` bit with the
+[documented setter](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-setsecuritydescriptorcontrol),
+and pins/readbacks the created directory before unchanged production inspection.
+No owner-assignment privilege, production guard change or live path is used.
+The exact `dacl-protected` assertion is retained.
+
+Fresh manual [40851551623](https://github.com/miyako/4d-pdf-printer/actions/runs/40851551623)
+verified `owner_matches_current_user=1 dacl_protected=0` on **both architectures**.
+All native compilation, complete controlled CTests (3.35s each, including
+missing-observer bounded exit1/no-ack) and unsigned MSIX/PE/manifest/PRI packaging
+passed. Original [x64](evidence/40851551623-x64.json) /
+[ARM64](evidence/40851551623-arm64.json) clean-source build receipts and raw
+[x64](evidence/40851551623-x64-LastTest.log) /
+[ARM64](evidence/40851551623-arm64-LastTest.log) CTest logs are preserved.
+
+The **overall workflow failed** in the next hosted PowerShell guard step:
+Check-ActivationPrepare.ps1:159 throws `Raw private Unicode stderr was lost.`
+on both runners. The actual production-body test strictly decodes controlled
+child stderr as UTF8 and compares the fixed Japanese test string; actual bytes
+are not in the logs. The child uses `Console.Error.Write` without explicit
+encoding, but encoding-versus-capture cause is not yet proven. Do not equate
+this with a user preparation failure or discard the assertion. Local macOS
+PowerShell19+7+9 passed; the complete Windows body suite and later hosted steps
+did not. [Overall failure receipt](evidence/40851551623.json).
+Stopped without script repair/retry or user action. Native pass alone is not
+full validation or a user-update/actual-callback gate pass.
+
 **Conditional user handoff, not authorization:** only after native validation and
 parent review, preserve the complete old native output directory (including
 signed0.2.0 MSIX, build receipt and CTest LastTest.log) and every existing proof/
