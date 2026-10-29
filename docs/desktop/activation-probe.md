@@ -224,6 +224,21 @@ Again stopped without changing the assertion, production code or security,
 or dispatching a retry. Version0.2.1 remains **not ready for user update**;
 actual user cause and PSA gate remain unknown/unexercised.
 
+The next narrowly authorized unit revision replaces that invalid-handle error
+assumption with a **direct same-arguments Win32 reference**, capturing BOOL,
+failed-API DWORD and required length immediately. It also opens a real current
+process `TOKEN_QUERY` handle and compares all seven helper information classes
+against direct queries, including an explicit fixed-size `TOKEN_ELEVATION`.
+The [GetTokenInformation contract](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-gettokeninformation)
+allows null/zero probes but does not promise one universal failure code.
+The [information-class contract](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ne-winnt-token_information_class)
+documents fixed value types and that `TokenImpersonationLevel` fails on primary
+tokens; that direct rejection is checked separately, not treated as required
+helper success. Only fixed class names/query sizes/BOOL/error/length are logged,
+never token contents or SIDs. Production size-probe/deny conditions are unchanged.
+These are real process-token queries on CI, **not** normal packaged caller,
+AppContainer, preparation or activation proof.
+
 **Conditional user handoff, not authorization:** only after native validation and
 parent review, preserve the complete old native output directory (including
 signed0.2.0 MSIX, build receipt and CTest LastTest.log) and every existing proof/

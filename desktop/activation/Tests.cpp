@@ -142,6 +142,135 @@ namespace
         Expect(length > 0 && length < name.size());
         return {name.data(), length};
     }
+    constexpr std::array TokenKinds{TokenUser, TokenSessionId, TokenIsAppContainer, TokenAppContainerSid,
+        TokenType, TokenImpersonationLevel, TokenElevation};
+    struct TokenQuery { BOOL returned; DWORD error, required; };
+    TokenQuery DirectTokenQuery(HANDLE token, TOKEN_INFORMATION_CLASS kind, void* buffer, DWORD capacity)
+    {
+        DWORD required = 0;
+        auto returned = GetTokenInformation(token, kind, buffer, capacity, &required);
+        auto error = returned ? ERROR_SUCCESS : GetLastError();
+        return {returned, error, required};
+    }
+    void QueryEvidence(char const* context, TOKEN_INFORMATION_CLASS kind, DWORD capacity, TokenQuery const& query)
+    {
+        std::printf("Token query context=%s class=%ls input_bytes=%u returned=%u error=%u required_bytes=%u\n",
+            context, desktop::TokenRole(kind), static_cast<unsigned>(capacity), static_cast<unsigned>(query.returned != FALSE),
+            static_cast<unsigned>(query.error), static_cast<unsigned>(query.required));
+        std::fflush(stdout);
+    }
+    bool SizeProbeAdmitted(TokenQuery const& query)
+    { return !query.returned && query.error == ERROR_INSUFFICIENT_BUFFER && query.required != 0; }
+    void InvalidTokenTests(UnitCase& test)
+    {
+        using namespace activation;
+        auto& diagnostic = test.diagnostic;
+        for (auto kind : TokenKinds)
+        {
+            test.At("diagnostic.token-error-reference");
+            auto reference = DirectTokenQuery(INVALID_HANDLE_VALUE, kind, nullptr, 0);
+            QueryEvidence("invalid.zero", kind, 0, reference);
+            Expect(!reference.returned);
+            auto admitted = SizeProbeAdmitted(reference);
+            auto expected = reference;
+            if (admitted)
+            {
+                std::vector<uint8_t> buffer(reference.required);
+                expected = DirectTokenQuery(INVALID_HANDLE_VALUE, kind, buffer.data(), reference.required);
+                QueryEvidence("invalid.value", kind, reference.required, expected);
+                Expect(!expected.returned);
+            }
+            auto expectedHresult = admitted ? HRESULT_FROM_WIN32(expected.error) : E_ACCESSDENIED;
+            bool rejected = false;
+            try { TokenData(INVALID_HANDLE_VALUE, kind, &diagnostic); }
+            catch (hresult_error const& error) { rejected = error.code() == expectedHresult; }
+            Expect(rejected && diagnostic.hasCode && diagnostic.code == expected.error &&
+                std::wstring_view(diagnostic.object) == TokenRole(kind) &&
+                std::wstring_view(diagnostic.reason) == (admitted ? L"value-query" : L"token-size-probe"));
+        }
+    }
+    DWORD ReferenceCapacity(TOKEN_INFORMATION_CLASS kind, DWORD required)
+    {
+        switch (kind)
+        {
+        case TokenSessionId: case TokenIsAppContainer: return static_cast<DWORD>(sizeof(DWORD));
+        case TokenType: return static_cast<DWORD>(sizeof(TOKEN_TYPE));
+        case TokenImpersonationLevel: return static_cast<DWORD>(sizeof(SECURITY_IMPERSONATION_LEVEL));
+        case TokenElevation: return static_cast<DWORD>(sizeof(TOKEN_ELEVATION));
+        default: return required;
+        }
+    }
+    void ValidTokenTests(UnitCase& test)
+    {
+        using namespace activation;
+        auto& diagnostic = test.diagnostic;
+        test.At("valid-token.open");
+        Step(&diagnostic, L"current.token", L"process-token");
+        Point(&diagnostic, L"OpenProcessToken", L"win32");
+        HANDLE token = nullptr;
+        Check(OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token) != FALSE, &diagnostic);
+        desktop::handle owned(token);
+        TOKEN_TYPE type{};
+        auto typeReference = DirectTokenQuery(token, TokenType, &type, static_cast<DWORD>(sizeof(type)));
+        QueryEvidence("valid.primary-type", TokenType, static_cast<DWORD>(sizeof(type)), typeReference);
+        Expect(typeReference.returned && typeReference.required == sizeof(type) && type == TokenPrimary);
+        for (auto kind : TokenKinds)
+        {
+            test.At("valid-token.direct-reference");
+            Step(&diagnostic, L"current.token", TokenRole(kind));
+            auto size = DirectTokenQuery(token, kind, nullptr, 0);
+            QueryEvidence("valid.zero", kind, 0, size);
+            auto capacity = ReferenceCapacity(kind, size.required);
+            Expect(capacity != 0);
+            std::vector<uint8_t> reference(capacity);
+            TOKEN_ELEVATION elevation{};
+            void* buffer = kind == TokenElevation ? static_cast<void*>(&elevation) : reference.data();
+            auto value = DirectTokenQuery(token, kind, buffer, capacity);
+            QueryEvidence("valid.value", kind, capacity, value);
+            if (!value.returned)
+            {
+                Expect(kind == TokenImpersonationLevel);
+                test.At("valid-token.primary-impersonation-rejected");
+                auto admitted = SizeProbeAdmitted(size);
+                auto expectedError = admitted ? value.error : size.error;
+                auto expectedHresult = admitted ? HRESULT_FROM_WIN32(expectedError) : E_ACCESSDENIED;
+                bool rejected = false;
+                try { TokenData(token, kind, &diagnostic); }
+                catch (hresult_error const& error) { rejected = error.code() == expectedHresult; }
+                Expect(rejected && diagnostic.hasCode && diagnostic.code == expectedError &&
+                    std::wstring_view(diagnostic.object) == TokenRole(kind) &&
+                    std::wstring_view(diagnostic.reason) == (admitted ? L"value-query" : L"token-size-probe"));
+                continue;
+            }
+            Expect(value.required != 0 && value.required <= capacity);
+            test.At("valid-token.helper");
+            auto data = TokenData(token, kind, &diagnostic);
+            Expect(data.size() == value.required);
+            if (kind == TokenUser)
+            {
+                Expect(data.size() >= sizeof(TOKEN_USER));
+                auto actual = reinterpret_cast<TOKEN_USER const*>(data.data());
+                auto expected = reinterpret_cast<TOKEN_USER const*>(reference.data());
+                Expect(actual->User.Attributes == expected->User.Attributes &&
+                    IsValidSid(actual->User.Sid) && IsValidSid(expected->User.Sid) &&
+                    EqualSid(actual->User.Sid, expected->User.Sid));
+            }
+            else if (kind == TokenAppContainerSid)
+            {
+                Expect(data.size() >= sizeof(TOKEN_APPCONTAINER_INFORMATION));
+                auto actual = reinterpret_cast<TOKEN_APPCONTAINER_INFORMATION const*>(data.data())->TokenAppContainer;
+                auto expected = reinterpret_cast<TOKEN_APPCONTAINER_INFORMATION const*>(reference.data())->TokenAppContainer;
+                Expect((!actual && !expected) ||
+                    (actual && expected && IsValidSid(actual) && IsValidSid(expected) && EqualSid(actual, expected)));
+            }
+            else if (kind == TokenElevation)
+            {
+                Expect(data.size() == sizeof(TOKEN_ELEVATION) &&
+                    reinterpret_cast<TOKEN_ELEVATION const*>(data.data())->TokenIsElevated == elevation.TokenIsElevated);
+            }
+            else Expect(std::equal(data.begin(), data.end(), reference.begin()));
+        }
+    }
     void NativeDiagnosticTests(activation::Context const& context, UnitCase& test)
     {
         using namespace activation;
@@ -165,17 +294,6 @@ namespace
         catch (hresult_error const& error) { rejected = error.code() == E_ACCESSDENIED; }
         Expect(rejected && !diagnostic.hasCode && std::wstring_view(diagnostic.origin) == L"validation" &&
             std::wstring_view(diagnostic.reason) == L"owner");
-        for (auto kind : {TokenUser, TokenSessionId, TokenIsAppContainer, TokenAppContainerSid,
-            TokenType, TokenImpersonationLevel, TokenElevation})
-        {
-            test.At("diagnostic.token-size-error");
-            rejected = false;
-            try { TokenData(INVALID_HANDLE_VALUE, kind, &diagnostic); }
-            catch (hresult_error const& error) { rejected = error.code() == E_ACCESSDENIED; }
-            Expect(rejected && diagnostic.hasCode && diagnostic.code == ERROR_INVALID_HANDLE &&
-                std::wstring_view(diagnostic.object) == TokenRole(kind) &&
-                std::wstring_view(diagnostic.reason) == L"token-size-probe");
-        }
         test.At("diagnostic.sid-validity");
         rejected = false;
         try { desktop::CopySid(nullptr, &diagnostic); }
@@ -290,6 +408,8 @@ int wmain(int count, wchar_t** args)
         }
         test.At("arguments");
         Expect(count == 1);
+        InvalidTokenTests(test);
+        ValidTokenTests(test);
         NativeDiagnosticTests(context, test);
         test.At("files.security");
         Security security(context, &diagnostic);
