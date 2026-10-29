@@ -99,7 +99,7 @@ int wmain(int count, wchar_t** args)
         Atomic(root, L"callback.json", callback, security);
         auto exe = Executable();
         std::wstring command = L"\"" + exe + L"\" --controlled-unit-child \"" + base.wstring() + L"\" " + id;
-        handle job(CreateJobObjectW(nullptr, nullptr));
+        desktop::handle job(CreateJobObjectW(nullptr, nullptr));
         Check(job != nullptr);
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
         limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
@@ -108,7 +108,7 @@ int wmain(int count, wchar_t** args)
         PROCESS_INFORMATION process{};
         Check(CreateProcessW(exe.c_str(), command.data(), nullptr, nullptr, FALSE,
             CREATE_SUSPENDED | CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process) != FALSE);
-        handle child(process.hProcess), thread(process.hThread);
+        desktop::handle child(process.hProcess), thread(process.hThread);
         if (!AssignProcessToJobObject(job.get(), child.get()))
         {
             auto error = GetLastError();
@@ -162,7 +162,7 @@ int wmain(int count, wchar_t** args)
         PROCESS_INFORMATION waitingProcess{};
         Check(CreateProcessW(exe.c_str(), command.data(), nullptr, nullptr, FALSE,
             CREATE_SUSPENDED | CREATE_NO_WINDOW, nullptr, nullptr, &startup, &waitingProcess) != FALSE);
-        handle waitingChild(waitingProcess.hProcess), waitingThread(waitingProcess.hThread);
+        desktop::handle waitingChild(waitingProcess.hProcess), waitingThread(waitingProcess.hThread);
         if (!AssignProcessToJobObject(job.get(), waitingChild.get()))
         {
             auto error = GetLastError();

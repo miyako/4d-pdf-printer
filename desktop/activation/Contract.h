@@ -65,7 +65,7 @@ namespace activation
         {
             HANDLE token = nullptr;
             Check(OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token) != FALSE);
-            handle owned(token);
+            desktop::handle owned(token);
             auto elevation = TokenData(token, TokenElevation);
             Require(reinterpret_cast<TOKEN_ELEVATION*>(elevation.data())->TokenIsElevated == 0, E_ACCESSDENIED);
             USHORT processMachine = 0, nativeMachine = 0;

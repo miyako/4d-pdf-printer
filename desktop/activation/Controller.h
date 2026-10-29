@@ -22,7 +22,7 @@ namespace activation
         HANDLE admission = CreateFileW((base / L"admission.lock").c_str(),
             GENERIC_READ | GENERIC_WRITE | READ_CONTROL, 0, &attributes, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
         Check(admission != INVALID_HANDLE_VALUE);
-        handle owned(admission);
+        desktop::handle owned(admission);
         InspectHandle(admission, context, security, false);
         size_t jobs = 0;
         for (auto const& entry : std::filesystem::directory_iterator(base))
@@ -58,7 +58,7 @@ namespace activation
         Require(_wcsicmp(ProcessPath(process).c_str(), expected.c_str()) == 0, E_ACCESSDENIED);
         HANDLE token = nullptr;
         Check(OpenProcessToken(process, TOKEN_QUERY, &token) != FALSE);
-        handle owned(token);
+        desktop::handle owned(token);
         auto identity = ReadIdentity(token);
         Require(!identity.appContainer && identity.session == context.identity.session &&
             identity.user == context.identity.user, E_ACCESSDENIED);
@@ -74,7 +74,7 @@ namespace activation
     {
         HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         Check(snapshot != INVALID_HANDLE_VALUE);
-        handle owned(snapshot);
+        desktop::handle owned(snapshot);
         PROCESSENTRY32W entry{};
         entry.dwSize = sizeof(entry);
         Check(Process32FirstW(snapshot, &entry) != FALSE);
@@ -95,7 +95,7 @@ namespace activation
                 if (GetLastError() == ERROR_INVALID_PARAMETER) continue;
                 winrt::throw_last_error();
             }
-            handle processHandle(process);
+            desktop::handle processHandle(process);
             if (WaitForSingleObject(process, 0) == WAIT_OBJECT_0) continue;
             if (_wcsicmp(ProcessPath(process).c_str(), expected.c_str()) == 0)
             { CheckProcess(process, context, expected); ++count; }
@@ -116,7 +116,7 @@ namespace activation
         Validate(request, context, id, L"request", Now());
         auto expected = std::filesystem::path(std::wstring(
             Windows::ApplicationModel::Package::Current().InstalledLocation().Path())) / L"DesktopPdfProbeHost.exe";
-        handle host;
+        desktop::handle host;
         bool validatedHost = false;
         wchar_t const* stage = L"waiting-for-host-entry";
         auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(LifetimeMs);

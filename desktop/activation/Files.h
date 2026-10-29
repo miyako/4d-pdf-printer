@@ -70,13 +70,13 @@ namespace activation
         }
         Require(userSeen && packageSeen && systemSeen, E_ACCESSDENIED);
     }
-    inline handle OpenDirectory(std::filesystem::path const& path, Context const& context, Security const& security)
+    inline desktop::handle OpenDirectory(std::filesystem::path const& path, Context const& context, Security const& security)
     {
         HANDLE file = CreateFileW(path.c_str(), READ_CONTROL | FILE_READ_ATTRIBUTES,
             FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
             FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
         Check(file != INVALID_HANDLE_VALUE);
-        handle owned(file);
+        desktop::handle owned(file);
         InspectHandle(file, context, security, true);
         return owned;
     }
@@ -96,7 +96,7 @@ namespace activation
         HANDLE file = CreateFileW(pending.c_str(), GENERIC_WRITE, 0, &attributes, CREATE_NEW,
             FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
         Check(file != INVALID_HANDLE_VALUE);
-        handle owned(file);
+        desktop::handle owned(file);
         DWORD written = 0;
         Check(WriteFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr) != FALSE);
         Require(written == bytes.size(), E_FAIL);
@@ -110,7 +110,7 @@ namespace activation
         HANDLE file = CreateFileW((root / name).c_str(), GENERIC_READ | READ_CONTROL, FILE_SHARE_READ,
             nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
         Check(file != INVALID_HANDLE_VALUE);
-        handle owned(file);
+        desktop::handle owned(file);
         InspectHandle(file, context, security, false);
         LARGE_INTEGER size{};
         Check(GetFileSizeEx(file, &size) != FALSE);
