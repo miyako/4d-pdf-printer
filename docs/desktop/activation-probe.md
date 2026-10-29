@@ -7,7 +7,7 @@ normal-desktop observation. Native compilation and controlled-child units cannot
 pass that gate. Full B, comparison continuation, destinations/UI and services
 remain paused. No PDF is produced; the PSA deliberately completes Failed/Canceled.
 
-**STOP checkpoint:** the single authorized native batch
+**Historical first-attempt STOP checkpoint:** the initially authorized native batch
 [40832146213](https://github.com/miyako/4d-pdf-printer/actions/runs/40832146213)
 tested source `765d6a75064e63beb961822771d8793a4f67fdbf` and **failed
 compilation on x64 and ARM64**. `handle` is ambiguous between the existing
@@ -17,7 +17,29 @@ PSA DLL linked on both architectures, but host/control/unit compilation did not
 complete. Native units, MSIX packaging and activation were **not executed**.
 [Exact failure receipt](evidence/40832146213.json). Portable checks passed;
 they did not cover Windows-only name lookup or the consented Windows wrapper.
-No repair/rerun was performed. **Not ready for any user-host procedure below.**
+At docs checkpoint `918a4de`, no repair/rerun was performed and that source was
+not ready for a host run.
+
+**Separately authorized surgical follow-up passed:** fresh manual run
+[40832585234](https://github.com/miyako/4d-pdf-printer/actions/runs/40832585234)
+tested source `b8f4b7b1156ad61ac922f01265d35c19371b39ca` with clean source
+receipts. The only source change is13 explicit `desktop::handle` qualifications
+in four new probe files; no shared types/namespaces, protocol, ACLs, timings or
+expected assertions changed. Both x64 job123309968974 and native ARM64
+job123309968621 passed full own-code compilation, one native controlled-file/
+process CTest each (3.27s/3.24s), unsigned MSIX/PE/manifest/PRI checks and
+PowerShell writer/consent/manifest guards. See the
+[fresh run receipt](evidence/40832585234.json), original
+[x64 build receipt](evidence/40832585234-x64.json) and
+[ARM64 build receipt](evidence/40832585234-arm64.json).
+Public artifacts contain JSON/text only, not binaries.
+
+This resolves the compile blocker, **not the actual PSA activation gate**.
+No AppContainer file sharing, system FullTrust launch, package installation,
+printing or consented Windows wrapper body was exercised. The normal-desktop
+procedure below is ready for **parent review only**, not authorized execution.
+Development-family and signing-certificate state are still unknown; discover
+them read-only only when the parent starts the separately approved instructions.
 
 ## Supported primitives, not an assumed callback result
 

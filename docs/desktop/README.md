@@ -5,9 +5,11 @@ not a PDF printer.** Its isolated `ActivationProbe` mode bypasses RPC/rendering.
 Only a genuine PSA callback, protected acknowledgment and observed exact-host
 exit can pass; compile/unit success cannot. User-host installation/printing
 requires the parent-reviewed single-test procedure and separate consent.
-Its first native batch40832146213 failed C++ handle-name resolution; no native
-units/packaging ran and it is **not ready for a host run**. See its
-[preserved failure receipt](evidence/40832146213.json).
+Its first native batch40832146213 failed C++ handle-name resolution; that
+[failure is preserved](evidence/40832146213.json). A separately authorized
+qualification-only repair passed fresh x64/native-ARM64 compile, controlled
+units and unsigned packaging in [40832585234](evidence/40832585234.json).
+This is **not actual PSA activation evidence** or authorization for a host run.
 Historical early gate code remains available, but is not the selected path.
 The probe deliberately
 completes every workflow as failed/canceled and produces no output file. Do not
