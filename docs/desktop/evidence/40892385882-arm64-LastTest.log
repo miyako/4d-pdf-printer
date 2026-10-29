@@ -1,0 +1,47 @@
+Start testing: Oct 29 07:33 Pacific Daylight Time
+----------------------------------------------------------
+1/1 Testing: desktop-activation-probe-units
+1/1 Test: desktop-activation-probe-units
+Command: "C:/a/4d-pdf-printer/4d-pdf-printer/desktop/out/arm64/activation-build/Release/DesktopPdfProbeTests.exe"
+Directory: C:/a/4d-pdf-printer/4d-pdf-printer/desktop/out/arm64/activation-build
+"desktop-activation-probe-units" start time: Oct 29 07:33 Pacific Daylight Time
+Output:
+----------------------------------------------------------
+Real-family direct SID HRESULT=0x00000000 output_present=1 validity_checked=1 valid=1
+Real-family production Security ctor, real process identity, copied/moved/returned Context and owned SID post-return/string checks passed; NOT packaged Current.
+Token query context=invalid.zero class=token-user input_bytes=0 returned=0 error=6 required_bytes=0
+Token query context=invalid.zero class=token-session input_bytes=0 returned=0 error=6 required_bytes=0
+Token query context=invalid.zero class=token-container-flag input_bytes=0 returned=0 error=6 required_bytes=0
+Token query context=invalid.zero class=token-container-sid input_bytes=0 returned=0 error=6 required_bytes=0
+Token query context=invalid.zero class=token-type input_bytes=0 returned=0 error=6 required_bytes=0
+Token query context=invalid.zero class=token-impersonation input_bytes=0 returned=0 error=6 required_bytes=0
+Token query context=invalid.fixed class=token-elevation input_bytes=4 returned=0 error=6 required_bytes=4
+Token query context=valid.primary-type class=token-type input_bytes=4 returned=1 error=0 required_bytes=4
+Token query context=valid.zero class=token-user input_bytes=0 returned=0 error=122 required_bytes=44
+Token query context=valid.value class=token-user input_bytes=44 returned=1 error=0 required_bytes=44
+Token query context=valid.zero class=token-session input_bytes=0 returned=0 error=122 required_bytes=4
+Token query context=valid.value class=token-session input_bytes=4 returned=1 error=0 required_bytes=4
+Token query context=valid.zero class=token-container-flag input_bytes=0 returned=0 error=122 required_bytes=4
+Token query context=valid.value class=token-container-flag input_bytes=4 returned=1 error=0 required_bytes=4
+Token query context=valid.zero class=token-container-sid input_bytes=0 returned=0 error=122 required_bytes=8
+Token query context=valid.value class=token-container-sid input_bytes=8 returned=1 error=0 required_bytes=8
+Token query context=valid.zero class=token-type input_bytes=0 returned=0 error=122 required_bytes=4
+Token query context=valid.value class=token-type input_bytes=4 returned=1 error=0 required_bytes=4
+Token query context=valid.zero class=token-impersonation input_bytes=0 returned=0 error=87 required_bytes=0
+Token query context=valid.value class=token-impersonation input_bytes=4 returned=0 error=87 required_bytes=0
+Token query context=valid.zero class=token-elevation input_bytes=0 returned=0 error=24 required_bytes=4
+Token query context=valid.value class=token-elevation input_bytes=4 returned=1 error=0 required_bytes=4
+Unprotected fixture preconditions owner_matches_current_user=1 dacl_protected=0
+Protected files, Unicode, duplicate/replay, expiry/session/request mismatch, unprotected ACL rejection: passed.
+Diagnostic API/validation HRESULT preservation and retained old-version admission/replay cases: passed.
+Fake UnitContext/temp files; NOT a real nonadmin packaged Current/AppContainer test.
+Controlled child ack+exit0 and missing-observer bounded exit1/no-ack: passed. NOT actual PSA activation.
+<end of output>
+Test time =   3.44 sec
+----------------------------------------------------------
+Test Passed.
+"desktop-activation-probe-units" end time: Oct 29 07:33 Pacific Daylight Time
+"desktop-activation-probe-units" time elapsed: 00:00:03
+----------------------------------------------------------
+
+End testing: Oct 29 07:33 Pacific Daylight Time

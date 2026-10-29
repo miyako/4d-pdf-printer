@@ -1,0 +1,19 @@
+Start testing: Oct 29 09:09 Coordinated Universal Time
+----------------------------------------------------------
+1/1 Testing: desktop-activation-probe-units
+1/1 Test: desktop-activation-probe-units
+Command: "D:/a/4d-pdf-printer/4d-pdf-printer/desktop/out/x64/activation-build/Release/DesktopPdfProbeTests.exe"
+Directory: D:/a/4d-pdf-printer/4d-pdf-printer/desktop/out/x64/activation-build
+"desktop-activation-probe-units" start time: Oct 29 09:09 Coordinated Universal Time
+Output:
+----------------------------------------------------------
+Activation probe unit failed HRESULT=0x80070057; no PSA/printing performed.
+<end of output>
+Test time =   0.07 sec
+----------------------------------------------------------
+Test Failed.
+"desktop-activation-probe-units" end time: Oct 29 09:09 Coordinated Universal Time
+"desktop-activation-probe-units" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 29 09:09 Coordinated Universal Time

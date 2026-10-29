@@ -1,0 +1,24 @@
+[
+    uuid(a93c4d27-d2b1-4a2d-a32c-48af1e38b690),
+    version(1.0),
+    pointer_default(unique)
+]
+interface DesktopGate
+{
+    typedef struct GateRequest
+    {
+        wchar_t json[4096];
+    } GateRequest;
+
+    typedef struct GateResponse
+    {
+        unsigned long code;
+        wchar_t json[8192];
+    } GateResponse;
+
+    void DesktopGateRequest(
+        [in] handle_t binding,
+        [in] unsigned long operation,
+        [in] GateRequest* request,
+        [out] GateResponse* response);
+}

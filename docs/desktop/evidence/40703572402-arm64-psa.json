@@ -1,0 +1,46 @@
+{
+  "schema": "4d-pdf-printer.desktop-acceptance",
+  "version": 1,
+  "scope": "psa-bootstrap-only",
+  "result": "blocked",
+  "pdfProduced": false,
+  "osBuild": 26200,
+  "architecture": "Arm64",
+  "processArchitecture": "Arm64",
+  "processSessionId": 2,
+  "sourceCommit": "d58bb2f4e0c8c08d842935865adec0dfa902566b",
+  "packageSha256": "8a967a57bf46c8cffb1cc9adbd978656b895b222647f194483da4647ee6d1fd5",
+  "diagnosticPreserved": true,
+  "client": {
+    "schema": "4d-pdf-printer.desktop-gate",
+    "version": 1,
+    "stage": "gdi-start-doc",
+    "pdfProduced": false,
+    "callerAppContainer": false,
+    "callerSession": 2,
+    "expectedPackage": true,
+    "apartmentType": 1,
+    "apartmentQualifier": 0,
+    "processArchitecture": "arm64",
+    "executableSha256": "cb5d808f33facc6b7254059386a67242c8845f86fea276bb7ec84931ca528c6b",
+    "submissionContext": {
+      "version": 1,
+      "tokenSessionId": 2,
+      "logonQueryNtStatus": 0,
+      "logonType": 2,
+      "profileHiveOpenWin32Error": 0,
+      "packageQueryWin32Error": 122,
+      "currentUserPackageCount": 1
+    },
+    "titleSha256": "6dbf4f89e31cacedeea09cddf2aa6e257f1fcc393a344f1797ed523011e00c81",
+    "startDocReturn": -1,
+    "startDocLastError": 3003,
+    "hresult": -2147021893
+  },
+  "psa": [],
+  "error": {
+    "stage": "native-gate",
+    "hresult": "0x80131501",
+    "exceptionType": "System.Management.Automation.RuntimeException"
+  }
+}

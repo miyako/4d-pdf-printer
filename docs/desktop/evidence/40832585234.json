@@ -1,0 +1,62 @@
+{
+  "schema": "4d-pdf-printer.activation-probe-attempt",
+  "version": 1,
+  "sourceCommit": "b8f4b7b1156ad61ac922f01265d35c19371b39ca",
+  "sourceDirty": false,
+  "run": 40832585234,
+  "event": "workflow_dispatch",
+  "mode": "ActivationProbe",
+  "result": "compile-package-controlled-units-passed",
+  "changeScope": "13 explicit desktop::handle qualifications in four new probe files only",
+  "previousFailedRunPreserved": 40832146213,
+  "jobs": [
+    {
+      "architecture": "x64",
+      "id": 123309968974,
+      "result": "success",
+      "ctestCount": 1,
+      "ctestSeconds": 3.27,
+      "artifactId": 12878693368,
+      "artifactName": "desktop-own-code-x64-build-evidence",
+      "buildReceipt": "40832585234-x64.json"
+    },
+    {
+      "architecture": "arm64",
+      "id": 123309968621,
+      "result": "success",
+      "ctestCount": 1,
+      "ctestSeconds": 3.24,
+      "artifactId": 12879525561,
+      "artifactName": "desktop-own-code-ARM64-build-evidence",
+      "buildReceipt": "40832585234-arm64.json"
+    }
+  ],
+  "nativeExecutedChecks": [
+    "Protected files, Unicode, duplicate/replay, expiry/session/request mismatch and unprotected ACL rejection",
+    "Controlled unit child acknowledgment and observed exit0",
+    "Missing-observer controlled child bounded observed exit1 with no acknowledgment",
+    "Actual payload PE machines, manifest identity/architecture/fixed-host/no-file-UI endpoint",
+    "Actual PRI resource names/identity and packaged PRI hash",
+    "Unsigned MSIX packaging with SDK schema validation",
+    "Actual PowerShell writer Unicode/no-BOM/parse/collision/bound, consent and XML manifest guards"
+  ],
+  "localExecutedChecks": [
+    "clang++ C++20 portable protocol tests with -Wall -Wextra -Werror",
+    "Actual PowerShell probe writer, consent/non-Windows platform guards and XML checks",
+    "All13 new handle uses inspected and explicit desktop::handle",
+    "git diff --check"
+  ],
+  "publicArtifactContents": ["activation-build-evidence.json", "CTest LastTest.log"],
+  "publicBinariesUploaded": false,
+  "consentedWindowsWrapperBodyExecuted": false,
+  "appContainerFileAccessExercised": false,
+  "systemFullTrustLauncherExercised": false,
+  "actualPsaCallbackExercised": false,
+  "certificateOrTrustChanged": false,
+  "packageInstalled": false,
+  "printingPerformed": false,
+  "rendererOrDependenciesBuilt": false,
+  "activationGatePassed": false,
+  "pdfProduced": false,
+  "productUsable": false
+}

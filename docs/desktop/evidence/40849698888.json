@@ -1,0 +1,114 @@
+{
+  "schema": "4d-pdf-printer.activation-probe-attempt",
+  "version": 1,
+  "sourceCommit": "c5612822f99589eaf07d21e791fdf0daccf8051f",
+  "developmentPackageVersion": "0.2.1.0",
+  "wrapperVersion": 3,
+  "run": 40849698888,
+  "event": "workflow_dispatch",
+  "mode": "ActivationProbe",
+  "result": "failed-valid-token-helper",
+  "previousFailureRun": 40848598469,
+  "productionCodeChanged": false,
+  "jobs": [
+    {
+      "architecture": "x64",
+      "id": 123365810184,
+      "result": "failure",
+      "nativeCompileAndLinkPassed": true,
+      "ctest": {
+        "name": "desktop-activation-probe-units",
+        "result": "failed",
+        "seconds": 0.34,
+        "ctestExitCode": 8
+      },
+      "rawCTestLog": "40849698888-x64-LastTest.log",
+      "rawCTestLogSha256": "8184b6054363e3426b4d9dc3a53276b72287ed5b7abab1c7dd601f9fd8345e2d"
+    },
+    {
+      "architecture": "arm64",
+      "id": 123365810660,
+      "result": "failure",
+      "nativeCompileAndLinkPassed": true,
+      "ctest": {
+        "name": "desktop-activation-probe-units",
+        "result": "failed",
+        "seconds": 0.03,
+        "ctestExitCode": 8
+      },
+      "rawCTestLog": "40849698888-arm64-LastTest.log",
+      "rawCTestLogSha256": "40b03c9cbc20a422dda2795ea5d6fb47d9b7766e4b033815a341a811649067e6"
+    }
+  ],
+  "compiledAndLinkedOnBothArchitectures": [
+    "DesktopPdfApp.exe",
+    "DesktopPdfProbeCtl.exe",
+    "DesktopPdfProbeHost.exe",
+    "DesktopPdfProbeTask.dll",
+    "DesktopPdfProbeTests.exe"
+  ],
+  "invalidHandleSevenClassDirectReferencePassed": true,
+  "validTokenScope": "Real current-process TOKEN_QUERY handle; CI process, NOT normal packaged Current() or user's preparation.",
+  "validDirectHelperComparisonsBeforeFailure": [
+    { "object": "token-user", "zeroError": 122, "requiredBytes": 44, "valueReturned": true, "helperMatched": true },
+    { "object": "token-session", "zeroError": 122, "requiredBytes": 4, "valueReturned": true, "helperMatched": true },
+    { "object": "token-container-flag", "zeroError": 122, "requiredBytes": 4, "valueReturned": true, "helperMatched": true },
+    { "object": "token-container-sid", "zeroError": 122, "requiredBytes": 8, "valueReturned": true, "helperMatched": true },
+    { "object": "token-type", "zeroError": 122, "requiredBytes": 4, "valueReturned": true, "helperMatched": true },
+    { "object": "token-impersonation", "zeroError": 87, "zeroRequiredBytes": 0, "valueError": 87, "valueReturned": false, "documentedPrimaryRejectionMatched": true }
+  ],
+  "validTokenElevationBothArchitectures": {
+    "zeroReference": { "inputBytes": 0, "returned": false, "error": 24, "requiredBytes": 4 },
+    "fixedReference": { "type": "TOKEN_ELEVATION", "inputBytes": 4, "returned": true, "error": 0, "requiredBytes": 4 },
+    "helper": {
+      "kind": "production-exception",
+      "case": "valid-token.helper",
+      "file": "desktop/activation/Tests.cpp",
+      "caseLine": 246,
+      "hresult": "0x80070005",
+      "contextStage": "current.token",
+      "api": "GetTokenInformation",
+      "object": "token-elevation",
+      "origin": "validation",
+      "reason": "token-size-probe",
+      "hasCode": true,
+      "code": 24,
+      "codeKind": "win32"
+    }
+  },
+  "demonstratedOwnBug": {
+    "file": "desktop/common/Common.h",
+    "guardLine": 75,
+    "throwLine": 79,
+    "caller": "desktop/activation/Contract.h:86",
+    "description": "TokenData insists every zero-buffer probe return ERROR_INSUFFICIENT_BUFFER122; valid TokenElevation returns ERROR_BAD_LENGTH24/required4, while a fixed4-byte value query succeeds. Helper rejects before value query.",
+    "productionRepairImplemented": false,
+    "userFirstFailingOperationProven": false
+  },
+  "remainingNativeDiagnosticCasesExecuted": false,
+  "stateCompatibilityCasesExecuted": false,
+  "controlledChildUnitsExecuted": false,
+  "nativeUnitSuitePassed": false,
+  "msixPackagingExecuted": false,
+  "successBuildReceiptProduced": false,
+  "hostedPowerShellStepsExecuted": false,
+  "uploadedArtifactCount": 2,
+  "uploadedContent": "Unmodified hosted CTest text with fixed query classes/sizes/status/errors only; no token contents, SIDs or binaries.",
+  "fullDownloadedLogSha256": "74127d2591bdf9fafcedd269bfc04ced68e1f18c4d034fa56ad97eb3e4654715",
+  "localExecutedChecks": [
+    "clang++ C++20 with -Wall -Wextra -Werror",
+    "portable protocol/diagnostic isolation and actual failure-observability regression",
+    "PowerShell writer/consent/manifest guards and 17 actual preparation/report cases",
+    "retained 7 consent/subprocess and 9 post-control JSON/report cases",
+    "git diff --check"
+  ],
+  "certificateOrTrustChanged": false,
+  "packageInstalled": false,
+  "printingPerformed": false,
+  "actualPsaCallbackExercised": false,
+  "rendererOrDependenciesBuilt": false,
+  "rerunDispatched": false,
+  "activationGatePassed": false,
+  "productUsable": false,
+  "stopReason": "Valid fixed-size reference succeeds but production helper rejects; stop for parent review before any production fix, retry or user update."
+}

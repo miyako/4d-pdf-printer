@@ -172,8 +172,19 @@ collect runtime evidence on the actual 26100+ lab build.
     the product factory/Run/data path. The current native probe calls only GDI;
     it does not activate this WinRT task itself.
 
-**Decision:** retain the PSA architecture as a candidate, but do not integrate a
-production worker/4D plugin until the named-user session-0 activation and permitted
+**Current scope decision:** desktop-first development is explicitly authorized;
+Windows-service printing is deferred. The new
+[separate desktop package](../desktop/README.md) measures same-package declared
+full-trust activation, authenticated local RPC and exact-job title correlation
+before real worker/publication integration. It does not alter the diagnostic
+package or establish service support. In particular, documented
+`LaunchFullTrustProcessForCurrentAppWithArgumentsAsync` is a genuine Windows 11 /
+FullTrustAppContract v2 API accepting command-line arguments; the older
+`LaunchFullTrustProcessForCurrentAppAsync(string)` accepts a ParameterGroup ID.
+The desktop code uses only a fixed declared coordinator and fixed `--serve`.
+
+**Deferred service decision:** retain the PSA architecture as a candidate, but do not integrate a
+service worker/4D Server plugin until the named-user session-0 activation and permitted
 coordinator transport gates are closed with authoritative support plus observed
 pre-login/sign-out runs. No legacy driver or logged-in helper fallback is authorized.
 The best source-supported transport candidate is **activated PSA task -> ACL-

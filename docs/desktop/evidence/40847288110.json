@@ -1,0 +1,80 @@
+{
+  "schema": "4d-pdf-printer.activation-probe-attempt",
+  "version": 1,
+  "sourceCommit": "2b16916e4d4040c0f6462fad0d453d02b38ffb99",
+  "developmentPackageVersion": "0.2.1.0",
+  "wrapperVersion": 3,
+  "run": 40847288110,
+  "event": "workflow_dispatch",
+  "mode": "ActivationProbe",
+  "result": "failed-native-unit",
+  "previousCancelledRun": 40841276658,
+  "sourceDeltaFromCancelledRun": "Tests.cpp Windows branch includes Controller.h instead of Files.h; no other code change.",
+  "jobs": [
+    {
+      "architecture": "x64",
+      "id": 123357799075,
+      "result": "failure",
+      "nativeCompileAndLinkPassed": true,
+      "ctest": {
+        "name": "desktop-activation-probe-units",
+        "result": "failed",
+        "seconds": 0.07,
+        "hresult": "0x80070057",
+        "ctestExitCode": 8
+      },
+      "rawCTestLog": "40847288110-x64-LastTest.log",
+      "rawCTestLogSha256": "999c51ea69078c3005a1d6a1988c9ad04eda08d1a7870b638db7820075408366"
+    },
+    {
+      "architecture": "arm64",
+      "id": 123357799300,
+      "result": "failure",
+      "nativeCompileAndLinkPassed": true,
+      "ctest": {
+        "name": "desktop-activation-probe-units",
+        "result": "failed",
+        "seconds": 0.03,
+        "hresult": "0x80070057",
+        "ctestExitCode": 8
+      },
+      "rawCTestLog": "40847288110-arm64-LastTest.log",
+      "rawCTestLogSha256": "6c1e15fb35e9056891cf00de6d447d0c9fbdf99a60da3d7a82bd16c6a8db68b5"
+    }
+  ],
+  "compiledAndLinkedOnBothArchitectures": [
+    "DesktopPdfApp.exe",
+    "DesktopPdfProbeCtl.exe",
+    "DesktopPdfProbeHost.exe",
+    "DesktopPdfProbeTask.dll",
+    "DesktopPdfProbeTests.exe"
+  ],
+  "primaryDiagnostic": "Activation probe unit failed HRESULT=0x80070057; no PSA/printing performed.",
+  "individualFailingSubcase": "unknown: unit catch emits no subcase or API",
+  "nativeUnitSuitePassed": false,
+  "controlledChildUnitsCompleted": false,
+  "msixPackagingExecuted": false,
+  "successBuildReceiptProduced": false,
+  "hostedPowerShellStepsExecuted": false,
+  "uploadedArtifactCount": 2,
+  "uploadedContent": "CTest LastTest.log text only; no binaries, MSIX, corpus or private data.",
+  "fullDownloadedLogSha256": "c8e1ec73238f5242b20f79a2a0055e7a824bc97e1e178458db704fa3d3a19ce4",
+  "localExecutedChecks": [
+    "clang++ C++20 portable protocol and diagnostic isolation with -Wall -Wextra -Werror",
+    "actual PowerShell probe writer Unicode/collision/bound, consent/platform and fixed manifest guards",
+    "17 actual preparation-only capture/parser/catch/finally/report cases with controlled pwsh replacing native",
+    "retained 7 proof consent/subprocess tests",
+    "retained 9 actual post-control JSON/report tests with native invocations substituted",
+    "git diff --check"
+  ],
+  "userPreparationAccessDeniedCauseIdentified": false,
+  "certificateOrTrustChanged": false,
+  "packageInstalled": false,
+  "printingPerformed": false,
+  "actualPsaCallbackExercised": false,
+  "rendererOrDependenciesBuilt": false,
+  "rerunDispatched": false,
+  "activationGatePassed": false,
+  "productUsable": false,
+  "stopReason": "First fresh native batch failed units; no further source repair, dispatch or user-host action without parent review."
+}

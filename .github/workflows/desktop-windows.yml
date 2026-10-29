@@ -1,0 +1,61 @@
+name: Desktop Windows own-code proof
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Own-code scope only
+        type: choice
+        default: Proof
+        options:
+          - Proof
+          - ActivationProbe
+permissions:
+  contents: read
+jobs:
+  own-code:
+    name: ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            label: x64 own-code compile and units
+            architecture: x64
+            visualStudio: '2022'
+            artifact: x64-build
+          - runner: windows-11-arm
+            label: ARM64 own-code compile and units
+            architecture: ARM64
+            visualStudio: '2026'
+            artifact: ARM64-build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Selected own-code compile and units (no installation or printing)
+        shell: pwsh
+        run: ./desktop/build.ps1 -Mode ${{ inputs.mode }} -Architecture ${{ matrix.architecture }} -VisualStudioVersion ${{ matrix.visualStudio }}
+      - name: Activation script and manifest guards (no activation)
+        if: inputs.mode == 'ActivationProbe'
+        shell: pwsh
+        run: ./desktop/tests/Check-ActivationProbe.ps1
+      - name: Consent and subprocess units (no printing or renderer)
+        if: inputs.mode != 'ActivationProbe'
+        shell: pwsh
+        run: ./desktop/tests/Check-ProductProof.ps1
+      - name: Read-only comparator units (not product evidence)
+        if: inputs.mode != 'ActivationProbe'
+        shell: pwsh
+        run: |
+          python -B -m unittest discover -s desktop/tests -p test_compare_pdfs.py
+          if ($LASTEXITCODE -ne 0) { throw 'Comparator unit failure.' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-own-code-${{ matrix.artifact }}-evidence
+          path: |
+            desktop/out/*/proof-build-evidence.json
+            desktop/out/*/proof-build/Testing/Temporary/LastTest.log
+            desktop/out/*/activation-build-evidence.json
+            desktop/out/*/activation-build/Testing/Temporary/LastTest.log
+          if-no-files-found: warn

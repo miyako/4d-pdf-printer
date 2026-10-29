@@ -1,0 +1,39 @@
+{
+  "schema": "4d-pdf-printer.activation-probe-attempt",
+  "version": 1,
+  "sourceCommit": "582d45b006749e1268d2e6f893fe1cb38fe4811f",
+  "developmentPackageVersion": "0.2.1.0",
+  "run": 40841276658,
+  "event": "workflow_dispatch",
+  "mode": "ActivationProbe",
+  "result": "cancelled",
+  "jobs": [
+    { "architecture": "x64", "id": 123337989549, "result": "cancelled" },
+    { "architecture": "arm64", "id": 123337989976, "result": "cancelled" }
+  ],
+  "cancellationReason": "Explicit user pause; not native verification or success.",
+  "partialLogEvidence": {
+    "file": "desktop/activation/Tests.cpp",
+    "primaryErrors": [
+      { "line": 130, "code": "C3861", "symbol": "Base", "message": "identifier not found" },
+      { "line": 139, "code": "C3861", "symbol": "Prepare", "message": "identifier not found" },
+      { "line": 142, "code": "C3861", "symbol": "Prepare", "message": "identifier not found" }
+    ],
+    "cause": "Windows test branch included Files.h but new compatibility tests use Controller.h declarations.",
+    "compiledAndLinkedOnBothArchitectures": [
+      "DesktopPdfApp.exe",
+      "DesktopPdfProbeCtl.exe",
+      "DesktopPdfProbeHost.exe",
+      "DesktopPdfProbeTask.dll"
+    ],
+    "fullDownloadedLogSha256": "8c9b926d31cc7483b8c9bcc6c1ef71add1b9412066318ff662513f1ef173bbfb"
+  },
+  "completeNativeBuildPassed": false,
+  "nativeCTestExecuted": false,
+  "msixPackagingExecuted": false,
+  "successBuildReceiptProduced": false,
+  "actualPsaCallbackExercised": false,
+  "activationGatePassed": false,
+  "productUsable": false,
+  "historyPreserved": true
+}

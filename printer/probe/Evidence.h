@@ -140,7 +140,8 @@ namespace evidence
         return {raw, error};
     }
 
-    inline std::string Context()
+    inline std::string Context(std::wstring name = L"Miyako.PsaFeasibility",
+        std::wstring publisher = L"CN=PsaFeasibilityDev")
     {
         HANDLE token = nullptr;
         if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
@@ -176,7 +177,6 @@ namespace evidence
         fields += ",\"profileHiveOpenWin32Error\":" + std::to_string(hiveStatus);
 
         PACKAGE_ID id{};
-        std::wstring name = L"Miyako.PsaFeasibility", publisher = L"CN=PsaFeasibilityDev";
         id.name = name.data();
         id.publisher = publisher.data();
         UINT32 length = 0;

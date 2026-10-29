@@ -1,0 +1,102 @@
+{
+  "schema": "4d-pdf-printer.activation-probe-attempt",
+  "version": 1,
+  "sourceCommit": "b464d37119c899887b8d9f944353ee2298268f65",
+  "developmentPackageVersion": "0.2.1.0",
+  "wrapperVersion": 3,
+  "run": 40850726709,
+  "event": "workflow_dispatch",
+  "mode": "ActivationProbe",
+  "result": "failed-unprotected-fixture-reason-assertion",
+  "previousFailureRun": 40849698888,
+  "productionDelta": "TokenElevation only: documented fixed-size query, exact returned length validation and unchanged DWORD representation; actual API errors preserved. Other token/identity/ACL/protocol paths unchanged.",
+  "jobs": [
+    {
+      "architecture": "x64",
+      "id": 123369233022,
+      "result": "failure",
+      "nativeCompileAndLinkPassed": true,
+      "ctest": {
+        "name": "desktop-activation-probe-units",
+        "result": "failed",
+        "seconds": 0.70,
+        "ctestExitCode": 8
+      },
+      "rawCTestLog": "40850726709-x64-LastTest.log",
+      "rawCTestLogSha256": "4f4364b7372937582a4aad5f88a1afa559b58f2b76a258e16c6cdbf0315fa1cc"
+    },
+    {
+      "architecture": "arm64",
+      "id": 123369233536,
+      "result": "failure",
+      "nativeCompileAndLinkPassed": true,
+      "ctest": {
+        "name": "desktop-activation-probe-units",
+        "result": "failed",
+        "seconds": 0.34,
+        "ctestExitCode": 8
+      },
+      "rawCTestLog": "40850726709-arm64-LastTest.log",
+      "rawCTestLogSha256": "d1feac79aad8b03e7ceb0f9455cdd91fb30e6fc0d7d59bf946de7673d7d08db0"
+    }
+  ],
+  "compiledAndLinkedOnBothArchitectures": [
+    "DesktopPdfApp.exe",
+    "DesktopPdfProbeCtl.exe",
+    "DesktopPdfProbeHost.exe",
+    "DesktopPdfProbeTask.dll",
+    "DesktopPdfProbeTests.exe"
+  ],
+  "passedBeforeFirstFailure": [
+    "Seven invalid-token direct-reference/helper comparisons, with fixed-buffer TokenElevation returning actual error6.",
+    "Exact TOKEN_ELEVATION returned-size rejection and unchanged DWORD representation.",
+    "Seven real valid process-token direct/helper comparisons, including fixed TokenElevation and documented primary-token impersonation rejection.",
+    "Synthetic native API/validation diagnostics and serialization cases.",
+    "Synthetic expired old-version admission, unchanged records, fresh busy and old-package replay rejection.",
+    "Protected files, Unicode, duplicate no-overwrite, session/expiry rejection.",
+    "Controlled fake-callback child acknowledgment, observed exit0 and replay rejection."
+  ],
+  "primaryDiagnostic": {
+    "kind": "assertion",
+    "file": "desktop/activation/Tests.cpp",
+    "case": "files.unprotected-directory-rejected",
+    "caseLine": 566,
+    "assertionLine": 571,
+    "contextStage": "prepare.existing",
+    "api": "validation",
+    "object": "existing-job",
+    "origin": "validation",
+    "observedReason": "owner",
+    "expectedReason": "dacl-protected",
+    "hasCode": false,
+    "falsePredicate": "fileDiagnostic.reason == dacl-protected",
+    "fixture": "Unit directory created with CreateDirectoryW(..., nullptr).",
+    "productionCheckOrder": "Owner guard precedes protected-DACL guard.",
+    "scope": "Unit fixture failed earlier owner validation; NOT user's package state or an actual PSA observation."
+  },
+  "missingObserverChildCaseExecuted": false,
+  "nativeUnitSuitePassed": false,
+  "msixPackagingExecuted": false,
+  "successBuildReceiptProduced": false,
+  "hostedPowerShellStepsExecuted": false,
+  "uploadedArtifactCount": 2,
+  "uploadedContent": "Unmodified hosted CTest text only; fixed query sizes/status/errors and safe enum failure context, no token contents or binaries.",
+  "fullDownloadedLogSha256": "1197ee9787d3742113ad86ea0ef7eca880240b4574d66939e5ef2185d86a11ad",
+  "localExecutedChecks": [
+    "clang++ C++20 with -Wall -Wextra -Werror",
+    "portable protocol/diagnostic isolation and actual failure-observability regression",
+    "PowerShell writer/consent/manifest guards and 19 actual preparation/report cases",
+    "retained 7 consent/subprocess and 9 post-control JSON/report cases",
+    "git diff --check"
+  ],
+  "userFirstFailingOperationProven": false,
+  "certificateOrTrustChanged": false,
+  "packageInstalled": false,
+  "printingPerformed": false,
+  "actualPsaCallbackExercised": false,
+  "rendererOrDependenciesBuilt": false,
+  "rerunDispatched": false,
+  "activationGatePassed": false,
+  "productUsable": false,
+  "stopReason": "New first assertion expects a later DACL reason but fixture fails owner validation; no fixture, assertion or production-guard repair/retry without parent review."
+}

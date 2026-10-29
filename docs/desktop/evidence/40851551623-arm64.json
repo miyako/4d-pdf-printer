@@ -1,0 +1,20 @@
+{
+  "schema": "4d-pdf-printer.desktop-build",
+  "version": 1,
+  "stage": "activation-probe-compile-package-units-only",
+  "architecture": "arm64",
+  "nativeTests": "passed",
+  "sourceCommit": "7718cb726c2a2f2c5816d72528a0a9422abd521d",
+  "sourceDirty": false,
+  "ownCodeSha256": {
+    "DesktopPdfProbeCtl.exe": "0a683e8325b9c1c2a20c51028db284691f509bb8ff685f4193f85d17e90bd76e",
+    "DesktopPdfProbeHost.exe": "8251feb9fe0d6e02139b1366a736278bd352e6d751e47d2bab18abd1a693862d",
+    "DesktopPdfApp.exe": "7c7fdbec1480e58b21c55f6c2b088d61bbe28c45b13fb69becb93bf6fdf34578",
+    "DesktopPdfProbeTask.dll": "d3055d9403a6a27a30397c7b2157028979ca91269923edc7c3f22ad0d3f5d8ca"
+  },
+  "activationGatePassed": false,
+  "actualPsaCallbackExercised": false,
+  "packageSha256": "11af7285945923c5cff942b7543f39e7139f4d18af021deb7d4e63e235ebd72d",
+  "resourcesPriSha256": "9e8566c74e245473fee28daf6d5c2620bb986a7f1527d567f72c9811e6f915d0",
+  "pdfProduced": false
+}

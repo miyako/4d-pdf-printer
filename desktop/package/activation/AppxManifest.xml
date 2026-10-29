@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+         xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+         xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+         xmlns:psa="http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2"
+         IgnorableNamespaces="uap uap5 uap10 desktop rescap psa">
+  <Identity Name="Miyako.DesktopPdfPrototype" Publisher="CN=DesktopPdfPrototypeDev"
+            Version="0.2.2.0" ProcessorArchitecture="x64"/>
+  <Properties>
+    <DisplayName>Desktop PDF development - activation probe only</DisplayName>
+    <PublisherDisplayName>Desktop PDF development</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.26100.0" MaxVersionTested="10.0.26100.0"/>
+  </Dependencies>
+  <Resources><Resource Language="en-us"/></Resources>
+  <Applications>
+    <Application Id="Printer" Executable="DesktopPdfApp.exe" EntryPoint="DesktopPdf.App"
+                 uap10:SupportsMultipleInstances="true">
+      <uap:VisualElements DisplayName="Desktop PDF activation probe"
+          Description="One synthetic callback-to-host probe. NO PDF output."
+          BackgroundColor="#203040" Square150x150Logo="Assets\Square150x150Logo.png"
+          Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:SplashScreen Image="Assets\SplashScreen.png"/>
+      </uap:VisualElements>
+      <Extensions>
+        <psa:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="DesktopPdfProbe.Task">
+          <psa:PrintSupportVirtualPrinter DisplayName="ms-resource:AutomationDisplayName"
+              PrinterUri="miyako-pdf-prototype:automation" PreferredInputFormat="application/oxps"
+              PdcFile="Config\PdfPdc.xml"/>
+        </psa:Extension>
+        <desktop:Extension Category="windows.fullTrustProcess" Executable="DesktopPdfProbeHost.exe"/>
+      </Extensions>
+    </Application>
+    <Application Id="Control" Executable="DesktopPdfProbeCtl.exe" EntryPoint="Windows.FullTrustApplication"
+                 uap10:RuntimeBehavior="packagedClassicApp" uap10:TrustLevel="mediumIL">
+      <uap:VisualElements DisplayName="Desktop PDF activation probe control"
+          Description="Prepare, submit once and observe. No desktop FullTrust launcher."
+          BackgroundColor="#203040" Square150x150Logo="Assets\Square150x150Logo.png"
+          Square44x44Logo="Assets\Square44x44Logo.png"/>
+      <Extensions>
+        <uap5:Extension Category="windows.appExecutionAlias" EntryPoint="Windows.FullTrustApplication">
+          <uap5:AppExecutionAlias><uap5:ExecutionAlias Alias="4dpdf-probe.exe"/></uap5:AppExecutionAlias>
+        </uap5:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <Extensions>
+    <Extension Category="windows.activatableClass.inProcessServer">
+      <InProcessServer>
+        <Path>DesktopPdfProbeTask.dll</Path>
+        <ActivatableClass ActivatableClassId="DesktopPdfProbe.Task" ThreadingModel="both"/>
+      </InProcessServer>
+    </Extension>
+  </Extensions>
+  <Capabilities><rescap:Capability Name="runFullTrust"/></Capabilities>
+</Package>

@@ -1,0 +1,10 @@
+{
+  "schema": "4d-pdf-printer.desktop-proof-build",
+  "version": 1,
+  "architecture": "x64",
+  "nativeContractTest": "passed",
+  "executableSha256": "3496f31c5b6afd352cc80f634164f41c3dc4a2c1e52ce5759208e74d198c9645",
+  "sourceCommit": "312e1c830e0a775656db89fa7096349b357bcb1d",
+  "sourceDirty": false,
+  "productUsable": false
+}

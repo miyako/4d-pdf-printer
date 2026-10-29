@@ -1,0 +1,55 @@
+{
+  "schema": "4d-pdf-printer.activation-probe-attempt",
+  "version": 1,
+  "sourceCommit": "765d6a75064e63beb961822771d8793a4f67fdbf",
+  "run": 40832146213,
+  "event": "workflow_dispatch",
+  "mode": "ActivationProbe",
+  "result": "failed-compile",
+  "jobs": [
+    { "architecture": "x64", "id": 123308567947, "result": "failure" },
+    { "architecture": "arm64", "id": 123308567639, "result": "failure" }
+  ],
+  "primaryError": {
+    "file": "desktop/activation/Contract.h",
+    "line": 68,
+    "code": "C2872",
+    "symbol": "handle",
+    "message": "ambiguous symbol: desktop::handle and winrt::handle",
+    "alsoAffects": [
+      "desktop/activation/Files.h",
+      "desktop/activation/Controller.h",
+      "desktop/activation/Tests.cpp"
+    ],
+    "cascades": [
+      { "code": "C2039", "message": "reset is not a member of winrt::handle_type" },
+      { "code": "C2678", "message": "no acceptable nullptr inequality operator" }
+    ]
+  },
+  "compiledAndLinkedOnBothArchitectures": ["DesktopPdfApp.exe", "DesktopPdfProbeTask.dll"],
+  "completeNativeBuildPassed": false,
+  "nativeCTestExecuted": false,
+  "controlledChildUnitsExecuted": false,
+  "msixPackagingExecuted": false,
+  "successBuildReceiptProduced": false,
+  "uploadedArtifactCount": 0,
+  "localExecutedChecks": [
+    "clang++ C++20 portable protocol tests with -Wall -Wextra -Werror",
+    "actual PowerShell probe writer Unicode/no-BOM/parse, unchanged collision bytes, oversize rejection",
+    "actual probe consent and non-Windows platform guards",
+    "portable XML fixed-target/no-file-UI manifest checks, not SDK schema validation",
+    "retained 7 proof consent/subprocess tests",
+    "retained 9 actual post-control JSON/report tests with native invocations substituted",
+    "git diff --check"
+  ],
+  "consentedWindowsWrapperBodyExecuted": false,
+  "certificateOrTrustChanged": false,
+  "packageInstalled": false,
+  "printingPerformed": false,
+  "actualPsaCallbackExercised": false,
+  "rendererOrDependenciesBuilt": false,
+  "rerunDispatched": false,
+  "activationGatePassed": false,
+  "productUsable": false,
+  "stopReason": "First authorized native batch failed; no code repair or rerun without further authorization."
+}
