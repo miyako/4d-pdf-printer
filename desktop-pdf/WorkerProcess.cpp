@@ -51,7 +51,8 @@ void PrivateDirectory(fs::path const& path) {
         auto sid = reinterpret_cast<PSID>(&ace->SidStart);
         try {
             Require(EqualSid(sid, user) || IsWellKnownSid(sid, WinLocalSystemSid) ||
-                IsWellKnownSid(sid, WinBuiltinAdministratorsSid), "directory grants access to other principals");
+                IsWellKnownSid(sid, WinBuiltinAdministratorsSid) ||
+                NonPropagatingDirectoryTraversalGrant(ace->Mask, header->AceFlags), "directory grants access to other principals");
         } catch (std::runtime_error const&) {
             auto primary = std::current_exception();
             std::unique_ptr<std::runtime_error> detail;

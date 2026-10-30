@@ -95,7 +95,22 @@ class Source(unittest.TestCase):
         self.assertLess(process.index("Original publication rejection HRESULT="), process.index('"publication branch outcome"'))
         self.assertIn("std::rethrow_exception(primary)", process)
         worker = (ROOT / "desktop-pdf/WorkerProcess.cpp").read_text()
-        self.assertIn('IsWellKnownSid(sid, WinBuiltinAdministratorsSid), "directory grants access to other principals"', worker)
+        self.assertIn('IsWellKnownSid(sid, WinBuiltinAdministratorsSid) ||', worker)
+        self.assertIn('NonPropagatingDirectoryTraversalGrant(ace->Mask, header->AceFlags)', worker)
+        header = (ROOT / "desktop-pdf/WorkerProcess.h").read_text()
+        self.assertIn("inline constexpr bool NonPropagatingDirectoryTraversalGrant(ACCESS_MASK mask, BYTE flags) noexcept", header)
+        self.assertIn("constexpr ACCESS_MASK allowed = FILE_TRAVERSE | SYNCHRONIZE;", header)
+        self.assertIn("(flags == 0 || flags == INHERITED_ACE) && (mask & ~allowed) == 0", header)
+        self.assertIn("NonPropagatingDirectoryTraversalGrant(0x00100020u, 0)", process)
+        self.assertIn("constexpr ACCESS_MASK subsets[]{0, FILE_TRAVERSE, SYNCHRONIZE, allowed};", process)
+        self.assertIn("flags != 256", process)
+        self.assertIn("bit != 32", process)
+        self.assertIn("NonPropagatingDirectoryTraversalGrant(right | allowed, flags)", process)
+        validation = process.split("void Validation(", 1)[1]
+        self.assertLess(validation.index("bit != 32"), validation.index("SafeParents("))
+        self.assertNotIn("S-1-", worker + header)
+        for forbidden in ("SetNamedSecurityInfo", "SetSecurityInfo", "SetFileSecurity"):
+            self.assertNotIn(forbidden, worker + header + process)
         for field in ("; directory=", "; sid=", "; ace_type=", "; ace_flags=", "; access_mask="):
             self.assertIn(field, worker)
         self.assertIn("ConvertSidToStringSidW", worker)

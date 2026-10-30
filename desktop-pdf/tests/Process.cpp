@@ -232,6 +232,24 @@ void Publication(Area& area, std::wstring const& scenario) {
     std::cout << to_string(report.Stringify()) << '\n';
 }
 void Validation(Area& area, fs::path const& fixture) {
+    constexpr ACCESS_MASK allowed = FILE_TRAVERSE | SYNCHRONIZE;
+    constexpr ACCESS_MASK subsets[]{0, FILE_TRAVERSE, SYNCHRONIZE, allowed};
+    Require(NonPropagatingDirectoryTraversalGrant(0x00100020u, 0), "observed directory grant rejected");
+    for (auto mask : subsets) {
+        Require(NonPropagatingDirectoryTraversalGrant(mask, 0) &&
+            NonPropagatingDirectoryTraversalGrant(mask, INHERITED_ACE), "limited directory subset rejected");
+        for (unsigned flags = 0; flags != 256; ++flags)
+            Require(NonPropagatingDirectoryTraversalGrant(mask, static_cast<BYTE>(flags)) ==
+                (flags == 0 || flags == INHERITED_ACE), "propagation/other ACE flags accepted");
+    }
+    for (unsigned bit = 0; bit != 32; ++bit) {
+        auto right = ACCESS_MASK{1} << bit;
+        if (right & allowed) continue;
+        for (BYTE flags : {BYTE{0}, BYTE{INHERITED_ACE}})
+            Require(!NonPropagatingDirectoryTraversalGrant(right, flags) &&
+                !NonPropagatingDirectoryTraversalGrant(right | allowed, flags), "additional directory right accepted");
+    }
+    std::cout << "Production directory-grant predicate: observed mask, four subsets, 32 rights bits and 256 flag bytes checked; NOT filesystem access proof.\n";
     auto runtime = Fixture(area, fixture);
     auto file = OpenRead(runtime.root / L"pdf-render-worker.exe"); Machine(file.value);
     auto parents = SafeParents(runtime.root / L"runtime-imports.json", true);

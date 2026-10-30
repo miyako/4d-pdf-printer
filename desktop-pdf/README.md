@@ -265,21 +265,52 @@ individually, then removing empty owned directories. Failure preserves evidence
 and terminates/reaps only known owned handles; cleanup failures remain failures.
 No prefix sweep, recursive cleanup or process-name kill.
 
-The diagnostic source extension after run41043771157 is **natively unrun**.
+The diagnostic extension was tested at `750272a8deba819e3ee8fef60b32080672fbaf7c`
+in run41054339960: x64 passed25/package; ARM64 passed19/25, package skipped.
+All six ARM64 failures reported the same profile-directory allow ACE: type0,
+flags0, mask1048608 (`0x00100020`). No account/capability purpose is inferred.
 Publication tests report the original HRESULT and exception message before any
 branch assertions. The existing-target case requires the unchanged exact
 `destination exists/unsupported` semantic reason, an ordinary-file attribute
 snapshot and unchanged hash/no intent; an unrelated early failure is not a pass.
 On the existing ACL allow-list rejection only, production exception context adds
 the rejected directory, numeric SID, ACE type/flags and access mask (decimal).
-Allow/deny/INHERIT_ONLY ordering and the user/SYSTEM/Admin rule are unchanged.
+The diagnostic extension left allow/deny/INHERIT_ONLY ordering and the
+user/SYSTEM/Admin rule unchanged.
 Diagnostic failures retain the original exception; no permissions are changed.
 This context is exception data, not a new production log/telemetry upload:
 current Host/Client error paths still emit HRESULT-only failures. Controlled CI
 test catches can include it in their text evidence; local user test logs stay
 local and must not be automatically uploaded without privacy review.
-The original ARM64 publication cause remains unconfirmed; its validation case
-reported an ACL rejection before metadata-negative checks, not their coverage.
+In original run41043771157 at `a5382e0`, x64 passed25/package; ARM64 passed20/25
+with five failures and package skipped. That run discarded publication messages,
+so it alone did not establish their common cause. Its validation case reported
+an ACL rejection before metadata-negative checks, not their coverage. The later
+diagnostic run above established the identical rejection in all six failures.
+
+### Narrow directory traversal policy correction (source only, natively unrun)
+
+The shared production `NonPropagatingDirectoryTraversalGrant` predicate adds an
+intentional rights-based alternative for an applicable allow ACE from an otherwise
+untrusted principal: **only a subset of FILE_TRAVERSE | SYNCHRONIZE**, with flags
+**0 or INHERITED_ACE alone**. All four subsets, including empty, are permitted.
+All other rights and flag combinations are rejected by this exception, including
+OI/CI propagation, NO_PROPAGATE, audit/unknown flags, generic/MAXIMUM_ALLOWED
+rights, read/list/data/attributes/EA, create/write/delete and security-control
+rights. Prior INHERIT_ONLY skips, deny/type handling and trusted-principal
+acceptance are unchanged. No SID exemption, effective-access engine or ACL write.
+
+Directory traversal does not grant child-file data access. Bit0x20 is also
+FILE_EXECUTE on files, so the exception must not propagate. See Microsoft's
+[access-right constants](https://learn.microsoft.com/en-us/windows/win32/fileio/file-access-rights-constants),
+[file security](https://learn.microsoft.com/en-us/windows/win32/fileio/file-security-and-access-rights)
+and [ACE inheritance rules](https://learn.microsoft.com/en-us/windows/win32/secauthz/ace-inheritance-rules).
+Profile/topology/provider checks, rejection diagnostics and no-replace semantics
+are unchanged. Existing validation-case source calls the SAME predicate for the
+observed mask, four subsets, all32 mask bits (disallowed bits alone/combined)
+and all256 flag bytes for every allowed subset, before live SafeParents checks.
+These new native assertions and real-profile/publication behavior are **unrun**;
+no filesystem ACL edits or new runner/target/CTest are introduced.
 
 ## Local helper phases (interfaces only, not operator commands)
 

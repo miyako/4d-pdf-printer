@@ -26,6 +26,11 @@ struct Handle {
     explicit operator bool() const { return value && value != INVALID_HANDLE_VALUE; }
 };
 inline void Check(BOOL value) { if (!value) throw_last_error(); }
+inline constexpr bool NonPropagatingDirectoryTraversalGrant(ACCESS_MASK mask, BYTE flags) noexcept {
+    // FILE_TRAVERSE shares its bit with file execution; never propagate this exception.
+    constexpr ACCESS_MASK allowed = FILE_TRAVERSE | SYNCHRONIZE;
+    return (flags == 0 || flags == INHERITED_ACE) && (mask & ~allowed) == 0;
+}
 Handle OpenRead(fs::path const& path);
 std::wstring Hash(HANDLE file);
 std::wstring Hash(fs::path const& path);
