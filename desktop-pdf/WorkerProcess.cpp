@@ -1,8 +1,10 @@
 #include "WorkerProcess.h"
 #include <aclapi.h>
+#include <sddl.h>
 #include <shlobj.h>
 #include <array>
 #include <cwctype>
+#include <memory>
 #include <utility>
 #include <winrt/Windows.Security.Cryptography.Core.h>
 
@@ -47,8 +49,28 @@ void PrivateDirectory(fs::path const& path) {
         Require(header->AceType == ACCESS_ALLOWED_ACE_TYPE, "unsupported directory access ACE");
         auto ace = static_cast<ACCESS_ALLOWED_ACE*>(rawAce);
         auto sid = reinterpret_cast<PSID>(&ace->SidStart);
-        Require(EqualSid(sid, user) || IsWellKnownSid(sid, WinLocalSystemSid) ||
-            IsWellKnownSid(sid, WinBuiltinAdministratorsSid), "directory grants access to other principals");
+        try {
+            Require(EqualSid(sid, user) || IsWellKnownSid(sid, WinLocalSystemSid) ||
+                IsWellKnownSid(sid, WinBuiltinAdministratorsSid), "directory grants access to other principals");
+        } catch (std::runtime_error const&) {
+            auto primary = std::current_exception();
+            std::unique_ptr<std::runtime_error> detail;
+            try {
+                PWSTR numericSid{};
+                auto converted = ConvertSidToStringSidW(sid, &numericSid);
+                Free sidOwner{numericSid};
+                Check(converted);
+                Require(numericSid != nullptr, "missing diagnostic numeric SID");
+                auto message = "directory grants access to other principals; directory=" +
+                    to_string(hstring(path.native())) + "; sid=" + to_string(hstring(numericSid)) +
+                    "; ace_type=" + std::to_string(header->AceType) +
+                    "; ace_flags=" + std::to_string(header->AceFlags) +
+                    "; access_mask=" + std::to_string(ace->Mask);
+                detail = std::make_unique<std::runtime_error>(message);
+            } catch (...) { Failure(L"directory rejection diagnostic unavailable", to_hresult()); }
+            if (detail) throw *detail;
+            std::rethrow_exception(primary);
+        }
     }
 }
 std::wstring Lower(std::wstring text) {

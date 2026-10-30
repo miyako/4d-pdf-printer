@@ -166,9 +166,17 @@ void Publication(Area& area, std::wstring const& scenario) {
     Text(completion, L"stage", L"controlled-fault"); Number(completion, L"hresult", static_cast<std::uint32_t>(E_FAIL));
     Publish(job, L"completion.json", completion).get();
     std::wstring existingHash;
-    if (scenario == L"existing") { Write(destination, "existing"); existingHash = Hash(destination); }
+    DWORD existingAttributes{};
+    if (scenario == L"existing") {
+        Write(destination, "existing"); existingHash = Hash(destination);
+        existingAttributes = GetFileAttributesW(destination.c_str());
+        Require(existingAttributes != INVALID_FILE_ATTRIBUTES && !(existingAttributes &
+            (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_OFFLINE |
+                FILE_ATTRIBUTE_RECALL_ON_OPEN | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS)),
+            "existing fixture must be an ordinary local file");
+    }
     if (scenario == L"journal") Publish(job, L"publication.json", Record(id, Mode::Silent, L"fault-injection")).get();
-    bool boundary = false, rejected = false;
+    bool boundary = false, rejected = false, existingReason = false;
     auto stop = [&] {
         boundary = true;
         Require(Exists(job, L"publish-intent.json").get(), "commit boundary before flushed intent");
@@ -176,7 +184,28 @@ void Publication(Area& area, std::wstring const& scenario) {
         return scenario == L"pubcancel";
     };
     try { PublishNew(staged, destination, job, id, Mode::Silent, stop); }
-    catch (...) { rejected = true; std::cout << "Publication rejection: 0x" << std::hex << to_hresult().value << std::dec << '\n'; }
+    catch (...) {
+        rejected = true;
+        auto primary = std::current_exception(); auto code = to_hresult();
+        try {
+            std::cerr << "Original publication rejection HRESULT=0x" << std::hex << code.value << std::dec << '\n';
+            try { std::rethrow_exception(primary); }
+            catch (hresult_error const& error) { std::cerr << to_string(error.message()) << '\n'; }
+            catch (std::runtime_error const& error) {
+                existingReason = std::string_view(error.what()) == "destination exists/unsupported";
+                std::cerr << error.what() << '\n';
+            }
+            catch (std::exception const& error) { std::cerr << error.what() << '\n'; }
+            catch (...) { std::cerr << "Nonstandard original publication exception\n"; }
+            if (scenario == L"existing") std::cerr << "Existing fixture attributes=0x" << std::hex << existingAttributes << std::dec << '\n';
+            std::cerr.flush();
+            Require(std::cerr.good(), "publication diagnostic stream failed");
+        } catch (...) {
+            Failure(L"original publication diagnostic unavailable", to_hresult());
+            std::rethrow_exception(primary);
+        }
+    }
+    if (scenario == L"existing") Require(existingReason, "expected exact existing-file semantic rejection, not an unrelated pre-boundary failure");
     Require(rejected == (scenario != L"publish"), "publication branch outcome");
     Require(boundary == (scenario != L"existing"), "wrong publication failure phase");
     auto transaction = destPath / (L".4dpdf-" + id);

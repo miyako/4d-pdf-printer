@@ -90,6 +90,16 @@ class Source(unittest.TestCase):
         process = (ROOT / "desktop-pdf/tests/Process.cpp").read_text()
         for call in ("Render(", "PublishNew(", "Reconcile(", "Observe(", "area->StopOwned()"):
             self.assertIn(call, process)
+        self.assertIn('std::string_view(error.what()) == "destination exists/unsupported"', process)
+        self.assertIn('Require(existingReason, "expected exact existing-file semantic rejection', process)
+        self.assertLess(process.index("Original publication rejection HRESULT="), process.index('"publication branch outcome"'))
+        self.assertIn("std::rethrow_exception(primary)", process)
+        worker = (ROOT / "desktop-pdf/WorkerProcess.cpp").read_text()
+        self.assertIn('IsWellKnownSid(sid, WinBuiltinAdministratorsSid), "directory grants access to other principals"', worker)
+        for field in ("; directory=", "; sid=", "; ace_type=", "; ace_flags=", "; access_mask="):
+            self.assertIn(field, worker)
+        self.assertIn("ConvertSidToStringSidW", worker)
+        self.assertNotIn("LookupAccountSid", worker)
         host = (ROOT / "desktop-pdf/Host.cpp").read_text()
         self.assertLess(host.index("ConfiguredRuntime(root)"), host.index("Render(runtime,"))
         helper = (ROOT / "desktop-pdf/build.ps1").read_text()

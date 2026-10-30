@@ -265,6 +265,22 @@ individually, then removing empty owned directories. Failure preserves evidence
 and terminates/reaps only known owned handles; cleanup failures remain failures.
 No prefix sweep, recursive cleanup or process-name kill.
 
+The diagnostic source extension after run41043771157 is **natively unrun**.
+Publication tests report the original HRESULT and exception message before any
+branch assertions. The existing-target case requires the unchanged exact
+`destination exists/unsupported` semantic reason, an ordinary-file attribute
+snapshot and unchanged hash/no intent; an unrelated early failure is not a pass.
+On the existing ACL allow-list rejection only, production exception context adds
+the rejected directory, numeric SID, ACE type/flags and access mask (decimal).
+Allow/deny/INHERIT_ONLY ordering and the user/SYSTEM/Admin rule are unchanged.
+Diagnostic failures retain the original exception; no permissions are changed.
+This context is exception data, not a new production log/telemetry upload:
+current Host/Client error paths still emit HRESULT-only failures. Controlled CI
+test catches can include it in their text evidence; local user test logs stay
+local and must not be automatically uploaded without privacy review.
+The original ARM64 publication cause remains unconfirmed; its validation case
+reported an ACL rejection before metadata-negative checks, not their coverage.
+
 ## Local helper phases (interfaces only, not operator commands)
 
 PowerShell7 and preinstalled Git/VS/v143/SDK26100 are required; no tool installs,
