@@ -1,5 +1,6 @@
 #include "Process.h"
 #include "HostTrace.h"
+#include "HostArguments.h"
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR arguments, int)
 {
@@ -13,8 +14,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR arguments, int)
             trace.Arguments("wWinMainArguments", arguments) &&
             trace.Arguments("GetCommandLineW", GetCommandLineW());
         if (!traced) return 1;
-        stage = "strict --test-id parsing"; trace.Stage(stage);
-        auto id = smoke::ParseId(arguments, L"--test-id ");
+        stage = "strict host activation arguments"; trace.Stage(stage);
+        auto id = smoke::ParseHostArguments(arguments);
         stage = "init_apartment(MTA)"; trace.Stage(stage);
         winrt::init_apartment(winrt::apartment_type::multi_threaded);
         stage = "ApplicationData.Current.LocalCacheFolder"; trace.Stage(stage);

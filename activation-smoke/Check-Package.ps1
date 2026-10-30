@@ -3,7 +3,7 @@ Set-StrictMode -Version Latest
 function Assert-SmokeManifest([xml]$Manifest, [string]$Architecture) {
     $identity = $Manifest.Package.Identity
     if ($identity.Name -cne 'Miyako.PsaActivationSmoke' -or
-        $identity.Publisher -cne 'CN=DesktopPdfPrototypeDev' -or $identity.Version -ne '0.1.1.0' -or
+        $identity.Publisher -cne 'CN=DesktopPdfPrototypeDev' -or $identity.Version -ne '0.1.2.0' -or
         $identity.ProcessorArchitecture -cne $Architecture.ToLowerInvariant()) { throw 'Smoke identity/version/publisher/architecture mismatch.' }
     $ns = [Xml.XmlNamespaceManager]::new($Manifest.NameTable)
     $ns.AddNamespace('p', 'http://schemas.microsoft.com/appx/manifest/foundation/windows10')

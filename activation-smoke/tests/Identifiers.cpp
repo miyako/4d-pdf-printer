@@ -1,4 +1,5 @@
 #include "../Contract.h"
+#include "../HostArguments.h"
 #include <iostream>
 #include <cstdio>
 #include <thread>
@@ -58,6 +59,35 @@ int main(int argc, char** argv)
         try { smoke::ParseId(bad, L"--test-id "); }
         catch (std::invalid_argument const&) { continue; }
         std::cerr << "case=argument rejection line=" << __LINE__ << " accepted malformed argument\n"; return 1;
+    }
+    constexpr auto observed = L"/InvokerPRAID: Printer --test-id 82657ea3164f4405bd61a1f50d9dec06";
+    if (smoke::ParseHostArguments(observed) != L"82657ea3164f4405bd61a1f50d9dec06" ||
+        smoke::ParseHostArguments(std::wstring(L"--test-id ") + id) != id)
+    { std::cerr << "case=host observed/bare forms line=" << __LINE__ << " correlation assertion\n"; return 1; }
+    for (auto bad : {
+        L"/unknown Printer --test-id 82657ea3164f4405bd61a1f50d9dec06",
+        L"/InvokerPRAID:Printer --test-id 82657ea3164f4405bd61a1f50d9dec06",
+        L"/InvokerPRAID: printer --test-id 82657ea3164f4405bd61a1f50d9dec06",
+        L"/InvokerPRAID: Observer --test-id 82657ea3164f4405bd61a1f50d9dec06",
+        L"/InvokerPRAID: Printer /InvokerPRAID: Printer --test-id 82657ea3164f4405bd61a1f50d9dec06",
+        L"/InvokerPRAID: Printer --test-id ",
+        L"/InvokerPRAID: Printer --test-id",
+        L"/InvokerPRAID: Printer  --test-id 82657ea3164f4405bd61a1f50d9dec06",
+        L"/InvokerPRAID: Printer --test-id 82657ea3164f4405bd61a1f50d9dec06 --test-id 82657ea3164f4405bd61a1f50d9dec06",
+        L"/InvokerPRAID: Printer --test-id 82657ea3164f4405bd61a1f50d9dec06 extra",
+        L"/InvokerPRAID: Printer --test-id 82657ea3164f4405bd61a1f50d9dec06 ",
+        L"/InvokerPRAID: Printer --test-id 82657ea3164f4405bd61a1f50d9dec06\n",
+        L"/InvokerPRAID: Printer --test-id 82657EA3164F4405BD61A1F50D9DEC06",
+        L"/InvokerPRAID: Printer --test-id 82657ea3164f4405bd61a1f50d9dec0",
+        L"/InvokerPRAID: Printer --test-id 82657ea3164f4405bd61a1f50d9dec060",
+        L"--test-id ", L"--test-id", L"--test-id 0123456789abcdef0123456789abcdef extra",
+        L"--test-id 0123456789ABCDEF0123456789abcdef",
+        L"--test-id 0123456789abcdef0123456789abcde",
+        L"--test-id 0123456789abcdef0123456789abcdef0"})
+    {
+        try { smoke::ParseHostArguments(bad); }
+        catch (std::invalid_argument const&) { continue; }
+        std::cerr << "case=host argument rejection line=" << __LINE__ << " accepted malformed host arguments\n"; return 1;
     }
     return 0;
 }

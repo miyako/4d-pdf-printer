@@ -6,7 +6,7 @@ named package answers just one question: can a real PSA
 start its fixed packaged desktop host, whose normal exit is observed through an
 exact process handle? Compilation and unpackaged tests cannot answer that question.
 
-Identity: `Miyako.PsaActivationSmoke`, version `0.1.1.0`, publisher
+Identity: `Miyako.PsaActivationSmoke`, version `0.1.2.0`, publisher
 `CN=DesktopPdfPrototypeDev`. Its only queue is
 **4D PDF Activation Smoke (No PDF)**, URI `psa-activation-smoke:synthetic`.
 The manifest requests OXPS, has no `OutputFileTypes`, and has no Save As
@@ -139,7 +139,7 @@ that a new `workflow_dispatch` is registered on default.
 
 ## Proposed one-test handoff (parent review; not authorization)
 
-### Host-startup trace (0.1.1.0; packaged behavior not yet verified)
+### Host-startup trace (introduced in 0.1.1.0)
 
 The actual installed `3b16e49` version `0.1.0.0` experiment observed the real callback and launcher
 `Success`, but no `host.json` or host-exit observation. Existing Windows
@@ -157,7 +157,9 @@ This deliberately avoids the package-redirected LocalAppData result (which could
 otherwise lead to an incorrectly nested `Packages` path). It does not derive a
 SID, read environment paths, use `ApplicationData`, create package directories,
 or fall back to another location. Actual packaged file-redirection/path behavior
-remains **unverified**; a missing/non-directory cache or sink failure is explicit.
+was unverified at source review and subsequently worked in the one observed
+`0.1.1.0` packaged case below; this is not a general redirection guarantee.
+A missing/non-directory cache or sink failure is explicit.
 Same-user modification is outside this diagnostic's scope, not a new trust claim.
 
 Each invocation uses `CREATE_NEW`, no overwrite/retry on collision, read sharing,
@@ -195,7 +197,47 @@ during source-only review. A subsequent explicit authorization permits one
 exact-head native x64/ARM64 CI batch; its results belong to the matching PR
 receipts, not this historical checkpoint. Prior native/package receipts apply
 only to their tested SHAs. Actual packaged trace/startup/exit behavior for
-`0.1.1.0` remains NOT RUN until separately authorized user-host testing.
+`0.1.1.0` was NOT RUN at that checkpoint; the later actual result follows.
+
+### Observed host-parser failure and local 0.1.2.0 proposal
+
+The one separately consented `0.1.1.0` user print (source `84c1a70`, synthetic ID
+`82657ea3164f4405bd61a1f50d9dec06`) again observed the real callback, launcher
+Success/extendedHRESULT0 and normal GDI-child cleanup, but no host-entry/exit
+records; the activation gate timed out. Unlike the earlier `3b16e49`/`0.1.0.0`
+OS-image-creation-only evidence, its durable trace proves `wWinMain` entry
+(PID9572) and successful independent Win32 trace access before COM initialization
+in this case. Untruncated raw arguments were:
+
+```text
+/InvokerPRAID: Printer --test-id 82657ea3164f4405bd61a1f50d9dec06
+```
+
+The full command line contained the same suffix after the quoted installed host
+image path. The trace reached strict parsing, then recorded HRESULT `0x80070057`
+with Win32 snapshot0, without reaching MTA initialization or ApplicationData.
+The host's own bare-only parser rejected this actual received prefix. This is
+not evidence of an OS launch defect, nor a universal Windows argument guarantee.
+
+The host-specific `ParseHostArguments` proposal accepts exactly two forms:
+`--test-id <ID>` and `/InvokerPRAID: Printer --test-id <ID>`. Both use the unchanged
+strict 32-lowercase-hex ID parser. No generic prefix stripping, option scanning,
+different app ID, duplicate prefix, extra arguments, whitespace normalization or
+trailing data is accepted. This is a fixed correlation format, **not authority
+or authentication**. The callback-title `ParseId`, launcher, trace, handshake,
+exact-process observation and activation pass criteria are unchanged.
+
+Portable regression cases call the same helper as the real host, covering the
+exact observed arguments and prior bare form, malformed/unknown/duplicate prefix,
+wrong app ID, absent/duplicate/extra arguments, trailing data and ID case/length.
+The smoke-only version is now `0.1.2.0`; identity, publisher and queue are unchanged.
+**Source-review checkpoint:** native validation and actual packaged `0.1.2.0`
+entry/exit testing were NOT RUN at this checkpoint. Parent source review then
+approved one commit/push and one separately authorized native batch; its results
+apply only to the exact PR SHA and matching receipts. Actual packaged `0.1.2.0`
+host entry/exit remains NOT RUN until separate user consent. No user-host
+build/update/sign/print is authorized by this proposal, and parser acceptance
+alone does not establish that the remaining host startup or exit gate will succeed.
 
 After source/native-evidence review, installation/signing is a **separate explicit
 consent step**, using only the already trusted matching development certificate.

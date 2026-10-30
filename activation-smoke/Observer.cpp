@@ -70,7 +70,7 @@ namespace
             auto version = package.Id().Version();
             if (package.Id().Name() != L"Miyako.PsaActivationSmoke" ||
                 package.Id().Publisher() != L"CN=DesktopPdfPrototypeDev" ||
-                version.Major != 0 || version.Minor != 1 || version.Build != 1 || version.Revision != 0)
+                version.Major != 0 || version.Minor != 1 || version.Build != 2 || version.Revision != 0)
                 throw hresult_invalid_argument();
             auto installed = std::wstring(package.InstalledLocation().Path());
             auto expected = installed + L"\\SmokeHost.exe";
