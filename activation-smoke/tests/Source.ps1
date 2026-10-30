@@ -12,6 +12,11 @@ $rejected = $false
 try { Assert-SmokeManifest $bad 'x64' } catch { $rejected = $true }
 if (-not $rejected) { throw 'case=identity isolation assertion: old package accepted' }
 $bad = [xml]$manifest.OuterXml
+$bad.Package.Identity.Version = '0.1.0.0'
+$rejected = $false
+try { Assert-SmokeManifest $bad 'x64' } catch { $rejected = $true }
+if (-not $rejected) { throw 'case=version assertion: prior smoke version accepted' }
+$bad = [xml]$manifest.OuterXml
 $ns = [Xml.XmlNamespaceManager]::new($bad.NameTable)
 $ns.AddNamespace('psa', 'http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2')
 $bad.SelectSingleNode('//psa:PrintSupportVirtualPrinter', $ns).SetAttribute('OutputFileTypes', 'pdf')

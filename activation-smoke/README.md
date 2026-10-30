@@ -6,7 +6,7 @@ named package answers just one question: can a real PSA
 start its fixed packaged desktop host, whose normal exit is observed through an
 exact process handle? Compilation and unpackaged tests cannot answer that question.
 
-Identity: `Miyako.PsaActivationSmoke`, version `0.1.0.0`, publisher
+Identity: `Miyako.PsaActivationSmoke`, version `0.1.1.0`, publisher
 `CN=DesktopPdfPrototypeDev`. Its only queue is
 **4D PDF Activation Smoke (No PDF)**, URI `psa-activation-smoke:synthetic`.
 The manifest requests OXPS, has no `OutputFileTypes`, and has no Save As
@@ -138,6 +138,64 @@ and renderer path filters do not cover this new directory. No assumption is made
 that a new `workflow_dispatch` is registered on default.
 
 ## Proposed one-test handoff (parent review; not authorization)
+
+### Host-startup trace (0.1.1.0; packaged behavior not yet verified)
+
+The actual installed `3b16e49` version `0.1.0.0` experiment observed the real callback and launcher
+`Success`, but no `host.json` or host-exit observation. Existing Windows
+AppModel event201 identifies creation of `SmokeHost.exe`; it does not establish
+`wWinMain` entry, normal exit, or a startup root cause.
+
+The proposed host-only diagnostic writes a debugger entry marker, then opens a
+Win32 trace **before strict argument parsing, COM/WinRT initialization, or
+ApplicationData storage calls**. `GetCurrentPackageFamilyName` supplies the
+existing smoke family; `SHGetKnownFolderPath(FOLDERID_LocalAppData,
+KF_FLAG_NO_PACKAGE_REDIRECTION)` supplies the user's unredirected LocalAppData.
+The fixed sink is
+`<unredirected LocalAppData>\Packages\<current smoke family>\LocalCache\host-startup-<PID>-<FILETIME hex>.txt`.
+This deliberately avoids the package-redirected LocalAppData result (which could
+otherwise lead to an incorrectly nested `Packages` path). It does not derive a
+SID, read environment paths, use `ApplicationData`, create package directories,
+or fall back to another location. Actual packaged file-redirection/path behavior
+remains **unverified**; a missing/non-directory cache or sink failure is explicit.
+Same-user modification is outside this diagnostic's scope, not a new trust claim.
+
+Each invocation uses `CREATE_NEW`, no overwrite/retry on collision, read sharing,
+and write-through. ASCII lines (UTF-8 without BOM) are capped at 8192 bytes.
+Entry captures the actual raw `wWinMain` argument string and `GetCommandLineW`,
+each as at most 256 UTF-16 code units encoded as four-digit hex, with an explicit
+truncation flag. These are synthetic-experiment arguments only, not normalized
+or interpreted as evidence of any undocumented prefix. Stage lines precede
+parsing, MTA initialization, cache access, host-entry publication and the existing
+ready-record wait; caught failures append the original HRESULT and an immediate
+Win32 last-error snapshot (the snapshot is not necessarily authoritative for
+non-Win32 failures).
+
+Sink errors identify the failing API and raw Win32 code (or the known-folder
+API's raw HRESULT) through `OutputDebugStringW`, retain the first sink error,
+and cause nonzero host return. A secondary trace-write error never replaces a
+caught primary host HRESULT. If the sink itself cannot open/write, no durable
+trace is promised: only the debugger diagnostic and nonzero return remain.
+The host catch and focused tests share `ReportFailure`: stack-buffer formatting,
+debugger/stderr output before the secondary trace attempt, and an allocation-free
+`noexcept` stage/write path using `string_view`. Tests inspect its returned
+original HRESULT, retained first sink error and nonzero exit outcome, rather
+than merely comparing an untouched local variable.
+No loader/CRT-before-`wWinMain` failure can be captured by this code, and absence
+of a trace does not prove that user code never ran. No launcher, parser, handshake,
+activation pass criterion changes. The separately authorized smoke-only version
+bump to `0.1.1.0` makes the diagnostic revision explicit; package identity,
+publisher and queue remain unchanged.
+
+Proposed native cases exercise malformed arguments recorded before rejection,
+an explicit stage/HRESULT failure, create-new collision, argument/file bounds,
+and an unavailable sink retaining the primary failure. **Review-checkpoint
+history:** these new runtime cases and proposed source were NOT RUN/NOT BUILT
+during source-only review. A subsequent explicit authorization permits one
+exact-head native x64/ARM64 CI batch; its results belong to the matching PR
+receipts, not this historical checkpoint. Prior native/package receipts apply
+only to their tested SHAs. Actual packaged trace/startup/exit behavior for
+`0.1.1.0` remains NOT RUN until separately authorized user-host testing.
 
 After source/native-evidence review, installation/signing is a **separate explicit
 consent step**, using only the already trusted matching development certificate.

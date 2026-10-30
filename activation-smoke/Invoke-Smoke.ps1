@@ -5,8 +5,8 @@ Set-StrictMode -Version Latest
 if (-not $IsWindows) { throw 'Windows desktop required; no simulation fallback.' }
 . (Join-Path $PSScriptRoot 'Invoke-Body.ps1')
 $packages = @(Get-AppxPackage -Name 'Miyako.PsaActivationSmoke')
-if ($packages.Count -ne 1 -or $packages[0].Version -ne '0.1.0.0' -or
-    $packages[0].Publisher -cne 'CN=DesktopPdfPrototypeDev') { throw 'Expected exactly the separately installed smoke 0.1.0.0 package.' }
+if ($packages.Count -ne 1 -or $packages[0].Version -ne '0.1.1.0' -or
+    $packages[0].Publisher -cne 'CN=DesktopPdfPrototypeDev') { throw 'Expected exactly the separately installed smoke 0.1.1.0 package.' }
 $package = $packages[0]
 if ($package.Architecture.ToString() -ine [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()) {
     throw 'Smoke package must match native OS architecture.'

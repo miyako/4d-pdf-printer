@@ -25,6 +25,8 @@ foreach(target SmokeTask SmokeApp SmokeHost SmokeObserver SmokeTests SmokeIdenti
   target_link_libraries(${target} PRIVATE windowsapp ole32)
 endforeach()
 target_link_libraries(SmokeObserver PRIVATE gdi32)
+target_link_libraries(SmokeHost PRIVATE shell32)
+target_link_libraries(SmokeTests PRIVATE shell32)
 foreach(target SmokeTask SmokeApp)
   target_compile_definitions(${target} PRIVATE SMOKE_APP WINAPI_FAMILY=WINAPI_FAMILY_APP)
   target_link_options(${target} PRIVATE /APPCONTAINER)

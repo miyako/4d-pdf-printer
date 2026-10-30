@@ -1,4 +1,5 @@
 #include "../Process.h"
+#include "../HostTrace.h"
 #include <iostream>
 
 using namespace smoke;
@@ -86,6 +87,63 @@ int wmain(int argc, wchar_t** argv)
         EXPECT(!denied.GetNamedBoolean(L"cleanupSucceeded") && !denied.GetNamedBoolean(L"exitObserved"));
         EXPECT(denied.GetNamedBoolean(L"terminationAttempted"));
         EXPECT(denied.GetNamedNumber(L"terminationHresult") == HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED));
+        test = "independent host trace pre-parse malformed arguments/stage failure";
+        wchar_t temp[MAX_PATH + 1]{};
+        auto length = GetTempPathW(ARRAYSIZE(temp), temp);
+        EXPECT(length > 0 && length < ARRAYSIZE(temp));
+        auto path = std::wstring(temp) + L"smoke-host-trace-" + std::to_wstring(GetCurrentProcessId()) +
+            L"-" + std::to_wstring(GetTickCount64()) + L".txt";
+        struct RemoveTrace
+        {
+            std::wstring path;
+            bool owned = false;
+            ~RemoveTrace()
+            {
+                if (owned && !DeleteFileW(path.c_str()))
+                    Failure(L"DeleteFileW controlled host trace fixture", HRESULT_FROM_WIN32(GetLastError()));
+            }
+        } cleanup{path};
+        HRESULT primary = E_ACCESSDENIED;
+        {
+            HostTrace trace;
+            EXPECT(trace.OpenPath(path.c_str()));
+            cleanup.owned = true;
+            EXPECT(trace.Stage("wWinMain entry"));
+            EXPECT(trace.Arguments("wWinMainArguments", L"/unexpected \"malformed\"\n"));
+            rejected = false;
+            try { ParseId(L"/unexpected \"malformed\"\n", L"--test-id "); }
+            catch (std::invalid_argument const&) { rejected = true; }
+            EXPECT(rejected);
+            EXPECT(trace.Stage("injected stage failure", primary, ERROR_ACCESS_DENIED));
+            HostTrace collision;
+            EXPECT(!collision.OpenPath(path.c_str()));
+            EXPECT(collision.error == ERROR_FILE_EXISTS);
+            EXPECT(trace.Arguments("bounded", std::wstring(300, L'x').c_str()));
+            EXPECT(!trace.Write(std::string(HostTrace::Limit, 'x')));
+            EXPECT(trace.error == ERROR_FILE_TOO_LARGE);
+            auto failure = trace.ReportFailure("secondary sink failure", primary, ERROR_ACCESS_DENIED);
+            EXPECT(failure.primary == E_ACCESSDENIED && failure.exitCode == 1);
+            EXPECT(failure.sinkError == ERROR_FILE_TOO_LARGE && trace.error == ERROR_FILE_TOO_LARGE);
+        }
+        auto opened = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE,
+            nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        EXPECT(opened != INVALID_HANDLE_VALUE);
+        Handle traceFile(opened);
+        char traceBytes[HostTrace::Limit + 1]{}; DWORD read{};
+        EXPECT(ReadFile(traceFile.value, traceBytes, HostTrace::Limit, &read, nullptr));
+        std::string contents(traceBytes, read);
+        EXPECT(contents.starts_with("stage=wWinMain entry"));
+        EXPECT(contents.find("wWinMainArgumentsUtf16Hex=002F0075") != contents.npos);
+        EXPECT(contents.find("stage=injected stage failure primaryHresult=0x80070005 win32Snapshot=5") != contents.npos);
+        EXPECT(contents.find("truncated=true") != contents.npos);
+        EXPECT(read < HostTrace::Limit);
+        test = "independent unavailable trace sink retains primary failure";
+        HostTrace missing;
+        EXPECT(!missing.OpenPath((path + L"\\missing.txt").c_str()));
+        auto sinkError = missing.error;
+        auto failure = missing.ReportFailure("primary error retained", E_ACCESSDENIED, ERROR_ACCESS_DENIED);
+        EXPECT(sinkError != ERROR_SUCCESS && failure.primary == E_ACCESSDENIED && failure.exitCode == 1);
+        EXPECT(failure.sinkError == sinkError && missing.error == sinkError);
         std::cout << "native parsing/process cases passed; unpackaged tests do NOT prove PSA activation/storage\n";
         return 0;
     }
