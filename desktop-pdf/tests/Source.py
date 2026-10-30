@@ -76,6 +76,35 @@ class Source(unittest.TestCase):
         self.assertIn('CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64"', cmake)
         self.assertIn("set(PDF_PACKAGE_ARCH arm64)", cmake)
         self.assertIn('install(FILES "${CMAKE_CURRENT_BINARY_DIR}/AppxManifest.xml"', cmake)
+        installed = re.search(r"install\(TARGETS (.*?) RUNTIME", cmake).group(1).split()
+        self.assertEqual(set(installed), {"IntegrationApp", "IntegrationTask", "IntegrationHost", "IntegrationClient"})
+        self.assertIn("IntegrationProcessTests PRIVATE IntegrationWorkerProcess", cmake)
+        cases = re.search(r"foreach\(case (.*?)\)", cmake).group(1).split()
+        self.assertEqual(set(cases), {
+            "success", "crash", "deadline", "cancel", "precancel", "malformed", "duplicate",
+            "trailing", "missing", "mismatch", "exit24", "exit71", "descendant", "breakaway",
+            "handles", "channel", "killclose", "publish", "existing", "race", "pubcancel",
+            "journal", "validation",
+        })
+        self.assertEqual(len(cases), 23)
+        process = (ROOT / "desktop-pdf/tests/Process.cpp").read_text()
+        for call in ("Render(", "PublishNew(", "Reconcile(", "Observe(", "area->StopOwned()"):
+            self.assertIn(call, process)
+        host = (ROOT / "desktop-pdf/Host.cpp").read_text()
+        self.assertLess(host.index("ConfiguredRuntime(root)"), host.index("Render(runtime,"))
+        helper = (ROOT / "desktop-pdf/build.ps1").read_text()
+        self.assertIn("'Build', 'Package', 'SignCopy'", helper)
+        self.assertIn("No automatic fetch/install.", helper)
+        for ref in (DEPENDENCY, PROOF):
+            self.assertIn(ref, helper)
+        for forbidden in ("New-SelfSignedCertificate", "Import-Certificate", "Add-AppxPackage",
+                          "Assert-PrinterPackage", "Assert-PrinterResourceDump", "printer/build.ps1",
+                          "'/nv'", "Invoke-WebRequest", "git fetch"):
+            self.assertNotIn(forbidden, helper)
+        package = helper.split("} else {\n            $build = Get-Content", 1)[1]
+        self.assertNotIn("'--build'", package)
+        self.assertNotIn("Checked $ctest", package)
+        self.assertIn("PackageEvidence $package $pri", package)
 
     def test_workflow_execution_contract(self):
         # Deliberately static guards, not a YAML parser or Windows execution proof.
@@ -122,7 +151,8 @@ class Source(unittest.TestCase):
         self.assertIn("Windows Kits/10/Include/10.0.26100.0/um/Windows.h", own)
         self.assertIn("Assert-PrinterPeMachine", own)
         for binary in ("IntegrationApp.exe", "IntegrationTask.dll", "IntegrationHost.exe",
-                       "IntegrationClient.exe", "IntegrationContract.exe", "IntegrationNative.exe"):
+                       "IntegrationClient.exe", "IntegrationContract.exe", "IntegrationNative.exe",
+                       "IntegrationProcessTests.exe", "IntegrationWorkerFixture.exe"):
             self.assertIn(f"'{binary}'", own)
         ctest = re.search(r"Checked ctest @\((.*?)\)", own, re.S).group(1)
         self.assertIn("'--no-tests=error'", ctest)
@@ -130,8 +160,15 @@ class Source(unittest.TestCase):
         self.assertIn("desktop-pdf/tests/Source.py", own)
         self.assertIn("git show --format= --check HEAD", own)
         for forbidden in ("renderer/tools/build-windows.ps1", "actions/setup-python@",
-                          "pip install", "vcpkg.exe", "makeappx", "makepri", "--install"):
+                          "pip install", "vcpkg.exe", "makeappx", "makepri", "--install", "-Stage SignCopy"):
             self.assertNotIn(forbidden, own)
+        self.assertIn("if: ${{ success() && steps.native.outcome == 'success' }}", own)
+        self.assertIn("./desktop-pdf/build.ps1 -Stage Package", own)
+        self.assertLess(own.index("Checked ctest"), own.index("id: package"))
+        self.assertIn("PACKAGE_OUTCOME: ${{ steps.package.outcome }}", own)
+        self.assertIn("packaging_outcome = $env:PACKAGE_OUTCOME", own)
+        self.assertIn("unsigned_package_verified = ($env:PACKAGE_OUTCOME -eq 'success')", own)
+        self.assertIn("schema = '4d-pdf-printer.own-code-ci'; version = 2", own)
         self.assertIn("needs: integration\n", renderer)
         self.assertIn("if: ${{ needs.integration.result == 'success' && "
                       "(github.event_name != 'workflow_dispatch' || inputs.scope == 'full') }}", renderer)
@@ -150,6 +187,7 @@ class Source(unittest.TestCase):
             "${{ env.EVIDENCE }}/receipt.json", "${{ env.EVIDENCE }}/pe-machines.json",
             "${{ env.EVIDENCE }}/source-checks.txt", "${{ env.EVIDENCE }}/build-and-tests.txt",
             "${{ env.EVIDENCE }}/native-ctest.txt",
+            "${{ env.EVIDENCE }}/package-evidence.json",
         })
         self.assertEqual({line.strip() for line in uploads[1].splitlines()}, {
             "renderer/build-evidence-${{ matrix.arch }}/runtime-imports.json",
@@ -160,8 +198,7 @@ class Source(unittest.TestCase):
             "renderer/build-evidence-${{ matrix.arch }}/notices/*/vcpkg.spdx.json",
             "renderer/build-windows-${{ matrix.arch }}/Testing/Temporary/LastTest.log",
         })
-        for receipt_field in ("renderer_executed", "psa_activation_tested", "publication_tested",
-                              "packaging_performed", "productUsable"):
+        for receipt_field in ("renderer_executed", "psa_activation_tested", "packaged_publication_tested", "productUsable"):
             self.assertIn(f"{receipt_field} = $false", own)
         self.assertIn("NATIVE_OUTCOME: ${{ steps.native.outcome }}", own)
         self.assertIn("head_verified = ($env:GUARD_OUTCOME -eq 'success')", own)

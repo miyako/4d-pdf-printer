@@ -1,9 +1,12 @@
 # Desktop PDF integration: local source-review checkpoint
 
-**At this source-review checkpoint the native compile-only gate is pending;
-packaging, activation and printing are unproven. Not a usable-printer claim.**
-Later exact-source CI receipts, not an anticipatory source edit, establish whether
-the own-code gate passed. This new target implements the two required source paths without
+**The extended process/publication and unsigned-package gate is natively UNRUN
+at this source-review checkpoint. Activation and printing are unproven.**
+The prior compile-only source `3fd66773a5b86bd94276c437de7ecd8d5b4c58f3`
+passed both architectures in run41037488999 (two CTests/five source guards);
+that result does not cover these new tests or packaging. Later exact-source
+receipts establish the extended result without a result-only source push.
+This target implements the two required source paths without
 changing the diagnostic printer or any installed package/queue. Native APIs,
 process containment and publication semantics still need actual Windows evidence.
 
@@ -151,10 +154,10 @@ separation is not automatic compliance. No binary cache/DLL/document uploads.
 
 Portable `tests/Contract.cpp` exercises real production helpers, not Windows
 stubs. Python `tests/Source.py` checks exact dependency/geometry provenance,
-manifest/labels/staging wiring and the static workflow execution contract. `tests/Native.cpp`
-contains native WinRT record/status cases but is **unrun**. CMake stages a
-target-architecture manifest/resources/PDC; assets/PRI/MSIX creation and manifest validation remain
-a separately approved future packaging step, not an installer provided here.
+manifest/labels/staging wiring and the static workflow execution contract.
+`tests/Native.cpp` contains the previously exercised WinRT record/status checks.
+The controlled `Process.cpp`/`WorkerFixture.cpp` tests described below are
+**natively unrun**, not real renderer, PDF, activation or printing evidence.
 
 First post-native/user-approval goal is the **early corrected small real-PDF
 comparison**, not more infrastructure: new original text/vector/mixed fixtures
@@ -167,13 +170,14 @@ relax/rescale. No size/raster reference promoted into an unapproved product gate
 The full corrected fixture generator/comparator is not duplicated into this
 small source checkpoint; integrate only the necessary approved proof pieces.
 
-Still unproven: Windows compile/link and native tests; new identity/manifest/PRI,
+Still unproven for this extension: native process/publication tests and unsigned
+package validation; new installed identity/manifest/PRI behavior,
 both actual activations/wrappers, root exit/worker Job Object behavior, runtime
 DLL/font/config loading, finite concurrent waits, cancellation/reap/commit races,
 disposable existing-file/failure tests for Save As replacement, silent no-replace,
 both actual real-PDF modes, corrected measurements and the 30-job lifecycle.
-No native build, CI, packaging/signing/trust/install, queue action or print had
-been performed when this source checkpoint was prepared. Each requires separate approval;
+No extended native run, packaging/signing/trust/install, queue action or print
+had been performed when this extension checkpoint was prepared. Each requires approval;
 no Windows operator commands are supplied here.
 
 ## Native CI contract: adapted source, execution pending
@@ -192,16 +196,17 @@ the synthetic merge ref; manual execution fails before compilation if event,
 checkout and approved SHA disagree. A mismatch/failure does not authorize
 repair, another push or another dispatch.
 
-The proposed first authorized batch is **one own-code-only dispatch with both
+The proposed extended batch is **one own-code-only dispatch with both
 native x64/VS2022 and ARM64/VS2026 jobs**. Both assert preinstalled native OS,
 v143/SDK26100 and matching PE machines; ARM64 requires preinstalled CMake4.2+.
-They compile all own targets, execute both CTests unfiltered, run the five
+They compile all own targets, execute all25 CTests unfiltered, run the five
 source/provenance guards and check selected-commit whitespace. Python source
 checks may use an emulated host interpreter; C++ target/tests must be native.
 Missing tools fail without installation/fallback. There is no renderer build,
-runtime loading, Host/Client execution, package/PRI/assets creation or printing
-in this gate. A pass establishes only own-code compile/link, PE and exercised
-record/status/helper checks, not the remaining Windows behavior listed above.
+real runtime loading, Host/Client execution or printing. Only after native tests
+pass does each job assemble and validate an unsigned own-payload package.
+A pass establishes compile/link/PE, exercised controlled production branches
+and unsigned-package checks, not the packaged Windows behavior listed above.
 
 Normal PR and **main-only push** events always select full regressions; their
 existing renderer/doc paths remain and now also include `desktop-pdf/**` and its
@@ -209,22 +214,83 @@ reused printer App/PDC/build-helper files. Full renderer jobs depend on success
 of the **entire** own-code native matrix, then run the proven two-architecture
 helper stages with local ephemeral caches only. In explicit own-code scope
 those renderer jobs are **skipped, not passed/tested**. Full dependency builds
-are outside the proposed first batch and need separate authorization.
+are outside this proposed batch and need separate authorization.
 
-Pushing the fresh feature branch without opening a PR does not match the main
+Updating this feature branch without opening a PR does not match the main
 push trigger or the other three existing workflows' unchanged printer filters.
 One subsequent manual dispatch is a separate action. A later PR/main push can
-start full regressions and is not authorized by a compile-only gate approval.
+start full regressions and is not authorized by an own-code gate approval.
 No branch-specific skip directive, broad regression disablement or hidden
 failure continuation is used.
 
 Artifacts are exact-allowlisted JSON/text receipts, PE hashes and compiler/source/
 CTest logs, including failed/skipped step outcomes. No EXE/DLL/LIB/MSIX/PRI,
 runtime/cache tree or document upload. Receipts explicitly keep renderer,
-activation, publication, packaging and usable-product claims false for the
-own-code stage. `Source.py` checks this execution contract statically while
+activation, packaged publication and usable-product claims false.
+Version2 receipts report actual `packaging_outcome` and success-only
+`unsigned_package_verified`, distinct from controlled process/publication tests.
+`Source.py` checks this execution contract statically while
 retaining all33 dependency-source hashes, exact geometry extraction and manifest
 guards; it is not a YAML parser, PowerShell executor or native API proof.
 Process-scoped Git configuration disables automatic CRLF conversion so these
 byte checks compare repository blobs, without changing global Git settings.
 Post-run receipts are tied to the tested SHA and need no result-only source push.
+
+## Controlled native cases and owned cleanup (execution pending)
+
+The existing production `Render`, `PublishNew` and `Reconcile` are called
+directly; no parallel supervisor/parser/finalizer or Host bypass is introduced.
+The test driver constructs `Runtime` with an isolated fault-fixture root, NOT a
+runtime accepted by `InspectRuntime`. Fixture bytes/status are labelled
+**NOT real renderer/PDF**; no PR7 passed receipt/inventory is fabricated.
+Missing/invalid metadata is rejected through actual runtime validation; positive
+real runtime acceptance remains the later explicit Client configuration step.
+
+The 23 added cases cover strict success/length, crash, hanging worker deadline,
+pre/running cancellation, malformed/duplicate/trailing/missing status, length
+mismatch, post-output exit24/71, descendants/breakaway, handle/environment
+whitelisting, channel overflow, supervisor kill-on-close, new publication,
+existing target, equal-byte competitor race, precommit cancel, post-move journal
+failure and validation negatives. Faults rendezvous with exact live handles,
+image and creation-time verification; returned production observations require
+observed exit and zero active children. The test-only self-supervisor case
+instead observes exact worker exit after supervisor death; it cannot report a
+production observation from a dead supervisor or prove PSA root-host control.
+
+Each case creates a new space/Unicode-named directory under the actual current profile. A finite
+20s controller/15s fixture rendezvous and 60s CTest ceiling leave production
+limits unchanged. Successful cases verify required retained staging/intent/final
+files before inventorying exact files in owned directories and deleting them
+individually, then removing empty owned directories. Failure preserves evidence
+and terminates/reaps only known owned handles; cleanup failures remain failures.
+No prefix sweep, recursive cleanup or process-name kill.
+
+## Local helper phases (interfaces only, not operator commands)
+
+PowerShell7 and preinstalled Git/VS/v143/SDK26100 are required; no tool installs,
+downloads, automatic source fetches, certificate creation or trust changes.
+`OutputRoot` is a mandatory absolute **new** directory with an existing parent,
+under ignored `out` or outside the checkout. All phases require a clean exact
+Git checkout and native target OS. Paths may contain spaces/Unicode.
+
+| Phase | Inputs and behavior |
+|---|---|
+| `Build` | Mandatory `Architecture`, `OutputRoot`; `VisualStudioVersion` defaults2022. Optional explicit `CMakePath`/`PythonPath`. Resolve CMake/adjacent CTest from the selected VS bundle unless explicitly supplied; check versions/generator before compiling. Run source checks, build all own targets, verify PEs, run unfiltered tests and record `own-build.json`. |
+| `Package` | Same target/VS/output inputs plus existing `BuildDirectory`. Requires exact-source successful native receipt and unchanged tested payload hashes. Install into new staging without rebuilding/retesting; generate four assets, PRI and unsigned MSIX. Validate actual archive members/PE hashes, manifest/AppIDs/extensions/capability, and extracted PRI hash/queue strings. |
+| `SignCopy` | Explicit `UnsignedPackage`, NEW external `SignedOutput`, existing `CertificateThumbprint`, native target and new evidence output. Require matching successful package receipt, valid matching existing code-signing certificate/private key; copy without overwrite, sign/verify the copy, preserve unsigned original. Never used in CI; not installation authorization. |
+
+`Build` explicitly checks BOTH nonancestor comparison commits
+`8b34e5669bec822bb82768fd61b0483bbdd74567` and
+`12cc27915d08fcf29c5b1f00c422e0a16cc23e1b` before invoking Source.py.
+A branch checkout alone may lack either object; missing objects fail with the
+exact pin before native compilation. Obtain them only in a separately approved
+source-checkout step, preserving blob line endings; this helper does not fetch.
+
+Package payload is exactly three production EXEs plus Task DLL, generated
+architecture manifest, Integration PDC, four assets and PRI (plus MSIX metadata).
+Tests, fixture, diagnostic identities and external renderer/DLLs are excluded.
+The existing five CI evidence paths gain only `package-evidence.json`; unsigned
+MSIX/PRI/assets remain ephemeral in CI. Local outputs/signatures stay local.
+The external verified PR7 runtime is configured separately after future approved
+installation, with no print side effect. First consented real generic-app PDF,
+then silent pipeline proof and the early corrected corpus remain subsequent gates.

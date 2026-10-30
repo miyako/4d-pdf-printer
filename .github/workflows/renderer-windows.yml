@@ -88,7 +88,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Source/provenance checks failed.' }
           git show --format= --check HEAD
           if ($LASTEXITCODE -ne 0) { throw 'Selected commit whitespace check failed.' }
-      - name: Compile all own-code targets, check native PE and run both CTests
+      - name: Compile all own-code targets, check native PE and run all CTests
         id: native
         run: |
           $ErrorActionPreference = 'Stop'
@@ -125,7 +125,8 @@ jobs:
                   "-DCMAKE_GENERATOR_INSTANCE=$($instances[0])")
               Checked cmake @('--build', $build, '--config', 'Release', '--parallel', '2')
               $pe = foreach ($name in @('IntegrationApp.exe', 'IntegrationTask.dll', 'IntegrationHost.exe',
-                  'IntegrationClient.exe', 'IntegrationContract.exe', 'IntegrationNative.exe')) {
+                  'IntegrationClient.exe', 'IntegrationContract.exe', 'IntegrationNative.exe',
+                  'IntegrationProcessTests.exe', 'IntegrationWorkerFixture.exe')) {
                   $file = Join-Path $build "Release/$name"
                   $bytes = [IO.File]::ReadAllBytes($file)
                   Assert-PrinterPeMachine -Bytes $bytes -Architecture $env:TARGET_ARCH -Name $name
@@ -135,10 +136,30 @@ jobs:
               [IO.File]::WriteAllText("$env:EVIDENCE/pe-machines.json", ($pe | ConvertTo-Json -Depth 4))
               Checked ctest @('--test-dir', $build, '-C', 'Release', '--output-on-failure', '--verbose',
                   '--no-tests=error', '--timeout', '60')
+              [ordered]@{ source_sha = $env:SOURCE_SHA; architecture = $env:TARGET_ARCH; ctests = 'passed'; pe = @($pe) } |
+                  ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $build 'own-build.json') -Encoding utf8
           } finally {
               $ctestLog = Join-Path $build 'Testing/Temporary/LastTest.log'
               if (Test-Path -LiteralPath $ctestLog -PathType Leaf) {
                   Copy-Item -LiteralPath $ctestLog -Destination "$env:EVIDENCE/native-ctest.txt"
+              }
+          }
+      - name: Verify unsigned own-payload package after native tests
+        id: package
+        if: ${{ success() && steps.native.outcome == 'success' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $PWD "desktop-pdf/out/ci-package-$env:TARGET_ARCH"
+          $primary = $null
+          try {
+              & ./desktop-pdf/build.ps1 -Stage Package -Architecture $env:TARGET_ARCH `
+                  -VisualStudioVersion $env:VISUAL_STUDIO -OutputRoot $out `
+                  -BuildDirectory (Join-Path $PWD "desktop-pdf/out/ci-$env:TARGET_ARCH") `
+                  -CMakePath (Get-Command cmake -CommandType Application).Source
+          } catch { $primary = $_; throw } finally {
+              if (Test-Path -LiteralPath "$out/package-evidence.json" -PathType Leaf) {
+                  try { Copy-Item -LiteralPath "$out/package-evidence.json" -Destination "$env:EVIDENCE/package-evidence.json" }
+                  catch { if ($primary) { Write-Error -ErrorAction Continue "Additional evidence-copy failure: $_" } else { throw } }
               }
           }
       - name: Record actual own-code gate outcomes, not product proof
@@ -147,10 +168,11 @@ jobs:
           GUARD_OUTCOME: ${{ steps.guard.outcome }}
           SOURCE_OUTCOME: ${{ steps.source.outcome }}
           NATIVE_OUTCOME: ${{ steps.native.outcome }}
+          PACKAGE_OUTCOME: ${{ steps.package.outcome }}
         run: |
           [IO.Directory]::CreateDirectory($env:EVIDENCE) | Out-Null
           $receipt = [ordered]@{
-              schema = '4d-pdf-printer.own-code-ci'; version = 1
+              schema = '4d-pdf-printer.own-code-ci'; version = 2
               source_sha = $env:SOURCE_SHA; expected_sha = $env:EXPECTED_SHA
               head_verified = ($env:GUARD_OUTCOME -eq 'success')
               scope = $env:SELECTED_SCOPE; architecture = $env:TARGET_ARCH
@@ -158,7 +180,10 @@ jobs:
               requested_visual_studio = $env:VISUAL_STUDIO; requested_sdk = '10.0.26100.0'; requested_toolset = 'v143'
               guard = $env:GUARD_OUTCOME; source_checks = $env:SOURCE_OUTCOME; build_pe_ctests = $env:NATIVE_OUTCOME
               renderer_executed = $false; psa_activation_tested = $false
-              publication_tested = $false; packaging_performed = $false; productUsable = $false
+              controlled_process_publication_tests = ($env:NATIVE_OUTCOME -eq 'success')
+              packaged_publication_tested = $false; productUsable = $false
+              packaging_outcome = $env:PACKAGE_OUTCOME
+              unsigned_package_verified = ($env:PACKAGE_OUTCOME -eq 'success')
           }
           [IO.File]::WriteAllText("$env:EVIDENCE/receipt.json", ($receipt | ConvertTo-Json))
       - name: Upload allowlisted own-code JSON and text only
@@ -172,6 +197,7 @@ jobs:
             ${{ env.EVIDENCE }}/source-checks.txt
             ${{ env.EVIDENCE }}/build-and-tests.txt
             ${{ env.EVIDENCE }}/native-ctest.txt
+            ${{ env.EVIDENCE }}/package-evidence.json
           if-no-files-found: warn
           retention-days: 14
 
