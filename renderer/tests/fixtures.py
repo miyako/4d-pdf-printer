@@ -11,6 +11,8 @@ from fontTools.pens.ttGlyphPen import TTGlyphPen
 
 
 TEXT = "AB \u03a9\u4e2d"
+FONT_GUID = "12345678-9abc-def0-1234-56789abcdef0"
+OBFUSCATED_FONT = f"Resources/{FONT_GUID}.odttf"
 
 
 def font():
@@ -60,13 +62,47 @@ def png():
             + chunk(b"IDAT", zlib.compress(pixels)) + chunk(b"IEND", b""))
 
 
-def package(path, *, oxps=False, pages=2, documents=1, broken=None, encrypted=False):
+def pieces(parts, *, size, empty_last=False, malformed=None):
+    """Round-robin physical pieces, splitting XML tokens and binary font tables."""
+    streams = {}
+    for name, value in parts.items():
+        chunks = [value[i:i + size] for i in range(0, len(value), size)]
+        if empty_last:
+            chunks.append(b"")
+        streams[name] = [
+            (f"{name}/[{i}]{'.last' if i == len(chunks) - 1 else ''}.piece", chunk)
+            for i, chunk in enumerate(chunks)]
+    if malformed:
+        target, kind = malformed
+        stream = streams[target]
+        if kind == "missing-first":
+            del stream[0]
+        elif kind == "missing-middle":
+            del stream[1]
+        elif kind == "missing-last":
+            del stream[-1]
+        elif kind == "bad-suffix":
+            name, value = stream[1]
+            stream[1] = (name + ".invalid", value)
+        elif kind == "out-of-order":
+            stream[0], stream[1] = stream[1], stream[0]
+        else:
+            raise ValueError(kind)
+    return [stream[i] for i in range(max(map(len, streams.values())))
+            for stream in streams.values() if i < len(stream)]
+
+
+def package(path, *, oxps=False, pages=2, documents=1, broken=None, encrypted=False,
+            obfuscated=False, piece_size=None, empty_last=False, malformed_piece=None):
     ns = "http://schemas.openxps.org/oxps/v1.0" if oxps else "http://schemas.microsoft.com/xps/2005/06"
     opc = "http://schemas.openxmlformats.org/package/2006/relationships"
     types = ("<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
              "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
              "<Default Extension=\"ttf\" ContentType=\"application/vnd.ms-opentype\"/>"
              "<Default Extension=\"png\" ContentType=\"image/png\"/>")
+    if obfuscated:
+        types += ('<Default Extension="odttf" '
+                  'ContentType="application/vnd.ms-package.obfuscated-opentype"/>')
     # ECMA-388 first edition, Annex E Table E.1 retains these part MIME types.
     mime = "application/vnd.ms-package.xps"
     types += f'<Override PartName="/FixedDocumentSequence.fdseq" ContentType="{mime}-fixeddocumentsequence+xml"/>'
@@ -147,11 +183,24 @@ def package(path, *, oxps=False, pages=2, documents=1, broken=None, encrypted=Fa
         parts["Resources/pixels.png"] = b"invalid image"
     if broken == "font-data":
         parts["Resources/test.ttf"] = b"invalid font"
+    if obfuscated:
+        data = bytearray(parts.pop("Resources/test.ttf"))
+        key = bytes.fromhex(FONT_GUID.replace("-", ""))[::-1]
+        for i in range(32):
+            data[i] ^= key[i % 16]
+        parts[OBFUSCATED_FONT] = bytes(data)
+        parts = {name: value.replace("/Resources/test.ttf", "/" + OBFUSCATED_FONT)
+                 if isinstance(value, str) else value for name, value in parts.items()}
+    entries = [(name, value.encode("utf-8") if isinstance(value, str) else value)
+               for name, value in parts.items()]
+    if piece_size is not None:
+        entries = pieces(dict(entries), size=piece_size, empty_last=empty_last,
+                         malformed=malformed_piece)
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for name, value in parts.items():
+        for name, value in entries:
             info = zipfile.ZipInfo(name, (2000, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
-            archive.writestr(info, value.encode("utf-8") if isinstance(value, str) else value)
+            archive.writestr(info, value)
     if encrypted:
         # Flags only: must be rejected before attempting to interpret/decrypt payloads.
         data = bytearray(path.read_bytes())

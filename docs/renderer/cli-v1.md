@@ -105,6 +105,9 @@ Prototype guards: 16,384 ZIP entries; 1,073,741,824 total expanded bytes; 10,000
 documents; 10,000 total pages; page dimensions finite, positive and at most
 200,000 XPS units each. These are provisional safety bounds, not product
 acceptance criteria or sufficient memory/CPU containment.
+ZIP-entry and expanded-byte limits count physical OPC pieces as well as direct
+entries. Valid interleaved XPS/OpenXPS need not have direct logical part names
+in the ZIP. libgxps's patched piece reader, not a normalization step, reads them.
 
 ## Publication, failures and recovery
 

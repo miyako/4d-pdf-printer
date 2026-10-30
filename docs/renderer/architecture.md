@@ -7,11 +7,17 @@ emits one status and exits. It never accepts a second job or starts children.
 
 1. Validate CLI and retain a private status stdout handle; suppress third-party
    diagnostics that might expose document content.
-2. Read every entry through libarchive's seekable ZIP reader. Reject encryption,
-   corruption, incomplete packages and provisional expansion/count limits.
+2. Read every physical entry through libarchive's seekable ZIP reader. Reject
+   encryption, ZIP corruption/incompleteness and provisional expansion/count
+   limits. Physical OPC pieces count toward the same limits; a direct
+   `[Content_Types].xml` entry is not required.
 3. Use `gxps_file_new`, `gxps_file_get_document`,
    `gxps_document_get_page` and `gxps_page_render`. No package content is
    extracted to disk; no custom XPS translator exists.
+   libgxps's existing OPC piece reader joins logical parts in memory. The
+   maintained patch reads complete multipart binary resources, handles a sole
+   `[0].last.piece`, and reports a missing next/terminal piece instead of
+   recursing at EOF. This is not exhaustive OPC validation.
 4. Render to `cairo_pdf_surface_create_for_stream` at original page dimensions,
    with 0.75 coordinate scaling. Use normal Cairo font subsetting/image/vector
    capabilities and check both render result and Cairo context/surface state.
@@ -58,9 +64,23 @@ This PR intentionally does not implement a production supervisor. A caller must:
   directory after reaping; retain evidence according to policy without
   logging document content. Cleanup is not guaranteed by OS process exit.
 
-There is no implemented PSA launch path, service IPC, printer registration,
-4D plugin/ABI or 4D Server named-user service integration. Session-0 execution,
-font discovery without profiles, DLL loading/replacement policy, ACLs and
-deployment must be exercised under actual Windows identities. The disposable
-boundary does **not** repair spooler, driver/kernel, broker, 4D-side or Microsoft
-virtual printer faults; it only limits rendering-process state reuse.
+## Desktop-first delivery
+
+The first delivery target is interactive desktop/4D client printing. A separate
+full-trust coordinator owns the supervisor above; never load the renderer into
+4D, the spooler or the PSA AppContainer, and do not assume the PSA can launch an
+arbitrary executable. The worker does not implement printer registration,
+authenticated per-job PSA/coordinator handoff or a 4D plugin/ABI.
+
+Windows-service/session-0 submission remains a future open requirement, not a
+desktop-release blocker. A logged-in helper does not establish service support.
+No service experiment, sign-out or host reconfiguration is part of this milestone.
+The disposable boundary does **not** repair spooler, driver/kernel, broker,
+4D-side or Microsoft virtual printer faults; it only limits rendering-process
+state reuse.
+
+Build and validate a native architecture-specific external development runtime;
+see [the delivery contract](delivery.md). External placement is not a license
+compliance finding. Source/notice delivery, LGPL replacement/relinking, immutable
+MSIX behavior, font/config discovery, DLL-loading policy, ACLs and actual desktop
+identity integration remain separate acceptance gates.

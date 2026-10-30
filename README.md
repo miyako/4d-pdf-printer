@@ -25,3 +25,9 @@ See the [runtime runbook](docs/printer/runbook.md),
 The independent renderer is developed separately under `renderer/` and
 `docs/renderer/`. No AGPL component or product license is selected by the printer
 prototype. Use synthetic data only in this public repository.
+
+The separate [desktop integration source checkpoint](desktop-pdf/README.md)
+combines on-demand full-trust activation with fresh renderer workers and both
+system Save As and registered silent destinations. It is local source work,
+not yet a Windows-built, installed or proven usable PDF printer; existing
+diagnostic packages and queues are unchanged.

@@ -13,7 +13,7 @@ from xml.etree import ElementTree
 import jsonschema
 from pypdf import PdfReader
 
-from fixtures import TEXT, package
+from fixtures import OBFUSCATED_FONT, TEXT, font, package
 
 
 parser = argparse.ArgumentParser()
@@ -139,6 +139,72 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(status["pages_completed"], 4)
         self.assert_pdf(self.output, 4)
 
+    def test_interleaved_xps_and_oxps(self):
+        for oxps in (False, True):
+            package(self.input, oxps=oxps, documents=2, obfuscated=True)
+            self.invoke()
+            direct_pdf = self.output.read_bytes()
+            self.output.unlink()
+            for empty_last in (False, True):
+                with self.subTest(oxps=oxps, empty_last=empty_last):
+                    package(self.input, oxps=oxps, documents=2, obfuscated=True,
+                            piece_size=97, empty_last=empty_last)
+                    with zipfile.ZipFile(self.input) as archive:
+                        names = archive.namelist()
+                        for part in ("[Content_Types].xml", "_rels/.rels",
+                                     "FixedDocumentSequence.fdseq", OBFUSCATED_FONT):
+                            self.assertNotIn(part, names)
+                            self.assertIn(part + "/[0].piece", names)
+                    status = self.invoke()
+                    self.assertEqual(status["documents"], 2)
+                    self.assertEqual(status["pages_completed"], 4)
+                    self.assertEqual(status["output_bytes"], self.assert_pdf(self.output, 4))
+                    self.assertEqual(self.output.read_bytes(), direct_pdf,
+                                     "physical piece boundaries must not alter this synthetic PDF")
+                    self.output.unlink()
+
+    def test_interleaved_font_boundaries(self):
+        for size in (1, 31, 32, 33, len(font()), len(font()) + 1):
+            with self.subTest(piece_size=size):
+                package(self.input, pages=1, obfuscated=True, piece_size=size, empty_last=True)
+                self.invoke()
+                self.assert_pdf(self.output, 1)
+                self.output.unlink()
+
+    def test_single_last_piece(self):
+        package(self.input, obfuscated=True, piece_size=65536)
+        self.invoke()
+        self.assert_pdf(self.output)
+
+    def test_interleaved_fixture_reproducibility_and_reconstruction(self):
+        first, second = self.root / "first.oxps", self.root / "second.oxps"
+        package(self.input, oxps=True, obfuscated=True)
+        package(first, oxps=True, obfuscated=True, piece_size=31, empty_last=True)
+        package(second, oxps=True, obfuscated=True, piece_size=31, empty_last=True)
+        self.assertEqual(first.read_bytes(), second.read_bytes())
+        with zipfile.ZipFile(self.input) as direct, zipfile.ZipFile(first) as split:
+            for name in direct.namelist():
+                pieces = []
+                index = 0
+                while name + f"/[{index}].piece" in split.namelist():
+                    pieces.append(split.read(name + f"/[{index}].piece"))
+                    index += 1
+                pieces.append(split.read(name + f"/[{index}].last.piece"))
+                self.assertEqual(b"".join(pieces), direct.read(name))
+
+    def test_malformed_interleaved_pieces(self):
+        for target, expected in (("_rels/.rels", 30),
+                                 ("FixedDocumentSequence.fdseq", 30),
+                                 (OBFUSCATED_FONT, 32)):
+            for kind, empty_last in (("missing-first", False), ("missing-middle", False),
+                                     ("missing-last", False), ("missing-last", True),
+                                     ("bad-suffix", False), ("out-of-order", False)):
+                with self.subTest(target=target, kind=kind, empty_last=empty_last):
+                    package(self.input, obfuscated=True, piece_size=31,
+                            empty_last=empty_last, malformed_piece=(target, kind))
+                    self.invoke(expected=expected)
+                    self.assertFalse(self.output.exists())
+
     def test_unicode_paths(self):
         directory = self.root / "Unicode \u4e2d\u03a9"
         directory.mkdir()
@@ -207,17 +273,20 @@ class WorkerTests(unittest.TestCase):
         self.assertFalse(self.output.exists())
 
     def test_entry_limit_boundary(self):
-        with zipfile.ZipFile(self.input, "a", compression=zipfile.ZIP_DEFLATED) as archive:
-            count = len(archive.infolist())
-            for i in range(16384 - count):
-                archive.writestr(f"Unused/{i}", b"")
-        self.invoke()
-        self.assert_pdf(self.output)
-        self.output.unlink()
-        with zipfile.ZipFile(self.input, "a") as archive:
-            archive.writestr("Unused/over-limit", b"")
-        self.invoke(expected=13)
-        self.assertFalse(self.output.exists())
+        for piece_size in (None, 97):
+            with self.subTest(piece_size=piece_size):
+                package(self.input, piece_size=piece_size)
+                with zipfile.ZipFile(self.input, "a", compression=zipfile.ZIP_DEFLATED) as archive:
+                    count = len(archive.infolist())
+                    for i in range(16384 - count):
+                        archive.writestr(f"Unused/{i}", b"")
+                self.invoke()
+                self.assert_pdf(self.output)
+                self.output.unlink()
+                with zipfile.ZipFile(self.input, "a") as archive:
+                    archive.writestr("Unused/over-limit", b"")
+                self.invoke(expected=13)
+                self.assertFalse(self.output.exists())
 
     def test_page_limit_rejected_before_render(self):
         with zipfile.ZipFile(self.input) as archive:

@@ -1,8 +1,8 @@
 {
   "name": "libgxps",
   "version": "0.3.2",
-  "port-version": 6,
-  "description": "Pinned upstream libgxps with renderer fail-closed diagnostics patch",
+  "port-version": 7,
+  "description": "Pinned upstream libgxps with fail-closed diagnostics and interleaved resource fixes",
   "homepage": "https://gitlab.gnome.org/GNOME/libgxps",
   "license": "LGPL-2.1-or-later",
   "dependencies": [

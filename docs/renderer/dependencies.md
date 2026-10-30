@@ -11,11 +11,14 @@ Registry/tool commit:
 [`866e9e258a76437074a5cf02d4c2d71b53bff2f8`](https://github.com/microsoft/vcpkg/tree/866e9e258a76437074a5cf02d4c2d71b53bff2f8).
 Upstream libgxps is **0.3.2**, SHA-512 pinned in the overlay and local helper.
 The registry port is revision 5; our local revision **6** retains the upstream
-build approach and adds the explicitly maintained patch below. Historical
+build approach. The current local revision **7** additionally fixes the
+observed interleaved resource reader defects described below. Historical
 upstream commit `693b1b74fce64fa3d340ee9fcf29db60ce2c3551` was useful research,
 but the build uses the release archive, not that moving-source assumption.
 
-The Windows triplet is `x64-windows`: dynamic libraries and dynamic CRT. Cairo
+The Windows triplets are `x64-windows` and `arm64-windows`: dynamic libraries
+and dynamic CRT, separate target/install/runtime trees and one shared pinned
+recipe. Cairo
 uses its default fontconfig/freetype features. Do not infer the final feature
 set from one incoming dependency edge: the observed Windows installed status
 includes FreeType[brotli,bzip2,png,zlib], TIFF[jpeg,lzma,zip] and
@@ -30,7 +33,7 @@ checked against source notices where noted.
 
 | Target port | Version / revision | License facts |
 |---|---|---|
-| libgxps | 0.3.2#6 overlay | LGPL-2.1-or-later; registry #5 omits license metadata |
+| libgxps | 0.3.2#7 overlay | LGPL-2.1-or-later; registry #5 omits license metadata |
 | cairo | 1.18.6 | LGPL-2.1-only OR MPL-1.1 |
 | glib | 2.90.1 | LGPL-2.1-or-later AND (LGPL-2.1-only OR MPL-1.1) |
 | lcms | 2.19.1#1 | MIT; GPL plugin features not selected |
@@ -75,7 +78,8 @@ non-system imports fail the inventory. This distinguishes linked runtime closure
 from merely installed ports, but **delay/dynamic loads, font/config/data files,
 representative rendering module traces, VC runtime redistribution and final
 shipped-file allowlisting still require release review**. CI does not upload
-executables/DLLs as a product.
+executables/DLLs, including development runtime trees: binary distribution is
+deferred until the source/compliance delivery gates below are met.
 
 ### Observed Windows PE runtime closure
 
@@ -124,6 +128,27 @@ The overlay contains:
   arc/path, tile-flip, color/interpolation, triangle cap and VisualBrush
   attributes issue warnings. The wrapper rejects warnings before publication.
   A pkg-config marker prevents accidentally building against unpatched 0.3.2.
+- `interleaved.patch`: changes to LGPL-2.1-or-later libgxps, dated 2026-10-28.
+  Uses the existing OPC piece reader rather than rewriting input packages.
+  Reads a complete multipart resource instead of allocating/reading only the
+  first physical entry's size, fills logical reads across piece boundaries
+  (including PNG header reads), recognizes a sole `[0].last.piece`, and returns
+  a GError for a missing next/terminal piece rather than recursing at EOF.
+  Buffer growth uses checked address-space arithmetic. The worker still
+  drains/counts every physical ZIP entry and enforces the same 1-GiB total
+  expanded-byte and 16,384-entry bounds before libgxps reads the immutable
+  input. A second pkg-config marker prevents stale revision-6 builds.
+
+Original synthetic multipart obfuscated-font tests failed with render exit 32
+before this correction; sole-last-piece packages failed with document exit 30.
+The checked regressions now cover XPS/OXPS, multiple documents/pages, binary
+resources, XML token splits, one-byte and 31/32/33-byte font boundaries,
+nonempty/empty terminal pieces, sole-last pieces, and missing/gapped/misnamed/
+out-of-order pieces in referenced root relationships, sequences and fonts.
+Direct and interleaved encodings produce identical PDF bytes for the generated
+cases on each tested backend. These observations are not exhaustive OPC
+conformance or rejection of every malformed layout: duplicate/ambiguous parts,
+unused metadata and all content-type semantics are not validated.
 
 Initial real synthetic regressions on unpatched Homebrew 0.3.2 observed:
 `Data="NOT_A_PATH"` aborted with SIGABRT; corrupt PNG in an ImageBrush produced
@@ -187,7 +212,9 @@ and [MSIX package runtime behavior](https://learn.microsoft.com/en-us/windows/ms
 ## Test assets and tools
 
 No copied application documents, private inputs or downloaded font files are
-used. Synthetic XML/PNG/font geometry is original new project material with
+used in the repository or public CI. A separately authorized local capture and
+its PDF/raster evidence remain private and are not published as fixtures or
+artifacts. Synthetic XML/PNG/font geometry is original new project material with
 own-code licensing still undecided. FontTools generates font tables (MIT);
 pypdf inspects PDF structure/text (BSD-3-Clause); jsonschema validates the status
 (MIT). Their pinned test-only dependencies have their own installed notices.
@@ -196,8 +223,9 @@ No Ghostscript, MuPDF, qpdf, PDF-Writer or Microsoft XpsToPdf dependency is adde
 The generated OpenXPS case uses ECMA-388 first edition Annex E Table E.1
 part content types and Table E.2's
 `http://schemas.openxps.org/oxps/v1.0/fixedrepresentation`, with the OpenXPS
-page namespace. These identifiers are checked independently of libgxps,
-which does not validate the content-type table. They are synthetic standards
-cases, not evidence that a Windows-generated package was exercised.
+page namespace. These identifiers and synthetic piece reconstruction are checked
+independently of libgxps, which does not validate the content-type table. Public
+CI uses only original generated cases; no Windows-generated private capture
+is transferred to CI.
 [Primary standard](https://ecma-international.org/wp-content/uploads/ECMA-388_1st_edition_june_2009.pdf),
 PDF pages 418-419.

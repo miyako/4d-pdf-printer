@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+ <data name="SaveAsQueue" xml:space="preserve"><value>4D PDF Integration (Save As)</value></data>
+ <data name="SilentQueue" xml:space="preserve"><value>4D PDF Integration (Silent)</value></data>
+</root>
