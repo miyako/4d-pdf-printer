@@ -90,7 +90,12 @@ class Source(unittest.TestCase):
         self.assertIn("if (!self->working.exchange(true)) self->Finish();", task)
         self.assertIn("primary = to_hresult(); Trace(activation::Point::CompleteFailure, primary);", task)
         self.assertIn("Failure(stage.c_str(), primary);", task)
-        self.assertEqual(task.split("struct Factory", 1)[1], baseline.split("struct Factory", 1)[1])
+        # The SDK COM header declares this export without noexcept; body/factory stay exact.
+        unload = 'extern "C" HRESULT __stdcall DllCanUnloadNow()'
+        baseline_factory = baseline.split("struct Factory", 1)[1]
+        self.assertEqual(baseline_factory.count(unload + " noexcept"), 1)
+        self.assertEqual(task.split("struct Factory", 1)[1],
+                         baseline_factory.replace(unload + " noexcept", unload, 1))
 
     def test_dependency_snapshot_exact(self):
         names = subprocess.check_output(
@@ -144,6 +149,15 @@ class Source(unittest.TestCase):
         cmake = (ROOT / "desktop-pdf/CMakeLists.txt").read_text()
         self.assertIn("DiagnosticPdc.xml", cmake)
         self.assertIn("IntegrationPdc.xml", cmake)
+        native_targets = re.search(r"foreach\(target (.*?)\)(.*?)endforeach\(\)", cmake, re.S)
+        self.assertEqual(set(native_targets.group(1).split()), {
+            "IntegrationContract", "IntegrationWorkerProcess", "IntegrationTask", "IntegrationApp",
+            "IntegrationHost", "IntegrationClient", "IntegrationNative", "IntegrationProcessTests",
+            "IntegrationWorkerFixture",
+        })
+        self.assertIn("UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX", native_targets.group(2))
+        self.assertIn("/W4 /WX /EHsc /permissive- /utf-8", native_targets.group(2))
+        self.assertIn("target_link_libraries(${target} PRIVATE windowsapp ole32)", native_targets.group(2))
         self.assertIn('CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64"', cmake)
         self.assertIn("set(PDF_PACKAGE_ARCH arm64)", cmake)
         self.assertIn('install(FILES "${CMAKE_CURRENT_BINARY_DIR}/AppxManifest.xml"', cmake)

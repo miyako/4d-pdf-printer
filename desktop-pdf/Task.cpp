@@ -310,4 +310,4 @@ extern "C" HRESULT __stdcall DllGetActivationFactory(void* name, void** factory)
         *factory = detach_abi(make<Factory>()); return S_OK;
     } catch (...) { return to_hresult(); }
 }
-extern "C" HRESULT __stdcall DllCanUnloadNow() noexcept { return get_module_lock() ? S_FALSE : S_OK; }
+extern "C" HRESULT __stdcall DllCanUnloadNow() { return get_module_lock() ? S_FALSE : S_OK; }

@@ -80,6 +80,11 @@ storage or COM work. A scoped `CoIncrementMTAUsage`/`CoDecrementMTAUsage` cookie
 (documented movable across threads) and MTA check keep async storage off the Run
 context, without initializing/uninitializing the Task/factory apartment.
 Existing Root/Publish no-overwrite helpers are reused inside that namespace.
+The Windows half also compiles in IntegrationContract, which receives the same
+native definitions (including NOMINMAX), strict warnings and WinRT/COM libraries
+as the other native targets. Including the SDK COM declaration requires
+DllCanUnloadNow to omit noexcept; its original module-lock return body and
+uninstrumented factory behavior remain unchanged.
 
 Sink/setup/queue/limit/apartment-cleanup failures use the existing `Failure`
 reporter; sink/enqueue failure disables further diagnostic writes without retry
