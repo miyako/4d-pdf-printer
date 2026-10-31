@@ -102,6 +102,23 @@ proof Run/Data was never entered**, and a trace is not a print-success contract.
 Fixed work/memory limits do not impose a hard deadline on native identity/COM/
 storage calls; a stalled writer can leave diagnostic state/I/O pending until
 completion or process termination, without retaining the Task deferral.
+The plain shared state now explicitly pins the **own C++/WinRT module lock**:
+its first base acquires `++get_module_lock()` before any Drain can be scheduled
+and releases `--get_module_lock()` last, after state members and
+enable_shared_from_this base cleanup. The scoped counter is noncopyable/nonmovable;
+construction unwinding releases an acquired count. Neither shared_ptr,
+fire_and_forget nor the first resume_background callback is assumed to pin DLL
+code implicitly. Pending writers and later idle waves keep that state/lock alive,
+so Task/factory release alone cannot make DllCanUnloadNow report S_OK while
+diagnostic state remains. There is no HMODULE/FreeLibrary callback-stack scheme.
+This is cooperative module-unload protection, **not OS process-lifetime retention**:
+process termination can still interrupt diagnostics and it does not extend Task
+deferrals, printing deadlines or completion guarantees.
+Portable tests execute the production scoped-counter acquire/release, constructor
+unwind, cleanup order and pending shared-owner cases; native tests repeat these
+against the real get_module_lock and instantiate the real diagnostic state without
+scheduling a writer. The entire reviewed Task.cpp remains byte-exact. These tests
+do not execute a PSA deferral, actual writer callback or physical DLL unload.
 Native Windows compilation, package-context identity, apartment/storage behavior
 and early lifecycle failures still require separately reviewed native evidence.
 No routing, class/AUMID, input/output format or renderer change is made here.

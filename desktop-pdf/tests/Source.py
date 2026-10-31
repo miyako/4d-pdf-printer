@@ -1,5 +1,6 @@
 """Source/provenance checks only. Does not execute or emulate Windows APIs."""
 from pathlib import Path
+import hashlib
 import re
 import subprocess
 import unittest
@@ -25,6 +26,13 @@ class Source(unittest.TestCase):
         trace = (ROOT / "desktop-pdf/ActivationDiagnostics.h").read_text()
         task = (ROOT / "desktop-pdf/Task.cpp").read_text()
         self.assertIn("EventLimit = 32, IdentityChars = 256, RecordLimit = 8192", trace)
+        self.assertIn("++counter;", trace)
+        self.assertIn("~ScopedCounter() noexcept { --counter; }", trace)
+        self.assertIn("ModuleLifetime() noexcept : ScopedCounter<ModuleCounter>(get_module_lock())", trace)
+        self.assertIn("class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>", trace)
+        self.assertIn("defined(WINRT_NO_MODULE_LOCK) || defined(WINRT_CUSTOM_MODULE_LOCK)", trace)
+        for forbidden in ("FreeLibrary", "LoadLibrary", "HMODULE"):
+            self.assertNotIn(forbidden, trace)
         self.assertIn("accepted == EventLimit", trace)
         self.assertIn('L"4d-pdf-printer.activation-diagnostic"', trace)
         self.assertIn('L"ActivationDiagnostics"', trace)
@@ -77,6 +85,9 @@ class Source(unittest.TestCase):
 
     def test_activation_instrumentation_preserves_job_finalizer(self):
         task = (ROOT / "desktop-pdf/Task.cpp").read_text()
+        self.assertEqual(hashlib.sha256((ROOT / "desktop-pdf/Task.cpp").read_bytes()).hexdigest(),
+                         "014eb6e7a32ab673cbec3b4552324f47345d890d407a2f01abdd92d0f6491653",
+                         "Module-lifetime correction must leave entire reviewed Task/deferral code byte-exact")
         baseline = original("ae53b92a5e1f3fa442f41246079cde7e2f4afd47", "desktop-pdf/Task.cpp").decode()
         # No trace additions or behavior edits in capture/launch/wait/publication.
         start = '            if (mode == Mode::Silent) {\n                auto claim'

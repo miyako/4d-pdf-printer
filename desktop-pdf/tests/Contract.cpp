@@ -1,6 +1,7 @@
 #include "../Contract.h"
 #include "../ActivationDiagnostics.h"
 #include "PhysicalMapping.h"
+#include "ActivationLifetime.h"
 #include <iostream>
 
 using namespace pdf;
@@ -11,6 +12,8 @@ template<typename F> void Reject(F function) {
 }
 int main() {
     try {
+        std::uint32_t lifetimeCount = 0;
+        tests::LifetimeChecks(lifetimeCount);
         activation::Journal journal;
         activation::Event event;
         event.point = activation::Point::Count;

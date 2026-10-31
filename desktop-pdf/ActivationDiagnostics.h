@@ -1,8 +1,23 @@
 #pragma once
 #include "Contract.h"
 #include <array>
+#include <type_traits>
+#include <utility>
 
 namespace pdf::activation {
+template<typename Counter> class ScopedCounter {
+    Counter& counter;
+public:
+    explicit ScopedCounter(Counter& value) noexcept : counter(value) {
+        static_assert(noexcept(++counter) && noexcept(--counter));
+        ++counter;
+    }
+    ScopedCounter(ScopedCounter const&) = delete;
+    ScopedCounter& operator=(ScopedCounter const&) = delete;
+    ScopedCounter(ScopedCounter&&) = delete;
+    ScopedCounter& operator=(ScopedCounter&&) = delete;
+    ~ScopedCounter() noexcept { --counter; }
+};
 inline constexpr std::size_t EventLimit = 32, IdentityChars = 256, RecordLimit = 8192;
 enum class Point {
     RunEnter, DeferralAcquired, TriggerBefore, TriggerAcquired, SessionBefore,
@@ -55,6 +70,13 @@ public:
 #include <mutex>
 
 namespace pdf::activation {
+#if defined(WINRT_NO_MODULE_LOCK) || defined(WINRT_CUSTOM_MODULE_LOCK)
+#error Activation diagnostics require the default C++/WinRT own-module lock.
+#endif
+using ModuleCounter = std::remove_reference_t<decltype(get_module_lock())>;
+struct ModuleLifetime : ScopedCounter<ModuleCounter> {
+    ModuleLifetime() noexcept : ScopedCounter<ModuleCounter>(get_module_lock()) {}
+};
 struct Identity {
     std::uint32_t error{}, validationError{};
     std::wstring value;
@@ -95,7 +117,8 @@ struct Apartment {
         }
     }
 };
-class Trace : public std::enable_shared_from_this<Trace> {
+// First base is destroyed last, after members and enable_shared_from_this cleanup.
+class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace> {
     std::mutex mutex;
     Journal journal;
     bool writing{}, failed{}, limitReported{};

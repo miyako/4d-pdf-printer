@@ -1,5 +1,6 @@
 #include "../Job.h"
 #include "../ActivationDiagnostics.h"
+#include "ActivationLifetime.h"
 #include <iostream>
 
 using namespace pdf;
@@ -11,6 +12,33 @@ template<typename F> void Reject(F function) {
 int main() {
     try {
         init_apartment(apartment_type::multi_threaded);
+        tests::LifetimeChecks(get_module_lock());
+        static_assert(!std::is_copy_constructible_v<activation::ModuleLifetime> &&
+            !std::is_move_constructible_v<activation::ModuleLifetime>);
+        auto baseline = static_cast<std::uint32_t>(get_module_lock());
+        {
+            activation::ModuleLifetime guard;
+            Require(static_cast<std::uint32_t>(get_module_lock()) == baseline + 1, "real own-module guard");
+        }
+        Require(static_cast<std::uint32_t>(get_module_lock()) == baseline, "real own-module guard released");
+        Reject([] {
+            struct FailedTrace : activation::Trace {
+                FailedTrace() { throw std::runtime_error("expected diagnostic state construction failure"); }
+            };
+            (void)std::make_shared<FailedTrace>();
+        });
+        Require(static_cast<std::uint32_t>(get_module_lock()) == baseline,
+            "real diagnostic state construction unwind releases own-module lock");
+        auto state = std::make_shared<activation::Trace>();
+        auto pendingWriterState = state;
+        std::weak_ptr<activation::Trace> weakState = state;
+        state.reset();
+        Require(!weakState.expired() && get_module_lock() &&
+            static_cast<std::uint32_t>(get_module_lock()) == baseline + 1,
+            "real diagnostic state remains module-locked after owner release before writer work");
+        pendingWriterState.reset();
+        Require(weakState.expired() && static_cast<std::uint32_t>(get_module_lock()) == baseline,
+            "real diagnostic state final cleanup releases own-module lock");
         activation::Event event;
         event.point = activation::Point::PreJobFailure; event.error = 0x80070057u;
         activation::Identity identity; identity.value = L"Miyako.DesktopPdfIntegration_hjw4whvmzr08m!Silent";
