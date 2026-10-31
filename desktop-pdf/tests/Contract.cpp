@@ -1,4 +1,5 @@
 #include "../Contract.h"
+#include "../HostArguments.h"
 #include "../ActivationDiagnostics.h"
 #include "PhysicalMapping.h"
 #include "ActivationLifetime.h"
@@ -37,15 +38,36 @@ int main() {
             auto bare = ParseActivation(arguments);
             auto wrapped = ParseActivation(L"/InvokerPRAID: " + Name(mode) + L" " + arguments);
             Require(bare.id == id && wrapped.id == id && bare.mode == mode && wrapped.mode == mode, "activation binding");
+            auto hostBare = ParseHostActivation(arguments);
+            auto hostWrapped = ParseHostActivation(L"/InvokerPRAID: " + Name(mode) + L" " + arguments);
+            Require(hostBare.id == id && hostWrapped.id == id && hostBare.mode == mode && hostWrapped.mode == mode,
+                "host retains original strict forms");
             auto other = mode == Mode::SaveAs ? L"Silent" : L"SaveAs";
             Reject([&] { ParseActivation(L"/InvokerPRAID: " + std::wstring(other) + L" " + arguments); });
-            for (auto suffix : {L" ", L"\n", L" --extra", L"f"})
+            for (auto suffix : {L" ", L"\n", L" --extra", L"f"}) {
                 Reject([&] { ParseActivation(arguments + suffix); });
+                Reject([&] { ParseHostActivation(arguments + suffix); });
+                Reject([&] { ParseHostActivation(L"/InvokerPRAID: " + Name(mode) + L" " + arguments + suffix); });
+            }
         }
         for (auto prefix : {L"Printer", L"Client", L"saveas", L"SaveAs.exe", L"Unknown"})
             Reject([&] { ParseActivation(L"/InvokerPRAID: " + std::wstring(prefix) + L" --mode SaveAs --job " + id); });
         Reject([&] { ParseActivation(L"--mode SaveAs --job " + std::wstring(32, L'A')); });
         Reject([&] { ParseActivation(L"--test-id " + id); });
+        auto sharedOwner = L"/InvokerPRAID: SaveAs --mode Silent --job " + id;
+        auto hostSilent = ParseHostActivation(sharedOwner);
+        Require(hostSilent.mode == Mode::Silent && hostSilent.id == id, "SaveAs owner retains Silent protocol mode/job");
+        Reject([&] { ParseActivation(sharedOwner); });
+        for (auto suffix : {L" ", L"\n", L" --extra", L"f"})
+            Reject([&] { ParseHostActivation(sharedOwner + suffix); });
+        for (auto prefix : {L"Printer", L"Client", L"saveas", L"SaveAs.exe", L"Unknown"})
+            Reject([&] { ParseHostActivation(L"/InvokerPRAID: " + std::wstring(prefix) + L" --mode Silent --job " + id); });
+        for (auto raw : {L"/InvokerPRAID: Silent --mode SaveAs --job ",
+                        L"/InvokerPRAID: SaveAs /InvokerPRAID: Silent --mode Silent --job ",
+                        L"/InvokerPRAID: SaveAs --mode Other --job "})
+            Reject([&] { ParseHostActivation(std::wstring(raw) + id); });
+        for (auto badId : {L"", L"short", L"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaag"})
+            Reject([&] { ParseHostActivation(L"/InvokerPRAID: SaveAs --mode Silent --job " + std::wstring(badId)); });
         Require(Registration(L"4dpdf:" + id) == id, "registration selector");
         Reject([] { Registration(L"normal application job title"); });
         Reject([&] { Registration(L"4dpdf:" + id + L" "); });

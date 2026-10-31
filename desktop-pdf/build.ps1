@@ -35,23 +35,32 @@ function Manifest([xml]$Xml) {
     }.GetEnumerator()) { $ns.AddNamespace($pair.Key, $pair.Value) }
     $identity = $Xml.SelectSingleNode('/m:Package/m:Identity', $ns)
     $families = @($Xml.SelectNodes('/m:Package/m:Dependencies/m:TargetDeviceFamily', $ns))
-    if ($identity.Name -cne 'Miyako.DesktopPdfIntegration' -or $identity.Version -cne '0.1.0.1' -or
+    if ($identity.Name -cne 'Miyako.DesktopPdfIntegration' -or $identity.Version -cne '0.1.0.2' -or
         $identity.Publisher -cne 'CN=DesktopPdfPrototypeDev' -or $identity.ProcessorArchitecture -cne $arch) {
         throw 'Unexpected integration identity/version/publisher/architecture.'
     }
     if ($families.Count -ne 1 -or $families[0].Name -cne 'Windows.Desktop' -or
         $families[0].MinVersion -cne '10.0.26100.0' -or $families[0].MaxVersionTested -cne '10.0.26100.0') { throw 'Wrong desktop OS contract.' }
     $apps = @($Xml.SelectNodes('/m:Package/m:Applications/m:Application', $ns))
-    if (($apps.Id | Sort-Object) -join ',' -cne 'Client,SaveAs,Silent') { throw 'Unexpected AppIDs.' }
+    if ($apps.Count -ne 2 -or ($apps.Id | Sort-Object) -join ',' -cne 'Client,SaveAs') { throw 'Unexpected AppIDs.' }
+    $app = $Xml.SelectSingleNode("/m:Package/m:Applications/m:Application[@Id='SaveAs']", $ns)
+    $extension = $app.SelectSingleNode('m:Extensions/d:Extension', $ns)
+    if ($app.Executable -cne 'IntegrationApp.exe' -or $app.EntryPoint -cne 'DesktopPdfIntegration.App' -or
+        $app.GetAttribute('SupportsMultipleInstances', $ns.LookupNamespace('u10')) -cne 'true' -or
+        $app.SelectNodes('m:Extensions/*', $ns).Count -ne 3 -or
+        $app.SelectNodes('m:Extensions/p:Extension', $ns).Count -ne 2 -or
+        $app.SelectNodes('m:Extensions/d:Extension', $ns).Count -ne 1 -or
+        $Xml.SelectNodes('/m:Package/m:Applications/m:Application/m:Extensions/p:Extension', $ns).Count -ne 2 -or
+        $Xml.SelectNodes('/m:Package/m:Applications/m:Application/m:Extensions/d:Extension', $ns).Count -ne 1 -or
+        $extension.Category -cne 'windows.fullTrustProcess' -or $extension.Executable -cne 'IntegrationHost.exe') {
+        throw 'Incorrect single printer-owner/full-trust wiring.'
+    }
     foreach ($id in @('SaveAs', 'Silent')) {
-        $app = $Xml.SelectSingleNode("/m:Package/m:Applications/m:Application[@Id='$id']", $ns)
-        $extension = $app.SelectSingleNode('m:Extensions/d:Extension', $ns)
-        $psa = $app.SelectSingleNode('m:Extensions/p:Extension', $ns)
-        $queue = $app.SelectSingleNode('m:Extensions/p:Extension/p:PrintSupportVirtualPrinter', $ns)
         $uri = if ($id -eq 'SaveAs') { 'desktop-pdf:save-as' } else { 'desktop-pdf:silent' }
-        if ($app.Executable -cne 'IntegrationApp.exe' -or $app.EntryPoint -cne 'DesktopPdfIntegration.App' -or
-            $extension.Category -cne 'windows.fullTrustProcess' -or $extension.Executable -cne 'IntegrationHost.exe' -or
-            $app.SelectNodes('m:Extensions/*', $ns).Count -ne 2 -or
+        $queues = @($app.SelectNodes("m:Extensions/p:Extension/p:PrintSupportVirtualPrinter[@PrinterUri='$uri']", $ns))
+        if ($queues.Count -ne 1) { throw "Endpoint not unique under SaveAs: $id" }
+        $queue = $queues[0]; $psa = $queue.ParentNode
+        if ($psa.SelectNodes('*').Count -ne 1 -or
             $psa.Category -cne 'windows.printSupportVirtualPrinterWorkflow' -or $psa.EntryPoint -cne 'DesktopPdfIntegration.Task' -or
             $queue.PrinterUri -cne $uri -or $queue.DisplayName -cne "ms-resource:$($id)Queue" -or
             $queue.PdcFile -cne 'Config\IntegrationPdc.xml' -or $queue.PreferredInputFormat -cne 'application/oxps' -or
@@ -251,7 +260,7 @@ try {
             Checked $makeappx @('pack', '/d', $stagePath, '/p', $package)
             $receipt.members = @(PackageEvidence $package $pri)
             $receipt.package_sha256 = Digest $package; $receipt.pri_sha256 = Digest $pri
-            $receipt.app_ids = @('SaveAs', 'Silent', 'Client'); $receipt.package = $package
+            $receipt.app_ids = @('SaveAs', 'Client'); $receipt.package = $package
         }
     }
     $receipt.outcome = 'success'

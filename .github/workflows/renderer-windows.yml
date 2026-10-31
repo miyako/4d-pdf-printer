@@ -73,7 +73,7 @@ jobs:
           } elseif ($env:SELECTED_SCOPE -cne 'full') { throw 'Automatic events must run full regressions.' }
       - name: Fetch only exact source-comparison objects
         run: |
-          git fetch --no-tags --depth=1 origin 8b34e5669bec822bb82768fd61b0483bbdd74567 12cc27915d08fcf29c5b1f00c422e0a16cc23e1b ae53b92a5e1f3fa442f41246079cde7e2f4afd47
+          git fetch --no-tags --depth=1 origin 8b34e5669bec822bb82768fd61b0483bbdd74567 12cc27915d08fcf29c5b1f00c422e0a16cc23e1b ae53b92a5e1f3fa442f41246079cde7e2f4afd47 245373012067c928781e5c85b7aafddd191b800d
           if ($LASTEXITCODE -ne 0) { throw 'Pinned source comparison objects unavailable.' }
       - name: Check source contracts and selected commit whitespace
         id: source

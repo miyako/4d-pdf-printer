@@ -1,5 +1,12 @@
 # Desktop PDF integration: local source-review checkpoint
 
+**0.1.0.2 is an uncommitted, unbuilt topology experiment; deployment is on hold.**
+The installed 0.1.0.1/245 baseline has genuine Save As evidence, but registered
+Silent submission failed StartDocW with error3003. A current same-caller
+non-file diagnostic print captured fresh OXPS without a dialog; its intentional
+capture-only failed completion was not a PDF workflow failure. These observations
+do not establish that the integration's two printer-owning AppIDs caused3003.
+
 **The extended process/publication and unsigned-package gate is natively UNRUN
 at this source-review checkpoint. Activation and printing are unproven.**
 The prior compile-only source `3fd66773a5b86bd94276c437de7ecd8d5b4c58f3`
@@ -19,7 +26,7 @@ No recompression/postprocessing, resident broker, native file dialog, elevation,
 services/session 0 or pre-login. No promise of smaller PDFs or fixes to upstream
 Windows/driver/app bugs.
 
-The separate manifest defines `Miyako.DesktopPdfIntegration` 0.1.0.1, publisher
+The separate candidate manifest defines `Miyako.DesktopPdfIntegration` 0.1.0.2, publisher
 `CN=DesktopPdfPrototypeDev`, and **4D PDF Integration (Save As)** /
 **4D PDF Integration (Silent)**. These are source definitions, not authorization
 to register identity, trust a certificate, create queues or install anything.
@@ -36,14 +43,41 @@ generic interactive printing. `Job.h` contains small strict record/file helpers;
 `WorkerProcess` owns runtime validation, handles and no-replace publication.
 `Contract.h` is production-used portable argument/path/deadline/wire validation.
 
-The same fixed full-trust host extension is attached to AppIDs **SaveAs** and
-**Silent**. Launch arguments are `--mode <SaveAs|Silent> --job <32lowerhex>`.
-The parser accepts that exact bare form or the exact corresponding
-`/InvokerPRAID: SaveAs ...` / `/InvokerPRAID: Silent ...` form, with matching mode.
-It rejects old `Printer`, arbitrary wrappers, mismatched AppID/mode and extras.
-Only the old smoke wrapper was observed on Windows; the NEW manifest/wrappers
-remain unproven and must fail explicitly if Windows supplies something different.
+Both unchanged printer extensions now belong to existing **SaveAs**, with one
+fixed full-trust Host extension; separate packagedClassicApp **Client** remains.
+There are two total Applications, one printer-owning Application and two endpoints.
+Silent's expected printer AUMID changes from the package family plus `!Silent`
+to `!SaveAs`, and its full-trust invoker PRAID becomes `SaveAs`. URI-based protocol
+mode remains `Silent`; Save As and Client identities remain unchanged.
+`HostArguments.h`, used only by Host and tests, adds the exact
+`/InvokerPRAID: SaveAs --mode Silent --job <32lowerhex>` form by delegating its
+bare mode/job suffix to unchanged `Contract.h` validation. All original strict
+bare/corresponding-wrapper forms remain accepted for compatibility. Arbitrary
+owners, nested wrappers, other mismatches, malformed IDs and extras still fail.
+This is argument compatibility, not authentication. Host still validates the
+request's mode and job ID. Actual candidate PSA identity/FullTrust dispatch is
+unproved; portable argument tests do not establish Windows launch behavior.
 Generic interactive document titles are never parsed as registration selectors.
+
+The candidate preserves Task/App/Client, diagnostics/module lifetime, shared
+contract, worker/runtime and publication sources exactly to245. The existing
+full native Build/Package pipeline must rebuild and test all own targets, then
+record fresh actual PE hashes. Native PE timestamps are not deterministic: frozen
+source does not imply byte-identical245 binaries. No mixed-binary reuse,
+timestamp normalization or relaxed receipt/inventory checks are proposed.
+
+Any later normal in-place update needs separate approval. Package family/cache
+stay the same, but withdrawing `!Silent` can refresh/recreate queue enrollment or
+leave stale AUMID binding; unchanged URI/port is not AUMID proof. Unexpected
+enrollment must stop, not trigger force/uninstall/re-registration or cleanup.
+Restoration would require a separately reviewed forward higher-version package,
+not an assumed safe normal downgrade to0.1.0.1. Preserve existing jobs,
+registrations, diagnostic captures/traces, runtime, default and evidence.
+Topology plus Host compatibility and deployment are coupled variables, not a
+strict causal experiment. Actual fresh Silent exact PDF/no-UI/publication/
+CompleteJob evidence and a separately authorized Save As regression are required
+before any usability claim. No install/print operator or native gate is authorized
+by this source change.
 
 ### Diagnostic-only Task activation checkpoints
 
@@ -121,12 +155,13 @@ scheduling a writer. The entire reviewed Task.cpp remains byte-exact. These test
 do not execute a PSA deferral, actual writer callback or physical DLL unload.
 Native Windows compilation, package-context identity, apartment/storage behavior
 and early lifecycle failures still require separately reviewed native evidence.
-No routing, class/AUMID, input/output format or renderer change is made here.
-Version 0.1.0.1 is the diagnostic-only upgrade candidate, preserving identity,
+The historical0.1.0.1 diagnostic-only change made no routing, class/AUMID,
+input/output format or renderer change. It preserved identity,
 publisher, apps, routing and print contracts. Native compilation/records/package
 and actual runtime writer behavior remain unproved until their exact evidence;
-signing/install/printing are separate later user-operated steps. The installed
-signed ae53 0.1.0.0 package, runtime/configuration and queues remain untouched.
+signing/install/printing were separate user-operated steps. The current installed
+0.1.0.1 package, runtime/configuration, queues and accumulated evidence remain
+untouched by this0.1.0.2 source-only candidate.
 
 Client verbs below describe an interface, **not operator instructions or consent
 to execute on Windows**:
@@ -226,6 +261,12 @@ patterns are adapted from **6b974f94d6aa5a574a96a899b34539061d7e4850**;
 its test trust/completion protocol is not promoted. Only corrected
 `PhysicalMapping.h` is extracted verbatim from PR6
 **12cc27915d08fcf29c5b1f00c422e0a16cc23e1b**; none of its RPC/admission platform.
+
+Source guards also require exact Git objects `ae53b92a5e1f3fa442f41246079cde7e2f4afd47`
+and frozen integration baseline `245373012067c928781e5c85b7aafddd191b800d`, alongside
+the dependency and geometry refs above. CI explicitly fetches all four comparison
+objects; a local native checkout must contain them before validation/build, not
+rely on incidental checkout depth. No local fetch or operator is authorized here.
 
 The first slice can reuse the already user-built verified native ARM64 PR7
 development runtime via its fixed explicit root; not downloaded or bundled.

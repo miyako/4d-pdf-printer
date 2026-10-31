@@ -1,4 +1,5 @@
 #include "WorkerProcess.h"
+#include "HostArguments.h"
 
 using namespace pdf;
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR raw, int) {
@@ -9,7 +10,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR raw, int) {
     bool accepted = false;
     JsonObject worker{nullptr};
     try {
-        auto activation = ParseActivation(raw); id = activation.id; mode = activation.mode;
+        auto activation = ParseHostActivation(raw); id = activation.id; mode = activation.mode;
         init_apartment(apartment_type::multi_threaded);
         auto root = Root().get();
         job = Folder(L"Jobs", id).get();

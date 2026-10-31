@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[2]
 DEPENDENCY = "8b34e5669bec822bb82768fd61b0483bbdd74567"
 PROOF = "12cc27915d08fcf29c5b1f00c422e0a16cc23e1b"
+INTEGRATION_BASELINE = "245373012067c928781e5c85b7aafddd191b800d"
 NS = {
     "m": "http://schemas.microsoft.com/appx/manifest/foundation/windows10",
     "u10": "http://schemas.microsoft.com/appx/manifest/uap/windows10/10",
@@ -22,6 +23,42 @@ def original(ref, path):
 
 
 class Source(unittest.TestCase):
+    def test_topology_candidate_preserves_producer_and_worker_sources(self):
+        for path in ("desktop-pdf/Task.cpp", "desktop-pdf/ActivationDiagnostics.h",
+                     "printer/psa/App.cpp", "desktop-pdf/Client.cpp", "desktop-pdf/Contract.h",
+                     "desktop-pdf/WorkerProcess.cpp", "desktop-pdf/WorkerProcess.h", "desktop-pdf/Job.h",
+                     "printer/package/DiagnosticPdc.xml", "desktop-pdf/package/Strings/en-US/Resources.resw",
+                     "desktop-pdf/CMakeLists.txt"):
+            with self.subTest(path=path):
+                self.assertEqual((ROOT / path).read_bytes(), original(INTEGRATION_BASELINE, path))
+        helper = (ROOT / "desktop-pdf/HostArguments.h").read_text()
+        self.assertIn('L"/InvokerPRAID: SaveAs --mode Silent --job "', helper)
+        self.assertIn("return ParseActivation(raw.substr(owner.size()));", helper)
+        self.assertIn("return ParseActivation(raw);", helper)
+        host = (ROOT / "desktop-pdf/Host.cpp").read_text()
+        baseline_host = original(INTEGRATION_BASELINE, "desktop-pdf/Host.cpp").decode()
+        self.assertEqual(host, baseline_host.replace('#include "WorkerProcess.h"',
+                         '#include "WorkerProcess.h"\n#include "HostArguments.h"', 1)
+                         .replace("auto activation = ParseActivation(raw);", "auto activation = ParseHostActivation(raw);", 1))
+        native = (ROOT / "desktop-pdf/tests/Native.cpp").read_text()
+        self.assertIn('ParseHostActivation(L"/InvokerPRAID: SaveAs --mode Silent --job " + job)', native)
+        self.assertIn('Validate(request, hostActivation.id, hostActivation.mode, L"request")', native)
+        build = (ROOT / "desktop-pdf/build.ps1").read_text()
+        baseline_build = original(INTEGRATION_BASELINE, "desktop-pdf/build.ps1").decode()
+        self.assertEqual(build.split("function Manifest(", 1)[0], baseline_build.split("function Manifest(", 1)[0])
+        before = "$receipt.app_ids = @('SaveAs', 'Silent', 'Client')"
+        after = "$receipt.app_ids = @('SaveAs', 'Client')"
+        baseline_tail = baseline_build.split("function PackageEvidence(", 1)[1]
+        self.assertEqual(baseline_tail.count(before), 1)
+        self.assertEqual(build.split("function PackageEvidence(", 1)[1], baseline_tail.replace(before, after, 1))
+        workflow = (ROOT / ".github/workflows/renderer-windows.yml").read_text()
+        baseline_workflow = original(INTEGRATION_BASELINE, ".github/workflows/renderer-windows.yml").decode()
+        fetch = f"git fetch --no-tags --depth=1 origin {DEPENDENCY} {PROOF} ae53b92a5e1f3fa442f41246079cde7e2f4afd47"
+        self.assertEqual(baseline_workflow.count(fetch), 1)
+        self.assertEqual(workflow, baseline_workflow.replace(fetch, fetch + " " + INTEGRATION_BASELINE, 1))
+        refs = re.search(r"git fetch --no-tags --depth=1 origin ([^\n]+)", workflow).group(1).split()
+        self.assertEqual(refs, [DEPENDENCY, PROOF, "ae53b92a5e1f3fa442f41246079cde7e2f4afd47", INTEGRATION_BASELINE])
+
     def test_activation_diagnostics_are_separate_and_bounded(self):
         trace = (ROOT / "desktop-pdf/ActivationDiagnostics.h").read_text()
         task = (ROOT / "desktop-pdf/Task.cpp").read_text()
@@ -134,20 +171,36 @@ class Source(unittest.TestCase):
         identity = package.find("m:Identity", NS)
         self.assertEqual(identity.attrib["Name"], "Miyako.DesktopPdfIntegration")
         self.assertEqual(identity.attrib["Publisher"], "CN=DesktopPdfPrototypeDev")
-        self.assertEqual(identity.attrib["Version"], "0.1.0.1")
+        self.assertEqual(identity.attrib["Version"], "0.1.0.2")
         apps = {app.attrib["Id"]: app for app in package.findall("m:Applications/m:Application", NS)}
-        self.assertEqual(set(apps), {"SaveAs", "Silent", "Client"})
+        self.assertEqual(len(package.findall("m:Applications/m:Application", NS)), 2)
+        self.assertEqual(set(apps), {"SaveAs", "Client"})
+        app = apps["SaveAs"]
+        self.assertEqual(app.attrib["Executable"], "IntegrationApp.exe")
+        self.assertEqual(app.attrib["EntryPoint"], "DesktopPdfIntegration.App")
+        self.assertEqual(app.attrib[f"{{{NS['u10']}}}SupportsMultipleInstances"], "true")
+        extensions = app.findall("m:Extensions/psa:Extension", NS)
+        self.assertEqual(len(extensions), 2)
+        queues = {ext.find("psa:PrintSupportVirtualPrinter", NS).attrib["PrinterUri"]:
+                  ext.find("psa:PrintSupportVirtualPrinter", NS) for ext in extensions}
+        self.assertEqual(set(queues), {"desktop-pdf:save-as", "desktop-pdf:silent"})
+        baseline = ET.fromstring(original(INTEGRATION_BASELINE, "desktop-pdf/package/AppxManifest.xml"))
         for app_id, uri in (("SaveAs", "desktop-pdf:save-as"), ("Silent", "desktop-pdf:silent")):
-            app = apps[app_id]
-            queue = app.find("m:Extensions/psa:Extension/psa:PrintSupportVirtualPrinter", NS)
+            queue = queues[uri]
             self.assertEqual(queue.attrib["PrinterUri"], uri)
             self.assertEqual(queue.attrib["PreferredInputFormat"], "application/oxps")
             self.assertEqual(queue.attrib.get("OutputFileTypes"), "pdf" if app_id == "SaveAs" else None)
-            extension = app.find("m:Extensions/desktop:Extension", NS)
-            self.assertEqual(extension.attrib, {
-                "Category": "windows.fullTrustProcess", "Executable": "IntegrationHost.exe",
-            })
+            before = baseline.find(f"m:Applications/m:Application[@Id='{app_id}']/m:Extensions/psa:Extension", NS)
+            after = next(ext for ext in extensions if ext.find("psa:PrintSupportVirtualPrinter", NS).attrib["PrinterUri"] == uri)
+            self.assertEqual(ET.tostring(after), ET.tostring(before), "PSA extension must move unchanged")
+        self.assertEqual(len(app.findall("m:Extensions/*", NS)), 3)
+        hosts = package.findall("m:Applications/m:Application/m:Extensions/desktop:Extension", NS)
+        self.assertEqual(len(hosts), 1)
+        self.assertEqual(hosts[0].attrib, {
+            "Category": "windows.fullTrustProcess", "Executable": "IntegrationHost.exe",
+        })
         client = apps["Client"]
+        self.assertEqual(ET.tostring(client), ET.tostring(baseline.find("m:Applications/m:Application[@Id='Client']", NS)))
         self.assertEqual(client.attrib[f"{{{NS['u10']}}}RuntimeBehavior"], "packagedClassicApp")
         self.assertEqual(client.attrib[f"{{{NS['u10']}}}TrustLevel"], "mediumIL")
 
@@ -214,7 +267,7 @@ class Source(unittest.TestCase):
         host = (ROOT / "desktop-pdf/Host.cpp").read_text()
         self.assertLess(host.index("ConfiguredRuntime(root)"), host.index("Render(runtime,"))
         helper = (ROOT / "desktop-pdf/build.ps1").read_text()
-        self.assertIn("$identity.Version -cne '0.1.0.1'", helper)
+        self.assertIn("$identity.Version -cne '0.1.0.2'", helper)
         self.assertIn("'Build', 'Package', 'SignCopy'", helper)
         self.assertIn("No automatic fetch/install.", helper)
         for ref in (DEPENDENCY, PROOF):

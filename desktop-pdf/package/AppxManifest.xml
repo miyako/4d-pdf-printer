@@ -7,7 +7,7 @@
  xmlns:psa="http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2"
  IgnorableNamespaces="uap uap10 desktop rescap psa">
  <Identity Name="Miyako.DesktopPdfIntegration" Publisher="CN=DesktopPdfPrototypeDev"
-  Version="0.1.0.1" ProcessorArchitecture="x64"/>
+  Version="0.1.0.2" ProcessorArchitecture="x64"/>
  <Properties>
   <DisplayName>4D PDF Integration - source prototype</DisplayName>
   <PublisherDisplayName>Desktop PDF development</PublisherDisplayName>
@@ -30,16 +30,6 @@
       PrinterUri="desktop-pdf:save-as" PreferredInputFormat="application/oxps"
       OutputFileTypes="pdf" PdcFile="Config\IntegrationPdc.xml"/>
     </psa:Extension>
-    <desktop:Extension Category="windows.fullTrustProcess" Executable="IntegrationHost.exe"/>
-   </Extensions>
-  </Application>
-  <Application Id="Silent" Executable="IntegrationApp.exe" EntryPoint="DesktopPdfIntegration.App"
-   uap10:SupportsMultipleInstances="true">
-   <uap:VisualElements DisplayName="4D PDF Integration (Silent)" Description="Explicit registered PDF destination"
-    BackgroundColor="#203040" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png">
-    <uap:SplashScreen Image="Assets\SplashScreen.png"/>
-   </uap:VisualElements>
-   <Extensions>
     <psa:Extension Category="windows.printSupportVirtualPrinterWorkflow" EntryPoint="DesktopPdfIntegration.Task">
      <psa:PrintSupportVirtualPrinter DisplayName="ms-resource:SilentQueue"
       PrinterUri="desktop-pdf:silent" PreferredInputFormat="application/oxps" PdcFile="Config\IntegrationPdc.xml"/>

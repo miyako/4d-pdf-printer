@@ -1,5 +1,6 @@
 #include "../Job.h"
 #include "../ActivationDiagnostics.h"
+#include "../HostArguments.h"
 #include "ActivationLifetime.h"
 #include <iostream>
 
@@ -41,7 +42,7 @@ int main() {
             "real diagnostic state final cleanup releases own-module lock");
         activation::Event event;
         event.point = activation::Point::PreJobFailure; event.error = 0x80070057u;
-        activation::Identity identity; identity.value = L"Miyako.DesktopPdfIntegration_hjw4whvmzr08m!Silent";
+        activation::Identity identity; identity.value = L"Miyako.DesktopPdfIntegration_hjw4whvmzr08m!SaveAs";
         std::wstring activationId(32, L'c');
         auto diagnostic = activation::DiagnosticRecord(activationId, event, identity);
         Fields(diagnostic, {L"schema", L"version", L"activation", L"sequence", L"checkpoint", L"hresult",
@@ -92,6 +93,13 @@ int main() {
         Reject([] { Parse(R"({"v":01})"); });
         Reject([] { Parse(R"({"v":true,"v":false})"); });
         std::wstring id(32, L'a'), job(32, L'b');
+        auto hostActivation = ParseHostActivation(L"/InvokerPRAID: SaveAs --mode Silent --job " + job);
+        auto request = Record(job, Mode::Silent, L"request");
+        Validate(request, hostActivation.id, hostActivation.mode, L"request");
+        Reject([&] { Validate(Record(job, Mode::SaveAs, L"request"), hostActivation.id, hostActivation.mode, L"request"); });
+        Reject([&] { Validate(Record(id, Mode::Silent, L"request"), hostActivation.id, hostActivation.mode, L"request"); });
+        Reject([&] { ParseHostActivation(L"/InvokerPRAID: Silent --mode SaveAs --job " + job); });
+        Reject([&] { ParseHostActivation(L"/InvokerPRAID: SaveAs --mode Silent --job " + job + L" --extra"); });
         auto registered = Record(id, Mode::Silent, L"registered");
         Text(registered, L"destination", L"C:\\Users\\example\\a.pdf");
         auto began = Now(); Number(registered, L"expires", began + 1);
