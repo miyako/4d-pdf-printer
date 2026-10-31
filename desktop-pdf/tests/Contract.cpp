@@ -1,4 +1,5 @@
 #include "../Contract.h"
+#include "../ActivationDiagnostics.h"
 #include "PhysicalMapping.h"
 #include <iostream>
 
@@ -10,6 +11,23 @@ template<typename F> void Reject(F function) {
 }
 int main() {
     try {
+        activation::Journal journal;
+        activation::Event event;
+        event.point = activation::Point::Count;
+        Require(!journal.Push(event), "invalid diagnostic checkpoint");
+        event.point = activation::Point::RunEnter; event.error = 0x80070057u;
+        for (std::size_t i = 0; i != activation::EventLimit; ++i)
+            Require(journal.Push(event), "bounded diagnostic acceptance");
+        Require(!journal.Push(event), "diagnostic cap");
+        for (std::size_t i = 0; i != activation::EventLimit; ++i) {
+            Require(journal.Pop(event) && event.sequence == i && event.error == 0x80070057u,
+                "diagnostic FIFO/first HRESULT");
+        }
+        Require(!journal.Pop(event) && !journal.Push(event), "diagnostic total cap never resets");
+        for (auto point : activation::Names) Require(!point.empty() && point.size() < 32, "fixed checkpoint names");
+        Require(activation::IdentityText(std::wstring(255, L'a')), "bounded diagnostic identity");
+        Require(!activation::IdentityText(L"") && !activation::IdentityText(std::wstring(256, L'a')) &&
+            !activation::IdentityText(std::wstring_view(L"a\0b", 3)), "identity size/NUL guard");
         std::wstring id(32, L'a');
         for (auto mode : {Mode::SaveAs, Mode::Silent}) {
             auto arguments = L"--mode " + Name(mode) + L" --job " + id;

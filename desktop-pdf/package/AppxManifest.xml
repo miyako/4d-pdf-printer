@@ -7,7 +7,7 @@
  xmlns:psa="http://schemas.microsoft.com/appx/manifest/printsupport/windows10/2"
  IgnorableNamespaces="uap uap10 desktop rescap psa">
  <Identity Name="Miyako.DesktopPdfIntegration" Publisher="CN=DesktopPdfPrototypeDev"
-  Version="0.1.0.0" ProcessorArchitecture="x64"/>
+  Version="0.1.0.1" ProcessorArchitecture="x64"/>
  <Properties>
   <DisplayName>4D PDF Integration - source prototype</DisplayName>
   <PublisherDisplayName>Desktop PDF development</PublisherDisplayName>

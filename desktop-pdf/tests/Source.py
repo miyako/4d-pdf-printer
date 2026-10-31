@@ -21,6 +21,77 @@ def original(ref, path):
 
 
 class Source(unittest.TestCase):
+    def test_activation_diagnostics_are_separate_and_bounded(self):
+        trace = (ROOT / "desktop-pdf/ActivationDiagnostics.h").read_text()
+        task = (ROOT / "desktop-pdf/Task.cpp").read_text()
+        self.assertIn("EventLimit = 32, IdentityChars = 256, RecordLimit = 8192", trace)
+        self.assertIn("accepted == EventLimit", trace)
+        self.assertIn('L"4d-pdf-printer.activation-diagnostic"', trace)
+        self.assertIn('L"ActivationDiagnostics"', trace)
+        self.assertIn("GetCurrentApplicationUserModelId(&length, buffer.data())", trace)
+        self.assertIn("identity.error == APPMODEL_ERROR_NO_APPLICATION", trace)
+        for state in ('L"available"', 'L"unavailable"', 'L"invalid-response"', 'L"error"'):
+            self.assertIn(state, trace)
+        self.assertIn('L"identity_error"', trace)
+        self.assertIn('L"identity_validation_error"', trace)
+        self.assertIn("CoIncrementMTAUsage(&cookie)", trace)
+        self.assertIn("CoDecrementMTAUsage(cookie)", trace)
+        self.assertIn("Require(type == APTTYPE_MTA", trace)
+        writer = trace.split("static fire_and_forget Drain(", 1)[1].split("\npublic:\n", 1)[0]
+        self.assertLess(writer.index("co_await resume_background()"), writer.index("Apartment apartment"))
+        self.assertLess(writer.index("co_await resume_background()"), writer.index("co_await Root()"))
+        self.assertIn("if (failed) return;", trace)
+        self.assertIn("self->failed = true; self->writing = false;", writer)
+        self.assertIn("if (self->failed || !self->journal.Pop(event))", writer)
+        self.assertLess(writer.index("self->failed ||"), writer.index("self->journal.Pop(event)"))
+        enqueue_failure = trace.split('Failure(L"activation diagnostics enqueue"', 1)[1]
+        self.assertIn("failed = true;", enqueue_failure)
+        self.assertNotIn("writing = false", enqueue_failure)
+        self.assertIn('Failure(L"activation diagnostics write", hr)', trace)
+        self.assertNotIn("get_strong", trace)
+        self.assertNotIn("BackgroundTaskDeferral", trace)
+        for forbidden in ("JobTitle", "destination", "SourceContent", "source.oxps",
+                          "Jobs", "Registrations", ".get()", "init_apartment", "std::thread",
+                          "StartDoc", "SetPrinter", "CreateEvent", "WaitForSingleObject"):
+            self.assertNotIn(forbidden, trace)
+        add = trace.split("void Add(", 1)[1]
+        self.assertNotIn("co_await", add)
+        self.assertNotIn("Publish(", add)
+        begin = task.split("fire_and_forget Begin()", 1)[1].split("fire_and_forget Data(", 1)[0]
+        before_start = begin.split("session.Start();", 1)[0]
+        self.assertNotIn("co_await", before_start)
+        self.assertIn("Trace(activation::Point::StartBefore)", before_start)
+        self.assertIn("Trace(activation::Point::StartReturned)", begin)
+        self.assertLess(begin.index("auto deadline = GetTickCount64() + 45000;"),
+                        begin.index("Trace(activation::Point::StartReturned)"))
+        metadata = task.split('stage = L"capture"', 1)[0]
+        for point in ("RunEnter", "TriggerBefore", "TriggerAcquired", "SessionBefore", "SessionSubscribed",
+                      "DataEnter", "EndpointChecked", "ContentChecked", "ConfigurationChecked",
+                      "SelectorChecked", "RegistrationChecked", "SubmissionChecked", "MetadataValidated"):
+            self.assertIn(f"activation::Point::{point}", metadata)
+        self.assertIn("Trace(job ? activation::Point::DataFailure : activation::Point::PreJobFailure, primary)", task)
+        self.assertLess(task.index("auto timeout = DefaultCompletionMs, deadline = Deadline(Now(), timeout);"),
+                        task.index("Trace(activation::Point::ConfigurationChecked)"))
+        factory = task.split("struct Factory", 1)[1]
+        self.assertNotIn("activation::", factory)
+
+    def test_activation_instrumentation_preserves_job_finalizer(self):
+        task = (ROOT / "desktop-pdf/Task.cpp").read_text()
+        baseline = original("ae53b92a5e1f3fa442f41246079cde7e2f4afd47", "desktop-pdf/Task.cpp").decode()
+        # No trace additions or behavior edits in capture/launch/wait/publication.
+        start = '            if (mode == Mode::Silent) {\n                auto claim'
+        end = '        } catch (...) {\n            primary = to_hresult();'
+        self.assertEqual(task.split(start, 1)[1].split(end, 1)[0],
+                         baseline.split(start, 1)[1].split(end, 1)[0])
+        self.assertEqual(task.count("args.CompleteJob(status);"), 1)
+        self.assertIn("auto deadline = GetTickCount64() + 45000;", task)
+        self.assertIn("if (!working.exchange(true) && !finished)", task)
+        self.assertIn("if (finished.exchange(true)) return;", task)
+        self.assertIn("if (!self->working.exchange(true)) self->Finish();", task)
+        self.assertIn("primary = to_hresult(); Trace(activation::Point::CompleteFailure, primary);", task)
+        self.assertIn("Failure(stage.c_str(), primary);", task)
+        self.assertEqual(task.split("struct Factory", 1)[1], baseline.split("struct Factory", 1)[1])
+
     def test_dependency_snapshot_exact(self):
         names = subprocess.check_output(
             ["git", "ls-tree", "-r", "--name-only", DEPENDENCY, "--", "renderer", "docs/renderer"],
@@ -47,7 +118,7 @@ class Source(unittest.TestCase):
         identity = package.find("m:Identity", NS)
         self.assertEqual(identity.attrib["Name"], "Miyako.DesktopPdfIntegration")
         self.assertEqual(identity.attrib["Publisher"], "CN=DesktopPdfPrototypeDev")
-        self.assertEqual(identity.attrib["Version"], "0.1.0.0")
+        self.assertEqual(identity.attrib["Version"], "0.1.0.1")
         apps = {app.attrib["Id"]: app for app in package.findall("m:Applications/m:Application", NS)}
         self.assertEqual(set(apps), {"SaveAs", "Silent", "Client"})
         for app_id, uri in (("SaveAs", "desktop-pdf:save-as"), ("Silent", "desktop-pdf:silent")):
@@ -118,6 +189,7 @@ class Source(unittest.TestCase):
         host = (ROOT / "desktop-pdf/Host.cpp").read_text()
         self.assertLess(host.index("ConfiguredRuntime(root)"), host.index("Render(runtime,"))
         helper = (ROOT / "desktop-pdf/build.ps1").read_text()
+        self.assertIn("$identity.Version -cne '0.1.0.1'", helper)
         self.assertIn("'Build', 'Package', 'SignCopy'", helper)
         self.assertIn("No automatic fetch/install.", helper)
         for ref in (DEPENDENCY, PROOF):
@@ -166,7 +238,8 @@ class Source(unittest.TestCase):
         self.assertIn("Automatic events must run full regressions.", own)
         self.assertLess(own.index("id: guard"), own.index("git fetch"))
         self.assertLess(own.index("id: guard"), own.index("Checked cmake"))
-        self.assertIn(f"git fetch --no-tags --depth=1 origin {DEPENDENCY} {PROOF}", own)
+        self.assertIn(f"git fetch --no-tags --depth=1 origin {DEPENDENCY} {PROOF} "
+                      "ae53b92a5e1f3fa442f41246079cde7e2f4afd47", own)
         self.assertIn("$actual -cne $env:TARGET_ARCH", own)
         self.assertIn("Get-PrinterBuildPlan", own)
         self.assertIn("[version]'4.2.0'", own)

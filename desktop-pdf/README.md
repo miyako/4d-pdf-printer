@@ -19,7 +19,7 @@ No recompression/postprocessing, resident broker, native file dialog, elevation,
 services/session 0 or pre-login. No promise of smaller PDFs or fixes to upstream
 Windows/driver/app bugs.
 
-The separate manifest defines `Miyako.DesktopPdfIntegration` 0.1.0.0, publisher
+The separate manifest defines `Miyako.DesktopPdfIntegration` 0.1.0.1, publisher
 `CN=DesktopPdfPrototypeDev`, and **4D PDF Integration (Save As)** /
 **4D PDF Integration (Silent)**. These are source definitions, not authorization
 to register identity, trust a certificate, create queues or install anything.
@@ -44,6 +44,67 @@ It rejects old `Printer`, arbitrary wrappers, mismatched AppID/mode and extras.
 Only the old smoke wrapper was observed on Windows; the NEW manifest/wrappers
 remain unproven and must fail explicitly if Windows supplies something different.
 Generic interactive document titles are never parsed as registration selectors.
+
+### Diagnostic-only Task activation checkpoints
+
+`ActivationDiagnostics.h` adds a separate
+`LocalCache\DesktopPdf\ActivationDiagnostics\<activation-32lowerhex>\<sequence>.json`
+namespace, never a Jobs/Registrations or success-contract record. `Run` is the
+earliest observable boundary: factory/constructor tracing is deliberately omitted
+to avoid new WinRT initialization or activation in the class factory.
+Checkpoints cover Run/deferral, trigger acquisition, session acquisition plus
+subscription, immediately before/after `session.Start()`, Data/duplicate entry,
+endpoint/content/configuration checks, silent selector/registration/submission
+checks, metadata validation/job creation, pre-job/data failure, CompleteJob and
+cancellation/Finish. Session-subscribed is emitted after BOTH acquisition and
+subscription; no intervening success marker is invented if subscription fails.
+Original HRESULTs are copied before diagnostics and existing failure/completion
+handling continues unchanged. Pre-job-failed means no job StorageFolder was
+acquired, not proof that a failed async folder operation left no directory.
+
+The diagnostic captures the actual **current-process**
+`GetCurrentApplicationUserModelId` result at writer initialization, not an AUMID
+inferred from URI/manifest/title or a claimed thread/trigger identity. It records
+available/unavailable/error/invalid-response and original API/validation codes.
+The one fixed 256-wide-character buffer is not resized/retried. Only that bounded
+identity, checkpoint, process/thread IDs, monotonic event tick, HRESULT and an
+optional own job ID are recorded: no title, destination, session/source/document
+text, OXPS or PDF payload.
+
+Each activation admits at most **32 events of at most 8192 JSON bytes**. A fixed
+memory journal has a separate mutex; enqueueing never awaits storage or acquires
+the lifecycle mutex. At most one writer performs diagnostic I/O per activation;
+idle waves can reschedule at most 32 thread-pool callbacks, never a listener/thread
+per unchecked event. The first suspension is `resume_background`, before identity,
+storage or COM work. A scoped `CoIncrementMTAUsage`/`CoDecrementMTAUsage` cookie
+(documented movable across threads) and MTA check keep async storage off the Run
+context, without initializing/uninitializing the Task/factory apartment.
+Existing Root/Publish no-overwrite helpers are reused inside that namespace.
+
+Sink/setup/queue/limit/apartment-cleanup failures use the existing `Failure`
+reporter; sink/enqueue failure disables further diagnostic writes without retry
+or changing print outcomes. The writer checks failed state before dequeuing another
+event; an already-dequeued/in-flight publication may still finish after an enqueue
+failure. Suppression is not atomic, and that I/O is not canceled/reaped. Enqueue
+failure does not declare the existing writer finished; it clears its active flag
+when it observes failed state or exits its own failure path.
+Pending/partial files are retained, no sweeps. The
+writer retains only its diagnostic state, **not Task/session/deferral**; it does
+not delay Finish or extend the original budgets. OS task/process termination may
+therefore cut off records. Logging/identity/storage failures, finite event cap,
+async ordering and timing perturbation also limit coverage: **no record is not
+proof Run/Data was never entered**, and a trace is not a print-success contract.
+Fixed work/memory limits do not impose a hard deadline on native identity/COM/
+storage calls; a stalled writer can leave diagnostic state/I/O pending until
+completion or process termination, without retaining the Task deferral.
+Native Windows compilation, package-context identity, apartment/storage behavior
+and early lifecycle failures still require separately reviewed native evidence.
+No routing, class/AUMID, input/output format or renderer change is made here.
+Version 0.1.0.1 is the diagnostic-only upgrade candidate, preserving identity,
+publisher, apps, routing and print contracts. Native compilation/records/package
+and actual runtime writer behavior remain unproved until their exact evidence;
+signing/install/printing are separate later user-operated steps. The installed
+signed ae53 0.1.0.0 package, runtime/configuration and queues remain untouched.
 
 Client verbs below describe an interface, **not operator instructions or consent
 to execute on Windows**:

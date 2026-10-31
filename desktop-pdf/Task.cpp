@@ -1,4 +1,4 @@
-#include "Job.h"
+#include "ActivationDiagnostics.h"
 #include <atomic>
 #include <mutex>
 #include <winrt/Windows.ApplicationModel.Background.h>
@@ -20,10 +20,15 @@ struct Task : implements<Task, IBackgroundTask> {
     std::mutex mutex;
     std::atomic<bool> canceled{false}, working{false}, finished{false};
     bool subscribed = false, cancelSubscribed = false;
+    std::shared_ptr<activation::Trace> diagnostics;
+    void Trace(activation::Point point, hresult error = {}, std::wstring_view job = {}) noexcept {
+        if (diagnostics) diagnostics->Add(point, error, job);
+    }
     hstring GetRuntimeClassName() const { return L"DesktopPdfIntegration.Task"; }
 
     void Finish() noexcept {
         if (finished.exchange(true)) return;
+        Trace(activation::Point::Finish);
         std::scoped_lock lock(mutex);
         try { if (subscribed) session.VirtualPrinterDataAvailable(dataToken); }
         catch (...) { Failure(L"unsubscribe data", to_hresult()); }
@@ -34,12 +39,17 @@ struct Task : implements<Task, IBackgroundTask> {
         deferral = nullptr;
     }
     void Run(IBackgroundTaskInstance const& task) {
+        try { diagnostics = std::make_shared<activation::Trace>(); }
+        catch (...) { Failure(L"activation diagnostics setup", to_hresult()); }
+        Trace(activation::Point::RunEnter);
         try {
             instance = task; deferral = task.GetDeferral();
+            Trace(activation::Point::DeferralAcquired);
             {
                 std::scoped_lock lock(mutex);
                 cancelToken = task.Canceled([weak = get_weak()](auto const&, auto const&) {
                     if (auto self = weak.get()) {
+                        self->Trace(activation::Point::Canceled);
                         self->canceled = true;
                         if (!self->working.exchange(true)) self->Finish();
                     }
@@ -47,12 +57,18 @@ struct Task : implements<Task, IBackgroundTask> {
                 cancelSubscribed = true;
             }
             Begin();
-        } catch (...) { Failure(L"task activation", to_hresult()); Finish(); }
+        } catch (...) {
+            auto hr = to_hresult(); Trace(activation::Point::RunFailure, hr);
+            Failure(L"task activation", hr); Finish();
+        }
     }
     fire_and_forget Begin() {
         auto lifetime = get_strong();
         try {
+            Trace(activation::Point::TriggerBefore);
             auto details = instance.TriggerDetails().as<PrintWorkflowVirtualPrinterTriggerDetails>();
+            Trace(activation::Point::TriggerAcquired);
+            Trace(activation::Point::SessionBefore);
             {
                 std::scoped_lock lock(mutex);
                 if (finished || canceled) co_return;
@@ -61,21 +77,33 @@ struct Task : implements<Task, IBackgroundTask> {
                     [self = get_strong()](auto const&, auto const& args) { self->Data(args); });
                 subscribed = true;
             }
+            Trace(activation::Point::SessionSubscribed);
+            Trace(activation::Point::StartBefore);
             session.Start();
             auto deadline = GetTickCount64() + 45000;
+            Trace(activation::Point::StartReturned);
             while (!working && !finished && GetTickCount64() < deadline)
                 co_await resume_after(std::chrono::milliseconds(25));
             if (!working.exchange(true) && !finished) {
+                Trace(activation::Point::CallbackDeadline, hresult{HRESULT_FROM_WIN32(ERROR_TIMEOUT)});
                 Failure(L"data callback deadline", HRESULT_FROM_WIN32(ERROR_TIMEOUT));
                 Finish();
             }
-        } catch (...) { Failure(L"session start", to_hresult()); if (!working.exchange(true)) Finish(); }
+        } catch (...) {
+            auto hr = to_hresult(); Trace(activation::Point::SessionFailure, hr);
+            Failure(L"session start", hr); if (!working.exchange(true)) Finish();
+        }
     }
     fire_and_forget Data(PrintWorkflowVirtualPrinterDataAvailableEventArgs args) {
         auto lifetime = get_strong();
+        Trace(activation::Point::DataEnter);
         if (working.exchange(true)) {
+            Trace(activation::Point::DuplicateData);
             try { args.CompleteJob(PrintWorkflowSubmittedStatus::Failed); }
-            catch (...) { Failure(L"duplicate completion", to_hresult()); }
+            catch (...) {
+                auto hr = to_hresult(); Trace(activation::Point::CompleteFailure, hr);
+                Failure(L"duplicate completion", hr);
+            }
             co_return;
         }
         StorageFolder job{nullptr}, registrationFolder{nullptr};
@@ -90,23 +118,31 @@ struct Task : implements<Task, IBackgroundTask> {
             auto uri = session.Printer().PrinterUri().AbsoluteUri();
             Require(uri == L"desktop-pdf:save-as" || uri == L"desktop-pdf:silent", "unknown endpoint");
             mode = uri == L"desktop-pdf:save-as" ? Mode::SaveAs : Mode::Silent;
+            Trace(activation::Point::EndpointChecked);
             Require(args.SourceContent().ContentType() == L"application/oxps", "OXPS required");
+            Trace(activation::Point::ContentChecked);
             auto config = args.Configuration();
             Require(!config.SessionId().empty(), "missing session");
             auto timeout = DefaultCompletionMs, deadline = Deadline(Now(), timeout);
+            Trace(activation::Point::ConfigurationChecked);
             if (mode == Mode::Silent) {
                 registration = Registration(std::wstring_view(config.JobTitle()));
+                Trace(activation::Point::SelectorChecked);
                 registrationFolder = co_await Folder(L"Registrations", registration);
                 auto registered = co_await Read(registrationFolder, L"registered.json");
                 RegisteredRecord(registered, registration);
                 Require(!(co_await Exists(registrationFolder, L"cancel.json")), "registration canceled");
+                Trace(activation::Point::RegistrationChecked);
                 auto submitted = co_await Read(registrationFolder, L"submitted.json");
                 timeout = Integer(registered, L"timeout");
                 deadline = SubmissionDeadline(submitted, registered, registration);
                 auto now = Now();
                 Require(deadline > now && deadline - now <= timeout, "submission budget expired/invalid");
+                Trace(activation::Point::SubmissionChecked);
             }
+            Trace(activation::Point::MetadataValidated);
             job = co_await Folder(L"Jobs", id, true);
+            Trace(activation::Point::JobCreated, {}, id);
             if (mode == Mode::Silent) {
                 auto claim = co_await registrationFolder.CreateFolderAsync(L"claim", CreationCollisionOption::FailIfExists);
                 auto binding = Record(registration, mode, L"binding"); Text(binding, L"job", id);
@@ -226,7 +262,9 @@ struct Task : implements<Task, IBackgroundTask> {
                 if (outcome == L"canceled-or-expired") status = PrintWorkflowSubmittedStatus::Canceled;
             }
         } catch (...) {
-            primary = to_hresult(); Failure(stage.c_str(), primary);
+            primary = to_hresult();
+            Trace(job ? activation::Point::DataFailure : activation::Point::PreJobFailure, primary);
+            Failure(stage.c_str(), primary);
             outcome = commitStarted || published ? L"indeterminate" :
                 canceled || primary == hresult_canceled().code() ? L"canceled-or-expired" : L"failed";
             status = outcome == L"canceled-or-expired" ? PrintWorkflowSubmittedStatus::Canceled : PrintWorkflowSubmittedStatus::Failed;
@@ -242,9 +280,12 @@ struct Task : implements<Task, IBackgroundTask> {
         }
         if (outcome == L"indeterminate") status = PrintWorkflowSubmittedStatus::Failed;
         try {
+            Trace(activation::Point::CompleteBefore);
             args.CompleteJob(status);
+            Trace(activation::Point::CompleteReturned);
         } catch (...) {
-            primary = to_hresult(); Failure(L"CompleteJob", primary);
+            primary = to_hresult(); Trace(activation::Point::CompleteFailure, primary);
+            Failure(L"CompleteJob", primary);
             stage = L"CompleteJob";
             outcome = published || commitStarted || outcome == L"indeterminate" ? L"saved-or-unknown-acknowledgement" : L"completion-failed";
         }
