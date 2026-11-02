@@ -109,9 +109,10 @@ inline void JournalChecks() {
 struct FakeReport {
     activation::ReportStage fail{activation::ReportStage::None};
     bool shortWrite{};
+    std::uint32_t error{5}, closeError{};
     std::vector<activation::ReportStage> calls;
     std::uint32_t Call(activation::ReportStage stage) {
-        calls.push_back(stage); return stage == fail ? 5u : 0u;
+        calls.push_back(stage); return stage == fail ? error : 0u;
     }
     std::uint32_t Create() { return Call(activation::ReportStage::Create); }
     std::uint32_t Write(std::string_view bytes, std::uint32_t& written) {
@@ -119,18 +120,21 @@ struct FakeReport {
         return Call(activation::ReportStage::Write);
     }
     std::uint32_t Flush() { return Call(activation::ReportStage::Flush); }
-    std::uint32_t Close() { return Call(activation::ReportStage::Close); }
+    std::uint32_t Close() {
+        auto result = Call(activation::ReportStage::Close);
+        return result ? result : closeError;
+    }
     std::uint32_t Rename() { return Call(activation::ReportStage::Rename); }
 };
 inline void ReportChecks() {
     using namespace activation;
-    for (auto failure : {ReportStage::None, ReportStage::Create, ReportStage::Write,
+    for (auto error : {5u, 112u}) for (auto failure : {ReportStage::None, ReportStage::Create, ReportStage::Write,
                          ReportStage::Flush, ReportStage::Close, ReportStage::Rename}) {
-        FakeReport backend; backend.fail = failure;
+        FakeReport backend; backend.fail = failure; backend.error = error;
         auto result = PublishTerminal(backend, R"({"test":true})");
         Require(result.Published() == (failure == ReportStage::None), "terminal publication result");
         if (failure != ReportStage::None)
-            Require(result.stage == failure && result.error == 5, "exact native failure stage/code");
+            Require(result.stage == failure && result.error == error, "exact access-denied/disk-full stage/code");
         Require(std::count(backend.calls.begin(), backend.calls.end(), ReportStage::Create) == 1 &&
             std::count(backend.calls.begin(), backend.calls.end(), ReportStage::Rename) <= 1,
             "single create/rename, no retry");
@@ -142,6 +146,9 @@ inline void ReportChecks() {
     auto shortResult = PublishTerminal(shortWrite, R"({"test":true})");
     Require(shortResult.stage == ReportStage::Write && shortResult.error == 29 &&
         shortWrite.calls.size() == 3 && shortWrite.calls.back() == ReportStage::Close, "short write retained");
+    FakeReport secondary; secondary.fail = ReportStage::Write; secondary.closeError = 112;
+    auto first = PublishTerminal(secondary, R"({"test":true})");
+    Require(first.stage == ReportStage::Write && first.error == 5, "secondary close error cannot replace first write error");
     for (auto invalid : {std::string("{} trailing"), std::string(4097, 'x')}) {
         FakeReport backend; bool rejected = false;
         try { PublishTerminal(backend, invalid); } catch (...) { rejected = true; }
