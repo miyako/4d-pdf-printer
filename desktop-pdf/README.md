@@ -1,8 +1,10 @@
 # Desktop PDF integration: local source-review checkpoint
 
-**Journal-fix source candidate; deployment and further print trials are on hold.**
-Package identity, version **0.1.0.2**, capabilities, endpoints and job protocol are
-unchanged. This source is not authorization to update the installed package.
+**0.1.0.3 candidate preparation; deployment and further print trials are on hold.**
+Only the candidate package version advances from **0.1.0.2 to 0.1.0.3**.
+Package family/publisher, AppIDs, capabilities, endpoints and job protocol remain
+unchanged. Build/sign/update procedures require separate review and execution
+approval; this source is not authorization to update the installed 0.1.0.2 package.
 The preceding `6674090` source produced one genuine Silent PDF: matching worker/
 publication evidence, a receipt after `CompleteJob(Succeeded)` returned, and user
 reports of no UI, readable text and a visible rectangle. Its strict collection
@@ -25,7 +27,7 @@ No recompression/postprocessing, resident broker, native file dialog, elevation,
 services/session 0 or pre-login. No promise of smaller PDFs or fixes to upstream
 Windows/driver/app bugs.
 
-The separate candidate manifest defines `Miyako.DesktopPdfIntegration` 0.1.0.2, publisher
+The separate candidate manifest defines `Miyako.DesktopPdfIntegration` 0.1.0.3, publisher
 `CN=DesktopPdfPrototypeDev`, and **4D PDF Integration (Save As)** /
 **4D PDF Integration (Silent)**. These are source definitions, not authorization
 to register identity, trust a certificate, create queues or install anything.
