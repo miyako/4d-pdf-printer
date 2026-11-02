@@ -27,11 +27,13 @@ struct Task : implements<Task, IBackgroundTask> {
     }
     hstring GetRuntimeClassName() const { return L"DesktopPdfIntegration.Task"; }
 
-    void ObserveCancellation() noexcept {
+    void ObserveCancellation(activation::observation::Context const& context) noexcept {
         canceled = true;
         auto normal = activation::Reason::Normal;
-        finalReason.compare_exchange_strong(normal, activation::Reason::Canceled);
-        if (diagnostics) diagnostics->Cancel(GetTickCount64());
+        auto won = finalReason.compare_exchange_strong(normal, activation::Reason::Canceled);
+        if (won && diagnostics) diagnostics->Observe().SetReason(context, GetTickCount64(),
+            static_cast<std::uint8_t>(activation::Reason::Canceled));
+        if (diagnostics) diagnostics->Cancel(GetTickCount64(), context);
     }
     void ReleaseDeferral() noexcept {
         try { if (deferral) deferral.Complete(); }
@@ -57,17 +59,39 @@ struct Task : implements<Task, IBackgroundTask> {
         auto lifetime = get_strong();
         activation::FinalAttempt release([this]() noexcept { ReleaseDeferral(); });
         auto began = GetTickCount64();
+        if (diagnostics) diagnostics->Observe().Began({began, GetCurrentThreadId()});
         DetachData();
         try {
-            if (diagnostics) co_await diagnostics->Finish(finalReason.load(), deferral != nullptr, began);
+            if (diagnostics) {
+                auto reason = finalReason.load();
+                diagnostics->Observe().Passed({GetTickCount64(), static_cast<std::uint8_t>(reason)});
+                co_await diagnostics->Finish(reason, deferral != nullptr, began);
+            }
             else Failure(L"journal unavailable", E_OUTOFMEMORY);
         } catch (...) { Failure(L"journal finalization", to_hresult()); }
         DetachCancel();
     }
-    void Finish(activation::Reason reason = activation::Reason::Normal, bool dataOwner = false) noexcept {
+    void Finish(activation::Reason reason, bool dataOwner, std::uint8_t caller) noexcept {
+        activation::observation::Finish attempt;
+        attempt.entry = activation::ObservationStamp(); attempt.caller = caller;
+        attempt.requested = static_cast<std::uint8_t>(reason); attempt.owner = dataOwner;
+        if (diagnostics) attempt = diagnostics->Observe().EnterFinish(attempt);
         auto normal = activation::Reason::Normal;
-        if (reason != normal) finalReason.compare_exchange_strong(normal, reason);
-        if (!gate.ClaimFinish(dataOwner)) return;
+        if (reason != normal) {
+            auto won = finalReason.compare_exchange_strong(normal, reason);
+            attempt.cas = won ? 1 : 2;
+            attempt.expected = static_cast<std::uint8_t>(normal);
+            if (won && diagnostics) {
+                activation::observation::Context context;
+                context.origin = static_cast<std::uint8_t>(2 + caller);
+                context.first = attempt.first; context.entry = attempt.entry;
+                diagnostics->Observe().SetReason(context, GetTickCount64(), static_cast<std::uint8_t>(reason));
+            }
+        }
+        auto elected = gate.ClaimFinish(dataOwner);
+        attempt.gate = elected;
+        if (diagnostics) diagnostics->Observe().FinishAttempt(attempt);
+        if (!elected) return;
         try { Finalize(); }
         catch (...) {
             Failure(L"finalizer scheduling", to_hresult());
@@ -82,11 +106,15 @@ struct Task : implements<Task, IBackgroundTask> {
         try {
             instance = task; deferral = task.GetDeferral();
             Trace(activation::Point::DeferralAcquired);
-            auto token = task.Canceled([weak = get_weak()](auto const&, auto const&) {
+            auto token = task.Canceled([weak = get_weak()](auto const&, auto const& reason) {
                     if (auto self = weak.get()) {
+                        activation::observation::Context context;
+                        context.entry = activation::ObservationStamp();
+                        context.raw = static_cast<std::uint32_t>(reason);
+                        if (self->diagnostics) context = self->diagnostics->Observe().EnterCancel(context);
                         self->Trace(activation::Point::Canceled);
-                        self->ObserveCancellation();
-                        self->Finish(activation::Reason::Canceled);
+                        self->ObserveCancellation(context);
+                        self->Finish(activation::Reason::Canceled, false, 3);
                     }
                 });
             bool installed;
@@ -98,7 +126,7 @@ struct Task : implements<Task, IBackgroundTask> {
             Begin();
         } catch (...) {
             auto hr = to_hresult(); Trace(activation::Point::RunFailure, hr);
-            Failure(L"task activation", hr); Finish(activation::Reason::ActivationError);
+            Failure(L"task activation", hr); Finish(activation::Reason::ActivationError, false, 0);
         }
     }
     fire_and_forget Begin() {
@@ -127,11 +155,11 @@ struct Task : implements<Task, IBackgroundTask> {
             if (gate.Waiting()) {
                 Trace(activation::Point::CallbackDeadline, hresult{HRESULT_FROM_WIN32(ERROR_TIMEOUT)});
                 Failure(L"data callback deadline", HRESULT_FROM_WIN32(ERROR_TIMEOUT));
-                Finish(activation::Reason::CallbackDeadline);
+                Finish(activation::Reason::CallbackDeadline, false, 1);
             }
         } catch (...) {
             auto hr = to_hresult(); Trace(activation::Point::SessionFailure, hr);
-            Failure(L"session start", hr); Finish(activation::Reason::SessionError);
+            Failure(L"session start", hr); Finish(activation::Reason::SessionError, false, 2);
         }
     }
     fire_and_forget Data(PrintWorkflowVirtualPrinterDataAvailableEventArgs args) {
@@ -189,7 +217,11 @@ struct Task : implements<Task, IBackgroundTask> {
                 co_await Publish(claim, L"binding.json", binding);
             }
             auto tickEnd = GetTickCount64() + Remaining(Now(), deadline, timeout);
-            auto stop = [&] { return canceled || Expired(Now(), deadline) || GetTickCount64() >= tickEnd; };
+            activation::observation::StopSample stopSample;
+            auto stop = [&] {
+                return stopSample.Evaluate([&] { return static_cast<bool>(canceled); },
+                    [&] { return Expired(Now(), deadline); }, [&] { return GetTickCount64() >= tickEnd; });
+            };
             StorageFile target{nullptr};
             std::wstring destination;
             if (mode == Mode::SaveAs) {
@@ -225,8 +257,20 @@ struct Task : implements<Task, IBackgroundTask> {
             auto launchEnd = GetTickCount64() + 15000;
             while (launch.Status() == AsyncStatus::Started && !stop() && GetTickCount64() < launchEnd)
                 co_await resume_after(std::chrono::milliseconds(25));
-            if (launch.Status() == AsyncStatus::Started) {
-                launch.Cancel();
+            auto selectingStatus = launch.Status();
+            if (selectingStatus == AsyncStatus::Started) {
+                auto guard = activation::ObservationStamp();
+                bool owned = false;
+                if (diagnostics) owned = diagnostics->Observe().ApiEntry(2, {activation::ObservationStamp(), {}, 0, guard});
+                try {
+                    launch.Cancel();
+                    if (diagnostics) diagnostics->Observe().ApiReturn(2, owned, {activation::ObservationStamp(), {}});
+                } catch (...) {
+                    auto hr = to_hresult();
+                    if (diagnostics) diagnostics->Observe().ApiReturn(2, owned,
+                        {activation::ObservationStamp(), static_cast<std::uint32_t>(hr.value)});
+                    throw;
+                }
                 throw hresult_error(HRESULT_FROM_WIN32(ERROR_TIMEOUT), L"launch pending; late launch remains possible");
             }
             auto result = launch.GetResults();
@@ -237,7 +281,12 @@ struct Task : implements<Task, IBackgroundTask> {
             while (!(co_await Exists(job, L"result.json"))) {
                 bool regCanceled = registrationFolder && (co_await Exists(registrationFolder, L"cancel.json"));
                 if (stop() || regCanceled) {
-                    ObserveCancellation();
+                    activation::observation::Context context;
+                    context.origin = 1; context.entry = activation::ObservationStamp();
+                    context.evaluated = static_cast<std::uint8_t>(stopSample.evaluated | 8);
+                    context.values = static_cast<std::uint8_t>(stopSample.values | (regCanceled ? 8 : 0));
+                    if (diagnostics) context = diagnostics->Observe().EnterCancel(context);
+                    ObserveCancellation(context);
                     if (!cancelSent) {
                         co_await Publish(job, L"cancel.json", Record(id, mode, L"cancel"));
                         cancelSent = true; cleanupEnd = GetTickCount64() + 5000;
@@ -337,7 +386,7 @@ struct Task : implements<Task, IBackgroundTask> {
                 co_await Publish(job, L"completion.json", completion);
             } catch (...) { Failure(L"completion record", to_hresult()); }
         }
-        Finish(activation::Reason::Normal, true);
+        Finish(activation::Reason::Normal, true, 4);
     }
 };
 struct Factory : implements<Factory, IActivationFactory> {

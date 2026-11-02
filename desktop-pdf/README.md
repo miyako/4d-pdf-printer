@@ -1,10 +1,40 @@
 # Desktop PDF integration: local source-review checkpoint
 
-**0.1.0.3 candidate preparation; deployment and further print trials are on hold.**
-Only the candidate package version advances from **0.1.0.2 to 0.1.0.3**.
-Package family/publisher, AppIDs, capabilities, endpoints and job protocol remain
-unchanged. Build/sign/update procedures require separate review and execution
-approval; this source is not authorization to update the installed 0.1.0.2 package.
+**Source-only cancellation instrumentation; deployment and further print trials
+are on hold.** Package version/identity, AppIDs, capabilities, endpoints and job/
+worker protocols are unchanged. The installed **0.1.0.3** is the preceding source,
+not this dirty worktree. Build/sign/update procedures require separate approval.
+Actual Silent attempt03 produced one independently validated PDF; the user
+reported no UI and correct text/rectangle display. Its original technical result
+remains **false**: scrambled collector ordering and an independently canceled,
+non-drained journal are distinct failures. Neither is retrospectively repaired.
+
+The bounded instrumentation adds no Status getter, callback worker, wait, handler,
+Cancel call or budget. Fixed immutable lock-free cells distinguish first entry,
+actual reason CAS winner, elected finalizer and existing Cancel/await observations.
+Journal async status remains explicitly unknown; Cancel return and natural await
+outcomes are not acknowledgement or physical-stop proof. Existing job outcomes,
+CompleteJob, cancellation and deferral/report ordering remain unchanged.
+
+`tools/journal.py` dispatches by explicit expected terminal version. Historical
+v1 uses the unchanged strict decoder; v2 has exact23 root/exact11 observation
+fields. General activation-level v2 parsing permits an empty job when no binding
+was known at freeze, including Normal/drained receipts after pre-job failure.
+It never admits a job. Known-job admission still needs independently established
+fresh producer context, exact32hex binding and the unchanged normal journal/
+lifecycle predicate. The separate exact17-key assessment is always review-only:
+shape, sampled readiness and first/minimum cancellation provenance are distinct.
+No historical false result or primary PDF/job outcome is promoted.
+
+`tools/JournalCapture.ps1` supplies reusable functions, **not a runnable print
+operator**. Explicit integer dictionary indexing orders bounded0..31 mappings
+without changing copied slot/hash/internal-sequence associations. The original
+executed operator and raw evidence remain untouched. `tools/journal_capture.py`
+validates the copied journal stage with an explicit expected version; it is not
+a replacement PDF/producer/runtime validator. Local portable/PS7 fixtures do not
+establish native Windows/PS5.1 behavior or authorize another trial.
+
+The earlier checkpoint below remains relevant history.
 The preceding `6674090` source produced one genuine Silent PDF: matching worker/
 publication evidence, a receipt after `CompleteJob(Succeeded)` returned, and user
 reports of no UI, readable text and a visible rectangle. Its strict collection
@@ -135,7 +165,7 @@ Normal WinRT awaiters restore the finalizer's calling COM context; file work run
 on the background pool with the existing MTA-usage guard.
 
 A separate bounded diagnostic receipt has schema
-`4d-pdf-printer.activation-journal-terminal`, version1, at:
+`4d-pdf-printer.activation-journal-terminal`, version2, at:
 `LocalCache\DesktopPdfJournal-<activation32hex>.json`. A native backend creates its
 same-directory `.partial` with CREATE_NEW, writes <=4096UTF8bytes, flushes, closes,
 then uses no-replace `MoveFileFromAppW`. The existing package-name/publisher guard
@@ -143,6 +173,11 @@ applies; no new capability, custom DACL/SID, alternate path or fallback identity
 This avoids reusing FileIO safe-save for the error sink, not the underlying disk.
 The atomic-visibility strategy still needs supported-filesystem validation; neither
 flush nor rename promises power-loss durability or a physical I/O time limit.
+
+The compact ASCII integer encoder has a reviewed2300-byte field-envelope bound
+within that unchanged4096-byte backend cap. Out-of-domain observations explicitly
+fail diagnostic reporting rather than truncate, normalize or downgrade. Historical
+version1 receipts remain accepted only with expected version1.
 
 The immutable receipt freezes **before** its own I/O and the deferral attempt.
 It carries reason, drain state (`drained/failed/deadline/canceled/unavailable`),

@@ -4,6 +4,7 @@
 #include "PhysicalMapping.h"
 #include "ActivationLifetime.h"
 #include "ActivationJournal.h"
+#include "ActivationObservations.h"
 #include <iostream>
 
 using namespace pdf;
@@ -12,12 +13,22 @@ template<typename F> void Reject(F function) {
     try { function(); } catch (std::exception const&) { rejected = true; }
     Require(rejected, "expected rejection");
 }
-int main() {
+int main(int argc, char** argv) {
     try {
+        if (argc == 2 && std::string_view(argv[1]) == "--observation-wire-maximum") {
+            std::cout << tests::MaxObservationReceipt(); return 0;
+        }
+        if (argc == 2 && (std::string_view(argv[1]) == "--observation-wire-bound" ||
+            std::string_view(argv[1]) == "--observation-wire-unbound" ||
+            std::string_view(argv[1]) == "--observation-wire-32")) {
+            std::cout << tests::ObservationReceipt(std::string_view(argv[1]) != "--observation-wire-unbound",
+                std::string_view(argv[1]) == "--observation-wire-32"); return 0;
+        }
         std::uint32_t lifetimeCount = 0;
         tests::LifetimeChecks(lifetimeCount);
         tests::JournalChecks();
         tests::ReportChecks();
+        tests::ObservationChecks();
         for (auto point : activation::Names) Require(!point.empty() && point.size() < 32, "fixed checkpoint names");
         Require(activation::IdentityText(std::wstring(255, L'a')), "bounded diagnostic identity");
         Require(!activation::IdentityText(L"") && !activation::IdentityText(std::wstring(256, L'a')) &&

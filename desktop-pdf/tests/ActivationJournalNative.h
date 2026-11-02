@@ -129,11 +129,14 @@ inline void RealFinalizer(std::shared_ptr<activation::Trace> trace, bool failCom
     task->diagnostics = std::move(trace);
     task->deferral = make<TestDeferral>(calls, done.get(), failComplete, apartment).as<BackgroundTaskDeferral>();
     Require(task->gate.ClaimData(), "test primary Data ownership");
-    task->ObserveCancellation();
-    task->Finish(activation::Reason::Canceled);
+    activation::observation::Context cancellation;
+    cancellation.entry = activation::ObservationStamp();
+    cancellation = task->diagnostics->Observe().EnterCancel(cancellation);
+    task->ObserveCancellation(cancellation);
+    task->Finish(activation::Reason::Canceled, false, 3);
     Require(calls == 0, "other finisher cannot steal Data deferral");
-    task->Finish(activation::Reason::Normal, true);
-    task->Finish(activation::Reason::Normal, true);
+    task->Finish(activation::Reason::Normal, true, 4);
+    task->Finish(activation::Reason::Normal, true, 4);
     WaitTest(done.get());
     Require(calls == 1 && apartment == APTTYPE_MTA, "real finalizer once and caller COM context");
 }
@@ -168,9 +171,10 @@ inline void NativeJournalChecks() {
             L"accepted_count", L"dequeued_count", L"rejected_before_seal", L"rejected_after_seal_at_decision",
             L"last_published_sequence", L"finish_sequence", L"admission_loss", L"sealed_tick_ms",
             L"decision_tick_ms", L"deadline_tick_ms", L"outstanding_io_at_decision", L"deferral_acquired",
-            L"deferral_release_planned", L"deferral_release_observed", L"inflight", L"first_failure"});
+            L"deferral_release_planned", L"deferral_release_observed", L"inflight", L"first_failure", L"observations"});
         Require(r.GetNamedString(L"schema") == L"4d-pdf-printer.activation-journal-terminal" &&
-            Integer(r, L"version") == 1 && !r.GetNamedBoolean(L"deferral_release_observed"),
+            Integer(r, L"version") == 2 && r.GetNamedString(L"job").empty() &&
+            !r.GetNamedBoolean(L"deferral_release_observed"),
             "terminal schema and honest acknowledgement boundary");
         if (fault == Stage::None) {
             Require(r.GetNamedString(L"drain_state") == L"drained" &&
@@ -226,7 +230,11 @@ inline void NativeJournalChecks() {
         TrialDirectory directory;
         auto io = std::make_shared<TrialIo>(directory.path.wstring());
         auto trace = std::make_shared<Trace>(io);
-        trace->Cancel(GetTickCount64() - 1000);
+        auto expired = GetTickCount64() - 1000;
+        observation::Context cancellation;
+        cancellation.entry = {expired, GetCurrentThreadId()};
+        cancellation = trace->Observe().EnterCancel(cancellation);
+        trace->Cancel(expired, cancellation);
         AwaitTest(trace->Finish(Reason::Canceled, true));
         Require(!io->reported && std::filesystem::is_empty(directory.path), "expired cancellation issues no diagnostic I/O");
         auto late = std::make_shared<Trace>(io);
@@ -264,6 +272,29 @@ inline void NativeJournalChecks() {
         WaitTest(done.get());
         Require(calls == 1 && instance->added == 1 && instance->removed == 1 && instance->triggers == 0,
             "actual Run handles synchronous cancellation before token return, no second deferral");
+        auto snapshot = task->diagnostics->Observe().Read();
+        Require(snapshot.cancellation[0].payload &&
+            snapshot.cancellation[0].payload->raw == static_cast<std::uint32_t>(BackgroundTaskCancellationReason::Abort) &&
+            snapshot.winner.payload && snapshot.winner.payload->caller == 3,
+            "actual pre-job framework callback observes raw category and elected caller, not an OS cause");
+    }
+    for (bool dataOwner : {false, true}) {
+        TrialDirectory directory;
+        auto io = std::make_shared<TrialIo>(directory.path.wstring());
+        std::atomic<unsigned> calls{};
+        auto done = TestSignal(); APTTYPE apartment{};
+        auto task = make_self<::Task>();
+        task->diagnostics = std::make_shared<Trace>(io);
+        task->deferral = make<TestDeferral>(calls, done.get(), false, apartment).as<BackgroundTaskDeferral>();
+        if (dataOwner) Require(task->gate.ClaimData(), "pre-job Data owner");
+        task->Trace(dataOwner ? Point::PreJobFailure : Point::RunFailure, hresult{E_FAIL});
+        task->Finish(dataOwner ? Reason::Normal : Reason::ActivationError, dataOwner, dataOwner ? 4 : 0);
+        WaitTest(done.get());
+        auto receipt = Parse(io->receipt, 4096);
+        Require(receipt.GetNamedString(L"job").empty() &&
+            receipt.GetNamedString(L"finalize_reason") == (dataOwner ? L"normal" : L"activation-error") &&
+            receipt.GetNamedString(L"drain_state") == L"drained",
+            "actual finalizer can drain pre-job activation/Data failure without inventing a job binding");
     }
     {
         TrialDirectory directory;
@@ -277,7 +308,8 @@ inline void NativeJournalChecks() {
                 auto task = make_self<::Task>();
                 task->diagnostics = std::make_shared<Trace>(io);
                 task->deferral = make<TestDeferral>(calls, done.get(), false, apartment).as<BackgroundTaskDeferral>();
-                task->Finish();
+                Require(task->gate.ClaimData(), "STA fixture Data ownership");
+                task->Finish(Reason::Normal, true, 4);
                 DWORD index{}; auto signal = done.get();
                 check_hresult(CoWaitForMultipleHandles(COWAIT_DISPATCH_CALLS | COWAIT_DISPATCH_WINDOW_MESSAGES,
                     6000, 1, &signal, &index));

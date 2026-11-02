@@ -10,6 +10,7 @@ DEPENDENCY = "8b34e5669bec822bb82768fd61b0483bbdd74567"
 PROOF = "12cc27915d08fcf29c5b1f00c422e0a16cc23e1b"
 INTEGRATION_BASELINE = "245373012067c928781e5c85b7aafddd191b800d"
 JOURNAL_BASELINE = "66740903d715cbd9a6572486eefb83c4fe7b9375"
+OBSERVATION_BASELINE = "5f2382888fe8b892a83b07c832654818f7ec2fdd"
 NS = {
     "m": "http://schemas.microsoft.com/appx/manifest/foundation/windows10",
     "u10": "http://schemas.microsoft.com/appx/manifest/uap/windows10/10",
@@ -120,24 +121,36 @@ class Source(unittest.TestCase):
 
     def test_activation_instrumentation_preserves_job_finalizer(self):
         task = (ROOT / "desktop-pdf/Task.cpp").read_text()
-        baseline = original(JOURNAL_BASELINE, "desktop-pdf/Task.cpp").decode()
-        # Only timestamp the existing cancellation; no job/publication rewrite.
-        start = '            if (mode == Mode::Silent) {\n                auto claim'
-        end = '        } catch (...) {\n            primary = to_hresult();'
-        self.assertEqual(task.split(start, 1)[1].split(end, 1)[0],
-                         baseline.split(start, 1)[1].split(end, 1)[0].replace(
-                             "canceled = true;", "ObserveCancellation();", 1))
+        baseline = original(OBSERVATION_BASELINE, "desktop-pdf/Task.cpp").decode()
+        def block(text, start, end):
+            return text.split(start, 1)[1].split(end, 1)[0]
+        for start, end in (
+            ("void ReleaseDeferral()", "fire_and_forget Finalize()"),
+            ("auto uri = session.Printer()", "auto tickEnd = GetTickCount64()"),
+            ("StorageFile target{nullptr};", "auto launchEnd = GetTickCount64()"),
+            ("auto result = launch.GetResults();", "if (stop() || regCanceled) {"),
+            ("if (!cancelSent) {", "if (mode == Mode::SaveAs"),
+        ):
+            self.assertEqual(block(task, start, end), block(baseline, start, end))
+        self.assertIn("return stopSample.Evaluate", task)
+        self.assertIn("if (stop() || regCanceled) {", task)
+        for call in ("launch.Status()", "launch.Cancel()", "launch.GetResults()", "args.CompleteJob(status)"):
+            self.assertEqual(task.count(call), baseline.count(call), call)
+        launch = block(task, "auto launchEnd", "auto result = launch.GetResults();")
+        self.assertLess(launch.index("launch.Cancel();"), launch.index('throw hresult_error(HRESULT_FROM_WIN32(ERROR_TIMEOUT)'))
         self.assertEqual(task.count("args.CompleteJob(status);"), 1)
         self.assertIn("auto deadline = GetTickCount64() + 45000;", task)
-        self.assertIn("if (!gate.ClaimFinish(dataOwner)) return;", task)
+        self.assertIn("auto elected = gate.ClaimFinish(dataOwner);", task)
+        self.assertIn("if (!elected) return;", task)
         self.assertIn("if (!gate.ClaimData())", task)
         self.assertIn("activation::FinalAttempt release", task)
-        self.assertIn("co_await diagnostics->Finish(finalReason.load(), deferral != nullptr, began)", task)
+        self.assertIn("auto reason = finalReason.load();", task)
+        self.assertIn("co_await diagnostics->Finish(reason, deferral != nullptr, began)", task)
         self.assertEqual(task.count("deferral.Complete();"), 1)
         tail = '        if (primary.value < 0 && job) {'
         self.assertEqual(task.split(tail, 1)[1].split("struct Factory", 1)[0],
                          baseline.split(tail, 1)[1].split("struct Factory", 1)[0].replace(
-                             "Finish();", "Finish(activation::Reason::Normal, true);", 1))
+                             "Finish(activation::Reason::Normal, true);", "Finish(activation::Reason::Normal, true, 4);", 1))
         self.assertIn("primary = to_hresult(); Trace(activation::Point::CompleteFailure, primary);", task)
         self.assertIn("Failure(stage.c_str(), primary);", task)
         # The SDK COM header declares this export without noexcept; body/factory stay exact.
@@ -155,7 +168,16 @@ class Source(unittest.TestCase):
         self.assertLess(publish.index("self->io->Rename("), publish.index("self->state.Published(event)"))
         self.assertIn("if (!failure) failure =", trace)
         self.assertIn("Require(!decision", trace)
-        self.assertIn('L"deferral_release_observed", JsonValue::CreateBooleanValue(false)', trace)
+        self.assertIn('{"deferral_release_observed", "false"}', trace)
+        self.assertIn('{"version", "2"}', trace)
+        self.assertIn("wire.size() <= 2300", trace)
+        baseline = original(OBSERVATION_BASELINE, "desktop-pdf/ActivationDiagnostics.h").decode()
+        state = trace.split("class PublicationState {", 1)[1].split("\ninline std::string ReceiptWire", 1)[0]
+        old_state = baseline.split("class PublicationState {", 1)[1].split("\n}\n\n#ifdef _WIN32", 1)[0]
+        self.assertEqual(state.replace("cancelRequested, deferral, {}", "cancelRequested, deferral"), old_state)
+        finish = trace.split("IAsyncAction Finish(", 1)[1]
+        old_finish = baseline.split("IAsyncAction Finish(", 1)[1]
+        self.assertEqual(finish.split("CancelOperation();", 1)[1], old_finish.split("CancelOperation();", 1)[1])
         self.assertIn("co_await resume_on_signal", trace)
         self.assertNotRegex(trace, r"\b(?:action|operation|launch)\.get\(")
         self.assertIn("CREATE_NEW", backend)
