@@ -6,8 +6,13 @@ enum class ReportStage { None, Resolve, Create, Write, Flush, Close, Rename, Com
 struct ReportResult {
     ReportStage stage{ReportStage::None};
     std::uint32_t error{};
+    std::uint32_t secondaryCloseError{};
     bool Published() const noexcept { return stage == ReportStage::Complete && error == 0; }
 };
+template<typename Reporter> void ReportFailures(ReportResult const& result, Reporter report) {
+    if (!result.Published()) report(result.stage, result.error, false);
+    if (result.secondaryCloseError) report(ReportStage::Close, result.secondaryCloseError, true);
+}
 template<typename Backend> ReportResult PublishTerminal(Backend& backend, std::string_view bytes) {
     JsonWire(bytes, 4096).Check();
     auto error = backend.Create();
@@ -20,6 +25,7 @@ template<typename Backend> ReportResult PublishTerminal(Backend& backend, std::s
     }
     auto closeError = backend.Close();
     if (!result.error) result = {ReportStage::Close, closeError};
+    else result.secondaryCloseError = closeError;
     if (result.error) return result;
     error = backend.Rename();
     return {error ? ReportStage::Rename : ReportStage::Complete, error};

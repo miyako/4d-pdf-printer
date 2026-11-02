@@ -150,7 +150,8 @@ in-flight stage/leaf, first raw HRESULT and nullable sequence/checkpoint. Its
 process exit or DLL unload. An in-flight `cancel_requested` describes an attempt
 already observed at decision time, not an acknowledgement or future cancel call.
 A late successful rename never upgrades a frozen timeout/cancellation decision.
-The sink's own failure is debugger-reported with stage/code; missing final receipt
+The sink's own first failure and any secondary close error are separately
+debugger-reported with stage/code; missing final receipt
 or staging alone is unknown, never success. No recursive durable fallback/retry.
 
 Outstanding event/report/cancellation workers retain buffers/state and the **own

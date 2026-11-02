@@ -167,6 +167,9 @@ class Source(unittest.TestCase):
         for guard in ('L"Miyako.DesktopPdfIntegration"', 'L"CN=DesktopPdfPrototypeDev"'):
             self.assertIn(guard, backend)
         self.assertIn("PRIVATE OneCore", (ROOT / "desktop-pdf/CMakeLists.txt").read_text())
+        self.assertIn("else result.secondaryCloseError = closeError;", backend)
+        self.assertIn("ReportFailures(result,", trace)
+        self.assertIn('L"journal terminal secondary close"', trace)
 
     def test_dependency_snapshot_exact(self):
         names = subprocess.check_output(

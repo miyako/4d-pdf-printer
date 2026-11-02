@@ -468,10 +468,11 @@ class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>
             Apartment apartment;
             auto bytes = to_string(self->Receipt(decision, jobId).Stringify());
             result = self->io->Report(self->id, bytes);
-            if (!result.Published()) {
-                auto stage = L"journal terminal native stage " + std::to_wstring(static_cast<unsigned>(result.stage));
-                Failure(stage.c_str(), hresult{HRESULT_FROM_WIN32(result.error)});
-            }
+            ReportFailures(result, [](ReportStage stage, std::uint32_t code, bool secondary) {
+                auto label = secondary ? std::wstring(L"journal terminal secondary close") :
+                    L"journal terminal native stage " + std::to_wstring(static_cast<unsigned>(stage));
+                Failure(label.c_str(), hresult{HRESULT_FROM_WIN32(code)});
+            });
         } catch (...) {
             auto hr = to_hresult();
             Failure(L"journal terminal setup", hr);

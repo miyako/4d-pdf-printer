@@ -135,20 +135,44 @@ inline void ReportChecks() {
         Require(result.Published() == (failure == ReportStage::None), "terminal publication result");
         if (failure != ReportStage::None)
             Require(result.stage == failure && result.error == error, "exact access-denied/disk-full stage/code");
+        Require(result.secondaryCloseError == 0, "primary close failure is not duplicated as secondary");
+        unsigned reported = 0;
+        ReportFailures(result, [&](ReportStage stage, std::uint32_t code, bool secondary) {
+            ++reported;
+            Require(stage == failure && code == error && !secondary, "primary fault reported once without secondary");
+        });
+        Require(reported == (failure == ReportStage::None ? 0u : 1u), "success emits no failure report");
         Require(std::count(backend.calls.begin(), backend.calls.end(), ReportStage::Create) == 1 &&
             std::count(backend.calls.begin(), backend.calls.end(), ReportStage::Rename) <= 1,
             "single create/rename, no retry");
         if (failure != ReportStage::Create)
             Require(std::count(backend.calls.begin(), backend.calls.end(), ReportStage::Close) == 1,
                 "close attempted once even after failure");
+        else Require(std::count(backend.calls.begin(), backend.calls.end(), ReportStage::Close) == 0,
+            "failed create never closes an unopened handle");
     }
     FakeReport shortWrite; shortWrite.shortWrite = true;
     auto shortResult = PublishTerminal(shortWrite, R"({"test":true})");
     Require(shortResult.stage == ReportStage::Write && shortResult.error == 29 &&
         shortWrite.calls.size() == 3 && shortWrite.calls.back() == ReportStage::Close, "short write retained");
-    FakeReport secondary; secondary.fail = ReportStage::Write; secondary.closeError = 112;
-    auto first = PublishTerminal(secondary, R"({"test":true})");
-    Require(first.stage == ReportStage::Write && first.error == 5, "secondary close error cannot replace first write error");
+    for (auto stage : {ReportStage::Write, ReportStage::Flush}) {
+        FakeReport secondary; secondary.fail = stage; secondary.closeError = 112;
+        auto first = PublishTerminal(secondary, R"({"test":true})");
+        Require(first.stage == stage && first.error == 5 && first.secondaryCloseError == 112,
+            "first error and secondary close error both retained");
+        struct Observed { ReportStage stage; std::uint32_t code; bool secondary; };
+        std::vector<Observed> reports;
+        ReportFailures(first, [&](ReportStage reportedStage, std::uint32_t code, bool isSecondary) {
+            reports.push_back({reportedStage, code, isSecondary});
+        });
+        Require(reports.size() == 2 && reports[0].stage == stage && reports[0].code == 5 &&
+            !reports[0].secondary && reports[1].stage == ReportStage::Close && reports[1].code == 112 &&
+            reports[1].secondary, "production reporting surface emits first and secondary faults separately");
+        std::vector<ReportStage> expected{ReportStage::Create, ReportStage::Write};
+        if (stage == ReportStage::Flush) expected.push_back(ReportStage::Flush);
+        expected.push_back(ReportStage::Close);
+        Require(secondary.calls == expected, "secondary fault causes no rename/retry or extra close");
+    }
     for (auto invalid : {std::string("{} trailing"), std::string(4097, 'x')}) {
         FakeReport backend; bool rejected = false;
         try { PublishTerminal(backend, invalid); } catch (...) { rejected = true; }
