@@ -39,22 +39,30 @@ struct Task : implements<Task, IBackgroundTask> {
         deferral = nullptr;
         gate.Closed();
     }
+    void DetachData() noexcept {
+        try {
+            std::optional<event_token> token;
+            { std::scoped_lock lock(mutex); token = dataToken.Take(); }
+            if (token) session.VirtualPrinterDataAvailable(*token);
+        } catch (...) { Failure(L"unsubscribe data", to_hresult()); }
+    }
+    void DetachCancel() noexcept {
+        try {
+            std::optional<event_token> token;
+            { std::scoped_lock lock(mutex); token = cancelToken.Take(); }
+            if (token) instance.Canceled(*token);
+        } catch (...) { Failure(L"unsubscribe cancellation", to_hresult()); }
+    }
     fire_and_forget Finalize() {
         auto lifetime = get_strong();
         activation::FinalAttempt release([this]() noexcept { ReleaseDeferral(); });
-        std::optional<event_token> data, cancel;
+        auto began = GetTickCount64();
+        DetachData();
         try {
-            { std::scoped_lock lock(mutex); data = dataToken.Take(); }
-            try { if (data) session.VirtualPrinterDataAvailable(*data); }
-            catch (...) { Failure(L"unsubscribe data", to_hresult()); }
-            if (diagnostics) co_await diagnostics->Finish(finalReason.load(), deferral != nullptr);
+            if (diagnostics) co_await diagnostics->Finish(finalReason.load(), deferral != nullptr, began);
             else Failure(L"journal unavailable", E_OUTOFMEMORY);
         } catch (...) { Failure(L"journal finalization", to_hresult()); }
-        try {
-            { std::scoped_lock lock(mutex); cancel = cancelToken.Take(); }
-            if (cancel) instance.Canceled(*cancel);
-        }
-        catch (...) { Failure(L"unsubscribe cancellation", to_hresult()); }
+        DetachCancel();
     }
     void Finish(activation::Reason reason = activation::Reason::Normal, bool dataOwner = false) noexcept {
         auto normal = activation::Reason::Normal;
@@ -63,6 +71,7 @@ struct Task : implements<Task, IBackgroundTask> {
         try { Finalize(); }
         catch (...) {
             Failure(L"finalizer scheduling", to_hresult());
+            DetachData(); DetachCancel();
             ReleaseDeferral();
         }
     }

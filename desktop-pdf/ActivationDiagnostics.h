@@ -159,6 +159,7 @@ public:
     Stage stage{};
     std::array<wchar_t, 41> pending{};
     std::optional<std::uint64_t> canceled;
+    std::optional<std::uint64_t> finalizing;
     std::optional<Decision> decision;
     void Fail(std::uint32_t code) noexcept {
         if (!failure) failure = DiagnosticFailure{stage, code, inflight};
@@ -170,6 +171,11 @@ public:
     }
     void Cancel(std::uint64_t tick) noexcept {
         if (!canceled || tick < *canceled) canceled = tick;
+    }
+    bool MayIssue(std::uint64_t now) noexcept {
+        if (finalizing && (canceled || now >= (std::min)(*finalizing + DrainMs,
+            FinalizeDeadline(*finalizing, canceled)))) stop = true;
+        return !stop;
     }
     bool Drained() const noexcept {
         return journal.Sealed() && !writing && !failure && !journal.RejectedBefore() &&
@@ -282,7 +288,7 @@ class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>
     }
     bool StageAt(Stage stage) {
         std::scoped_lock lock(mutex);
-        if (state.stop) return false;
+        if (!state.MayIssue(GetTickCount64())) return false;
         state.stage = stage;
         return true;
     }
@@ -309,6 +315,7 @@ class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>
     static fire_and_forget CancelCurrent(std::shared_ptr<Trace> self, std::shared_ptr<IAsyncInfo> current) {
         try {
             co_await resume_background();
+            Apartment apartment;
             { std::scoped_lock lock(self->mutex); self->state.cancelRequested = true; }
             current->Cancel();
         } catch (...) { Failure(L"journal cancel", to_hresult()); }
@@ -338,7 +345,7 @@ class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>
             std::copy(pending.begin(), pending.end(), self->state.pending.begin());
         }
         if (!self->StageAt(Stage::Create)) co_return;
-        auto file = co_await self->Track(self->io->Create(self->folder, pending));
+        auto file = co_await self->Track(self->io->Create(self->folder, hstring(pending)));
         self->ClearOperation();
         if (!self->StageAt(Stage::Write)) co_return;
         co_await self->Track(self->io->Write(file, text));
@@ -349,15 +356,8 @@ class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>
         { std::scoped_lock lock(self->mutex); self->state.Published(event); }
         self->Signal();
     }
-    static fire_and_forget Drain(std::shared_ptr<Trace> self) {
-        try {
-            co_await resume_background();
-            Apartment apartment;
-            APTTYPE type{}; APTTYPEQUALIFIER qualifier{};
-            check_hresult(CoGetApartmentType(&type, &qualifier));
-            Require(type == APTTYPE_MTA, "activation diagnostics writer requires MTA");
-            if (!self->folder) {
-                if (!self->StageAt(Stage::Initialize)) throw hresult_canceled();
+    static IAsyncAction Initialize(std::shared_ptr<Trace> self) {
+                if (!self->StageAt(Stage::Initialize)) co_return;
                 std::array<wchar_t, IdentityChars> buffer{};
                 UINT32 length = static_cast<UINT32>(buffer.size());
                 self->identity.error = static_cast<std::uint32_t>(GetCurrentApplicationUserModelId(&length, buffer.data()));
@@ -372,16 +372,24 @@ class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>
                 } else if (self->identity.error != APPMODEL_ERROR_NO_APPLICATION) {
                     Failure(L"activation diagnostics identity", hresult{HRESULT_FROM_WIN32(self->identity.error)});
                 }
-                if (!self->StageAt(Stage::Root)) throw hresult_canceled();
+                if (!self->StageAt(Stage::Root)) co_return;
                 auto root = co_await self->Track(self->io->Folder(self->io->Cache(), L"DesktopPdf", CreationCollisionOption::OpenIfExists));
                 self->ClearOperation();
-                if (!self->StageAt(Stage::Parent)) throw hresult_canceled();
+                if (!self->StageAt(Stage::Parent)) co_return;
                 auto parent = co_await self->Track(self->io->Folder(root, L"ActivationDiagnostics", CreationCollisionOption::OpenIfExists));
                 self->ClearOperation();
-                if (!self->StageAt(Stage::Folder)) throw hresult_canceled();
+                if (!self->StageAt(Stage::Folder)) co_return;
                 self->folder = co_await self->Track(self->io->Folder(parent, hstring(self->id), CreationCollisionOption::FailIfExists));
                 self->ClearOperation();
-            }
+    }
+    static fire_and_forget Drain(std::shared_ptr<Trace> self) {
+        try {
+            co_await resume_background();
+            Apartment apartment;
+            APTTYPE type{}; APTTYPEQUALIFIER qualifier{};
+            check_hresult(CoGetApartmentType(&type, &qualifier));
+            Require(type == APTTYPE_MTA, "activation diagnostics writer requires MTA");
+            if (!self->folder) co_await Initialize(self);
             for (;;) {
                 Event event;
                 {
@@ -505,16 +513,17 @@ public:
         { std::scoped_lock lock(mutex); state.Cancel(tick); }
         Signal();
     }
-    IAsyncAction Finish(Reason reason, bool deferral) {
+    IAsyncAction Finish(Reason reason, bool deferral, std::uint64_t began = GetTickCount64()) {
         auto self = shared_from_this();
-        auto began = GetTickCount64();
+        auto sealed = GetTickCount64();
         bool start = false;
         {
             auto finish = MakeEvent(Point::Finish);
             std::scoped_lock lock(mutex);
             Require(!state.journal.Sealed(), "one journal finalizer");
             state.journal.Seal(finish);
-            if (state.canceled) state.stop = true;
+            state.finalizing = began;
+            state.MayIssue(GetTickCount64());
             if (!state.writing && !state.stop) start = state.writing = true;
         }
         if (start) Drain(self);
@@ -530,7 +539,7 @@ public:
                 done = state.Drained() || state.failure || state.journal.RejectedBefore() ||
                     state.canceled || now >= end;
                 if (done) {
-                    decision = state.Freeze(reason, began, now, FinalizeDeadline(began, state.canceled), deferral);
+                    decision = state.Freeze(reason, sealed, now, FinalizeDeadline(began, state.canceled), deferral);
                     jobId = job.data();
                 }
             }

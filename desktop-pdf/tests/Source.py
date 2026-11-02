@@ -85,7 +85,7 @@ class Source(unittest.TestCase):
         self.assertIn("Require(type == APTTYPE_MTA", trace)
         writer = trace.split("static fire_and_forget Drain(", 1)[1].split("\npublic:\n", 1)[0]
         self.assertLess(writer.index("co_await resume_background()"), writer.index("Apartment apartment"))
-        self.assertLess(writer.index("co_await resume_background()"), writer.index("self->io->Cache()"))
+        self.assertLess(writer.index("co_await resume_background()"), writer.index("co_await Initialize(self)"))
         self.assertIn("if (self->state.stop || !self->state.journal.Pop(event))", writer)
         self.assertIn("self->state.Fail(static_cast<std::uint32_t>(hr.value))", writer)
         enqueue_failure = trace.split('Failure(L"activation diagnostics enqueue"', 1)[1]
@@ -132,7 +132,7 @@ class Source(unittest.TestCase):
         self.assertIn("if (!gate.ClaimFinish(dataOwner)) return;", task)
         self.assertIn("if (!gate.ClaimData())", task)
         self.assertIn("activation::FinalAttempt release", task)
-        self.assertIn("co_await diagnostics->Finish(finalReason.load(), deferral != nullptr)", task)
+        self.assertIn("co_await diagnostics->Finish(finalReason.load(), deferral != nullptr, began)", task)
         self.assertEqual(task.count("deferral.Complete();"), 1)
         tail = '        if (primary.value < 0 && job) {'
         self.assertEqual(task.split(tail, 1)[1].split("struct Factory", 1)[0],

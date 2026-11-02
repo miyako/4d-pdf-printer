@@ -74,6 +74,14 @@ inline void JournalChecks() {
         FinalizeDeadline(10, 5000) == 2010 && canceled.canceled == 99, "absolute nonextending budgets");
     Require(canceled.Freeze(Reason::Canceled, 1000, 1000, 349, true).state == DrainState::Canceled,
         "already expired cancellation is not a new wait");
+    PublicationState late;
+    late.finalizing = 100;
+    Require(late.MayIssue(1599) && !late.MayIssue(1600) && late.stop && !late.failure,
+        "issue guard enforces original drain deadline without inventing I/O error");
+    PublicationState canceledDuringDrain;
+    canceledDuringDrain.finalizing = 100;
+    canceledDuringDrain.Cancel(120);
+    Require(!canceledDuringDrain.MayIssue(121), "cancellation stops new stage reservations");
     for (bool dataOwner : {false, true}) {
         TaskGate gate;
         if (dataOwner) Require(gate.ClaimData() && !gate.ClaimFinish(false), "active Data retains ownership");
