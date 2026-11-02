@@ -48,7 +48,9 @@ struct TrialIo : activation::JournalIo, std::enable_shared_from_this<TrialIo> {
     StorageFolder Cache() override { return root; }
     IAsyncOperation<StorageFolder> Folder(StorageFolder const& parent, hstring const& name,
         CreationCollisionOption collision) override {
-        if (fault == activation::Stage::Root) throw hresult_error(E_ACCESSDENIED);
+        auto stage = name == L"DesktopPdf" ? activation::Stage::Root :
+            name == L"ActivationDiagnostics" ? activation::Stage::Parent : activation::Stage::Folder;
+        if (fault == stage) throw hresult_error(E_ACCESSDENIED);
         return JournalIo::Folder(parent, name, collision);
     }
     IAsyncOperation<StorageFile> Create(StorageFolder const& parent, hstring const& name) override {
@@ -100,6 +102,26 @@ struct TestDeferral : implements<TestDeferral, IBackgroundTaskDeferral> {
         if (fail) throw hresult_error(E_FAIL);
     }
 };
+struct ReentrantInstance : implements<ReentrantInstance, IBackgroundTaskInstance> {
+    BackgroundTaskDeferral deferral;
+    unsigned added{}, removed{};
+    explicit ReentrantInstance(BackgroundTaskDeferral value) : deferral(std::move(value)) {}
+    guid InstanceId() { return {}; }
+    BackgroundTaskRegistration Task() { return nullptr; }
+    std::uint32_t Progress() { return 0; }
+    void Progress(std::uint32_t) {}
+    std::uint32_t SuspendedCount() { return 0; }
+    IInspectable TriggerDetails() { return nullptr; }
+    BackgroundTaskDeferral GetDeferral() { return deferral; }
+    event_token Canceled(BackgroundTaskCanceledEventHandler const& handler) {
+        ++added;
+        handler(as<IBackgroundTaskInstance>(), BackgroundTaskCancellationReason::Abort);
+        return event_token{17};
+    }
+    void Canceled(event_token const& token) {
+        Require(token.value == 17, "exact late subscription token"); ++removed;
+    }
+};
 inline void RealFinalizer(std::shared_ptr<activation::Trace> trace, bool failComplete = false) {
     std::atomic<unsigned> calls{};
     auto done = TestSignal(); APTTYPE apartment{};
@@ -116,6 +138,7 @@ inline void RealFinalizer(std::shared_ptr<activation::Trace> trace, bool failCom
 }
 inline void NativeJournalChecks() {
     using namespace activation;
+    auto moduleBaseline = static_cast<std::uint32_t>(get_module_lock());
     {
         TrialDirectory directory;
         auto id = RandomId();
@@ -131,7 +154,7 @@ inline void NativeJournalChecks() {
         auto file = StorageFile::GetFileFromPathAsync(final.wstring()).get();
         Require(FileIO::ReadTextAsync(file).get() == L"{\"test\":true}", "collision preserves original bytes");
     }
-    for (auto fault : {Stage::None, Stage::Root, Stage::Create, Stage::Write, Stage::Rename}) {
+    for (auto fault : {Stage::None, Stage::Root, Stage::Parent, Stage::Folder, Stage::Create, Stage::Write, Stage::Rename}) {
         TrialDirectory directory;
         auto io = std::make_shared<TrialIo>(directory.path.wstring());
         io->fault = fault;
@@ -140,6 +163,11 @@ inline void NativeJournalChecks() {
         AwaitTest(trace->Finish(Reason::Normal, true));
         Require(io->reported, "independent receipt even after event sink failure");
         auto r = Parse(io->receipt, 4096);
+        Fields(r, {L"schema", L"version", L"activation", L"job", L"finalize_reason", L"drain_state",
+            L"accepted_count", L"dequeued_count", L"rejected_before_seal", L"rejected_after_seal_at_decision",
+            L"last_published_sequence", L"finish_sequence", L"admission_loss", L"sealed_tick_ms",
+            L"decision_tick_ms", L"deadline_tick_ms", L"outstanding_io_at_decision", L"deferral_acquired",
+            L"deferral_release_planned", L"deferral_release_observed", L"inflight", L"first_failure"});
         Require(r.GetNamedString(L"schema") == L"4d-pdf-printer.activation-journal-terminal" &&
             Integer(r, L"version") == 1 && !r.GetNamedBoolean(L"deferral_release_observed"),
             "terminal schema and honest acknowledgement boundary");
@@ -183,6 +211,7 @@ inline void NativeJournalChecks() {
         auto r = Parse(io->receipt, 4096);
         Require(r.GetNamedString(L"drain_state") == L"deadline" &&
             r.GetNamedBoolean(L"outstanding_io_at_decision") &&
+            !r.GetNamedObject(L"inflight").GetNamedBoolean(L"cancel_requested") &&
             r.GetNamedValue(L"last_published_sequence").ValueType() == JsonValueType::Null &&
             r.GetNamedValue(L"first_failure").ValueType() == JsonValueType::Null, "pending timeout, not fabricated I/O error");
         std::weak_ptr<Trace> weak = trace;
@@ -199,6 +228,9 @@ inline void NativeJournalChecks() {
         trace->Cancel(GetTickCount64() - 1000);
         AwaitTest(trace->Finish(Reason::Canceled, true));
         Require(!io->reported && std::filesystem::is_empty(directory.path), "expired cancellation issues no diagnostic I/O");
+        auto late = std::make_shared<Trace>(io);
+        AwaitTest(late->Finish(Reason::Normal, true, GetTickCount64() - 3000));
+        Require(!io->reported && std::filesystem::is_empty(directory.path), "pre-detach normal deadline never resets");
     }
     for (bool fail : {false, true}) {
         TrialDirectory directory;
@@ -221,5 +253,41 @@ inline void NativeJournalChecks() {
             "late native publication is not retrospective deferral proof");
         ReleasedTest(weak);
     }
+    {
+        std::atomic<unsigned> calls{};
+        auto done = TestSignal(); APTTYPE apartment{};
+        auto task = make_self<::Task>();
+        auto deferral = make<TestDeferral>(calls, done.get(), false, apartment).as<BackgroundTaskDeferral>();
+        auto instance = make_self<ReentrantInstance>(deferral);
+        task->Run(instance.as<IBackgroundTaskInstance>());
+        WaitTest(done.get());
+        Require(calls == 1 && instance->added == 1 && instance->removed == 1,
+            "actual Run handles synchronous cancellation before token return, no second deferral");
+    }
+    {
+        TrialDirectory directory;
+        auto io = std::make_shared<TrialIo>(directory.path.wstring());
+        std::exception_ptr error;
+        std::thread sta([&] {
+            try {
+                init_apartment(apartment_type::single_threaded);
+                std::atomic<unsigned> calls{};
+                auto done = TestSignal(); APTTYPE apartment{};
+                auto task = make_self<::Task>();
+                task->diagnostics = std::make_shared<Trace>(io);
+                task->deferral = make<TestDeferral>(calls, done.get(), false, apartment).as<BackgroundTaskDeferral>();
+                task->Finish();
+                DWORD index{}; auto signal = done.get();
+                check_hresult(CoWaitForMultipleHandles(COWAIT_DISPATCH_CALLS | COWAIT_DISPATCH_WINDOW_MESSAGES,
+                    6000, 1, &signal, &index));
+                Require(calls == 1 && apartment == APTTYPE_STA, "actual Task finalizer restores STA context");
+            } catch (...) { error = std::current_exception(); }
+        });
+        sta.join();
+        if (error) std::rethrow_exception(error);
+    }
+    auto end = GetTickCount64() + 5000;
+    while (static_cast<std::uint32_t>(get_module_lock()) != moduleBaseline && GetTickCount64() < end) Sleep(1);
+    Require(static_cast<std::uint32_t>(get_module_lock()) == moduleBaseline, "all native fixture module owners actually released");
 }
 }

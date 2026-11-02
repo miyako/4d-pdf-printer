@@ -37,7 +37,7 @@ inline void JournalChecks() {
     Require(timeout.state == DrainState::Deadline && !timeout.published && timeout.outstanding &&
         timeout.inflight->sequence == 0 && !timeout.failure && state.stop, "honest pending deadline");
     state.Published(event);
-    Require(!state.decision->published && state.published == 0, "late publication cannot upgrade decision");
+    Require(!state.decision->published && state.published == 0u, "late publication cannot upgrade decision");
     bool twice = false;
     try { state.Freeze(Reason::Normal, 100, 1601, 2100, true); } catch (...) { twice = true; }
     Require(twice, "one immutable decision");
@@ -60,7 +60,7 @@ inline void JournalChecks() {
     for (std::size_t i = 0; i != EventLimit - 1; ++i) full.journal.Push(event);
     full.journal.Seal(finish);
     while (full.journal.Pop(event)) full.Published(event);
-    Require(full.Drained() && full.published == 31, "exact 32 including finish is valid");
+    Require(full.Drained() && full.published == 31u, "exact 32 including finish is valid");
     PublicationState loss;
     event.point = Point::RunEnter;
     for (std::size_t i = 0; i != EventLimit; ++i) loss.journal.Push(event);
@@ -71,7 +71,7 @@ inline void JournalChecks() {
     PublicationState canceled;
     canceled.Cancel(100); canceled.Cancel(200); canceled.Cancel(99);
     Require(FinalizeDeadline(10, std::nullopt) == 2010 && FinalizeDeadline(1000, 100) == 350 &&
-        FinalizeDeadline(10, 5000) == 2010 && canceled.canceled == 99, "absolute nonextending budgets");
+        FinalizeDeadline(10, 5000) == 2010 && canceled.canceled == 99ull, "absolute nonextending budgets");
     Require(canceled.Freeze(Reason::Canceled, 1000, 1000, 349, true).state == DrainState::Canceled,
         "already expired cancellation is not a new wait");
     PublicationState late;

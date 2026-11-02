@@ -279,7 +279,7 @@ class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>
     StorageFolder folder{nullptr};
     std::wstring id;
     Identity identity;
-    std::array<wchar_t, 33> job{};
+    std::array<wchar_t, 33> knownJob{};
     bool reportDone{};
     ReportResult reportResult;
 
@@ -357,30 +357,30 @@ class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>
         self->Signal();
     }
     static IAsyncAction Initialize(std::shared_ptr<Trace> self) {
-                if (!self->StageAt(Stage::Initialize)) co_return;
-                std::array<wchar_t, IdentityChars> buffer{};
-                UINT32 length = static_cast<UINT32>(buffer.size());
-                self->identity.error = static_cast<std::uint32_t>(GetCurrentApplicationUserModelId(&length, buffer.data()));
-                if (self->identity.error == 0) {
-                    if (length > 1 && length <= buffer.size() && buffer[length - 1] == L'\0' &&
-                        IdentityText(std::wstring_view(buffer.data(), length - 1))) {
-                        self->identity.value.assign(buffer.data(), length - 1);
-                    } else {
-                        self->identity.validationError = static_cast<std::uint32_t>(HRESULT_FROM_WIN32(ERROR_INVALID_DATA));
-                        Failure(L"activation diagnostics identity response", hresult{HRESULT_FROM_WIN32(ERROR_INVALID_DATA)});
-                    }
-                } else if (self->identity.error != APPMODEL_ERROR_NO_APPLICATION) {
-                    Failure(L"activation diagnostics identity", hresult{HRESULT_FROM_WIN32(self->identity.error)});
-                }
-                if (!self->StageAt(Stage::Root)) co_return;
-                auto root = co_await self->Track(self->io->Folder(self->io->Cache(), L"DesktopPdf", CreationCollisionOption::OpenIfExists));
-                self->ClearOperation();
-                if (!self->StageAt(Stage::Parent)) co_return;
-                auto parent = co_await self->Track(self->io->Folder(root, L"ActivationDiagnostics", CreationCollisionOption::OpenIfExists));
-                self->ClearOperation();
-                if (!self->StageAt(Stage::Folder)) co_return;
-                self->folder = co_await self->Track(self->io->Folder(parent, hstring(self->id), CreationCollisionOption::FailIfExists));
-                self->ClearOperation();
+        if (!self->StageAt(Stage::Initialize)) co_return;
+        std::array<wchar_t, IdentityChars> buffer{};
+        UINT32 length = static_cast<UINT32>(buffer.size());
+        self->identity.error = static_cast<std::uint32_t>(GetCurrentApplicationUserModelId(&length, buffer.data()));
+        if (self->identity.error == 0) {
+            if (length > 1 && length <= buffer.size() && buffer[length - 1] == L'\0' &&
+                IdentityText(std::wstring_view(buffer.data(), length - 1))) {
+                self->identity.value.assign(buffer.data(), length - 1);
+            } else {
+                self->identity.validationError = static_cast<std::uint32_t>(HRESULT_FROM_WIN32(ERROR_INVALID_DATA));
+                Failure(L"activation diagnostics identity response", hresult{HRESULT_FROM_WIN32(ERROR_INVALID_DATA)});
+            }
+        } else if (self->identity.error != APPMODEL_ERROR_NO_APPLICATION) {
+            Failure(L"activation diagnostics identity", hresult{HRESULT_FROM_WIN32(self->identity.error)});
+        }
+        if (!self->StageAt(Stage::Root)) co_return;
+        auto root = co_await self->Track(self->io->Folder(self->io->Cache(), L"DesktopPdf", CreationCollisionOption::OpenIfExists));
+        self->ClearOperation();
+        if (!self->StageAt(Stage::Parent)) co_return;
+        auto parent = co_await self->Track(self->io->Folder(root, L"ActivationDiagnostics", CreationCollisionOption::OpenIfExists));
+        self->ClearOperation();
+        if (!self->StageAt(Stage::Folder)) co_return;
+        self->folder = co_await self->Track(self->io->Folder(parent, hstring(self->id), CreationCollisionOption::FailIfExists));
+        self->ClearOperation();
     }
     static fire_and_forget Drain(std::shared_ptr<Trace> self) {
         try {
@@ -496,11 +496,11 @@ public:
             bool start = false, overflow = false;
             {
                 std::scoped_lock lock(mutex);
-                if (!job.empty()) std::copy(job.begin(), job.end(), this->job.begin());
+                if (!job.empty()) std::copy(job.begin(), job.end(), knownJob.begin());
                 if (!state.journal.Push(event)) overflow = true;
                 else if (!state.stop && !state.writing) start = state.writing = true;
             }
-            if (overflow) Failure(L"activation diagnostics event limit", hresult{E_BOUNDS});
+            if (overflow) Failure(L"activation diagnostics admission rejected", hresult{E_BOUNDS});
             if (start) Drain(shared_from_this());
         } catch (...) {
             auto hr = to_hresult();
@@ -540,7 +540,7 @@ public:
                     state.canceled || now >= end;
                 if (done) {
                     decision = state.Freeze(reason, sealed, now, FinalizeDeadline(began, state.canceled), deferral);
-                    jobId = job.data();
+                    jobId = knownJob.data();
                 }
             }
             if (done) break;
