@@ -104,18 +104,18 @@ struct TestDeferral : implements<TestDeferral, IBackgroundTaskDeferral> {
 };
 struct ReentrantInstance : implements<ReentrantInstance, IBackgroundTaskInstance> {
     BackgroundTaskDeferral deferral;
-    unsigned added{}, removed{};
+    unsigned added{}, removed{}, triggers{};
     explicit ReentrantInstance(BackgroundTaskDeferral value) : deferral(std::move(value)) {}
     guid InstanceId() { return {}; }
     BackgroundTaskRegistration Task() { return nullptr; }
     std::uint32_t Progress() { return 0; }
     void Progress(std::uint32_t) {}
     std::uint32_t SuspendedCount() { return 0; }
-    IInspectable TriggerDetails() { return nullptr; }
+    IInspectable TriggerDetails() { ++triggers; return nullptr; }
     BackgroundTaskDeferral GetDeferral() { return deferral; }
     event_token Canceled(BackgroundTaskCanceledEventHandler const& handler) {
         ++added;
-        handler(as<IBackgroundTaskInstance>(), BackgroundTaskCancellationReason::Abort);
+        handler(get_strong().as<IBackgroundTaskInstance>(), BackgroundTaskCancellationReason::Abort);
         return event_token{17};
     }
     void Canceled(event_token const& token) {
@@ -129,6 +129,7 @@ inline void RealFinalizer(std::shared_ptr<activation::Trace> trace, bool failCom
     task->diagnostics = std::move(trace);
     task->deferral = make<TestDeferral>(calls, done.get(), failComplete, apartment).as<BackgroundTaskDeferral>();
     Require(task->gate.ClaimData(), "test primary Data ownership");
+    task->ObserveCancellation();
     task->Finish(activation::Reason::Canceled);
     Require(calls == 0, "other finisher cannot steal Data deferral");
     task->Finish(activation::Reason::Normal, true);
@@ -261,7 +262,7 @@ inline void NativeJournalChecks() {
         auto instance = make_self<ReentrantInstance>(deferral);
         task->Run(instance.as<IBackgroundTaskInstance>());
         WaitTest(done.get());
-        Require(calls == 1 && instance->added == 1 && instance->removed == 1,
+        Require(calls == 1 && instance->added == 1 && instance->removed == 1 && instance->triggers == 0,
             "actual Run handles synchronous cancellation before token return, no second deferral");
     }
     {

@@ -104,6 +104,7 @@ struct Task : implements<Task, IBackgroundTask> {
     fire_and_forget Begin() {
         auto lifetime = get_strong();
         try {
+            if (gate.Closing() || canceled) co_return;
             Trace(activation::Point::TriggerBefore);
             auto details = instance.TriggerDetails().as<PrintWorkflowVirtualPrinterTriggerDetails>();
             Trace(activation::Point::TriggerAcquired);
@@ -115,6 +116,7 @@ struct Task : implements<Task, IBackgroundTask> {
             bool installed;
             { std::scoped_lock lock(mutex); installed = dataToken.Install(token, gate.Closing()); }
             if (!installed) { session.VirtualPrinterDataAvailable(token); co_return; }
+            if (gate.Closing() || canceled) co_return;
             Trace(activation::Point::SessionSubscribed);
             Trace(activation::Point::StartBefore);
             session.Start();
