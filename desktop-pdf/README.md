@@ -1,21 +1,20 @@
 # Desktop PDF integration: local source-review checkpoint
 
-**0.1.0.2 is an uncommitted, unbuilt topology experiment; deployment is on hold.**
-The installed 0.1.0.1/245 baseline has genuine Save As evidence, but registered
-Silent submission failed StartDocW with error3003. A current same-caller
-non-file diagnostic print captured fresh OXPS without a dialog; its intentional
-capture-only failed completion was not a PDF workflow failure. These observations
-do not establish that the integration's two printer-owning AppIDs caused3003.
+**Journal-fix source candidate; deployment and further print trials are on hold.**
+Package identity, version **0.1.0.2**, capabilities, endpoints and job protocol are
+unchanged. This source is not authorization to update the installed package.
+The preceding `6674090` source produced one genuine Silent PDF: matching worker/
+publication evidence, a receipt after `CompleteJob(Succeeded)` returned, and user
+reports of no UI, readable text and a visible rectangle. Its strict collection
+result stayed **false** because the activation journal stopped at `job-created`.
+The later same-job snapshot retained the same incomplete prefix and staging files.
+Those immutable results are not retroactively upgraded by this source correction.
 
-**The extended process/publication and unsigned-package gate is natively UNRUN
-at this source-review checkpoint. Activation and printing are unproven.**
-The prior compile-only source `3fd66773a5b86bd94276c437de7ecd8d5b4c58f3`
-passed both architectures in run41037488999 (two CTests/five source guards);
-that result does not cover these new tests or packaging. Later exact-source
-receipts establish the extended result without a result-only source push.
-This target implements the two required source paths without
-changing the diagnostic printer or any installed package/queue. Native APIs,
-process containment and publication semantics still need actual Windows evidence.
+The change below distinguishes published events from dequeued events, waits
+boundedly through `finish`, and reports diagnostic failure independently. It does
+not establish the old stall's exact cause, certify PSA lifecycle behavior, or prove
+process exit/unload. Native CI results must be tied to their exact source commit;
+unpackaged test fixtures are not AppContainer/printing evidence.
 
 ## Selected product boundary
 
@@ -55,12 +54,13 @@ bare mode/job suffix to unchanged `Contract.h` validation. All original strict
 bare/corresponding-wrapper forms remain accepted for compatibility. Arbitrary
 owners, nested wrappers, other mismatches, malformed IDs and extras still fail.
 This is argument compatibility, not authentication. Host still validates the
-request's mode and job ID. Actual candidate PSA identity/FullTrust dispatch is
-unproved; portable argument tests do not establish Windows launch behavior.
+request's mode and job ID. The preceding one-job dispatch evidence is separate
+from portable argument tests and does not establish repeated reliability.
 Generic interactive document titles are never parsed as registration selectors.
 
-The candidate preserves Task/App/Client, diagnostics/module lifetime, shared
-contract, worker/runtime and publication sources exactly to245. The existing
+This correction changes Task diagnostic finalization and journal helpers/tests.
+App/Client, shared job contract, worker/runtime and generic publication sources
+remain unchanged. The existing
 full native Build/Package pipeline must rebuild and test all own targets, then
 record fresh actual PE hashes. Native PE timestamps are not deterministic: frozen
 source does not imply byte-identical245 binaries. No mixed-binary reuse,
@@ -105,63 +105,76 @@ identity, checkpoint, process/thread IDs, monotonic event tick, HRESULT and an
 optional own job ID are recorded: no title, destination, session/source/document
 text, OXPS or PDF payload.
 
-Each activation admits at most **32 events of at most 8192 JSON bytes**. A fixed
-memory journal has a separate mutex; enqueueing never awaits storage or acquires
-the lifecycle mutex. At most one writer performs diagnostic I/O per activation;
-idle waves can reschedule at most 32 thread-pool callbacks, never a listener/thread
-per unchecked event. The first suspension is `resume_background`, before identity,
-storage or COM work. A scoped `CoIncrementMTAUsage`/`CoDecrementMTAUsage` cookie
-(documented movable across threads) and MTA check keep async storage off the Run
-context, without initializing/uninitializing the Task/factory apartment.
-Existing Root/Publish no-overwrite helpers are reused inside that namespace.
-The Windows half also compiles in IntegrationContract, which receives the same
-native definitions (including NOMINMAX), strict warnings and WinRT/COM libraries
-as the other native targets. Including the SDK COM declaration requires
-DllCanUnloadNow to omit noexcept; its original module-lock return body and
-uninstrumented factory behavior remain unchanged.
+Each activation admits **31 ordinary events plus one reserved `finish`**, each at
+most8192 JSON bytes. Admission loss is explicit and never certified as clean
+coverage. Sealing rejects later additions; sequence numbers remain unpadded0..31.
+One writer uses tracked create/write/rename operations with no replacement. The
+last-published cursor advances only after rename returns, never after dequeue.
+First stage/HRESULT and in-flight sequence/staging leaf are retained. The generic
+Job `Publish` helper and all job/worker records remain unchanged.
 
-Sink/setup/queue/limit/apartment-cleanup failures use the existing `Failure`
-reporter; sink/enqueue failure disables further diagnostic writes without retry
-or changing print outcomes. The writer checks failed state before dequeuing another
-event; an already-dequeued/in-flight publication may still finish after an enqueue
-failure. Suppression is not atomic, and that I/O is not canceled/reaped. Enqueue
-failure does not declare the existing writer finished; it clears its active flag
-when it observes failed state or exits its own failure path.
-Pending/partial files are retained, no sweeps. The
-writer retains only its diagnostic state, **not Task/session/deferral**; it does
-not delay Finish or extend the original budgets. OS task/process termination may
-therefore cut off records. Logging/identity/storage failures, finite event cap,
-async ordering and timing perturbation also limit coverage: **no record is not
-proof Run/Data was never entered**, and a trace is not a print-success contract.
-Fixed work/memory limits do not impose a hard deadline on native identity/COM/
-storage calls; a stalled writer can leave diagnostic state/I/O pending until
-completion or process termination, without retaining the Task deferral.
-The plain shared state now explicitly pins the **own C++/WinRT module lock**:
-its first base acquires `++get_module_lock()` before any Drain can be scheduled
-and releases `--get_module_lock()` last, after state members and
-enable_shared_from_this base cleanup. The scoped counter is noncopyable/nonmovable;
-construction unwinding releases an acquired count. Neither shared_ptr,
-fire_and_forget nor the first resume_background callback is assumed to pin DLL
-code implicitly. Pending writers and later idle waves keep that state/lock alive,
-so Task/factory release alone cannot make DllCanUnloadNow report S_OK while
-diagnostic state remains. There is no HMODULE/FreeLibrary callback-stack scheme.
-This is cooperative module-unload protection, **not OS process-lifetime retention**:
-process termination can still interrupt diagnostics and it does not extend Task
-deferrals, printing deadlines or completion guarantees.
-Portable tests execute the production scoped-counter acquire/release, constructor
-unwind, cleanup order and pending shared-owner cases; native tests repeat these
-against the real get_module_lock and instantiate the real diagnostic state without
-scheduling a writer. The entire reviewed Task.cpp remains byte-exact. These tests
-do not execute a PSA deferral, actual writer callback or physical DLL unload.
-Native Windows compilation, package-context identity, apartment/storage behavior
-and early lifecycle failures still require separately reviewed native evidence.
-The historical0.1.0.1 diagnostic-only change made no routing, class/AUMID,
-input/output format or renderer change. It preserved identity,
-publisher, apps, routing and print contracts. Native compilation/records/package
-and actual runtime writer behavior remain unproved until their exact evidence;
-signing/install/printing were separate user-operated steps. The current installed
-0.1.0.1 package, runtime/configuration, queues and accumulated evidence remain
-untouched by this0.1.0.2 source-only candidate.
+One Task ownership gate separates waiting, primary Data, finalizing and closed.
+Only the Data owner may finalize an active job; duplicate callbacks never create
+another job. Callback registration/revocation happens outside locks, including a
+subscription that reenters finalization before returning its token. Exactly one
+finalizer retains Task/deferral and attempts deferral completion once, including
+diagnostic exceptions. The existing `CompleteJob` call and its subsequent
+`completion.json` publication stay in their original order and failure semantics.
+Diagnostic failures never rewrite that job outcome or a published PDF.
+
+The finalizer asynchronously waits through the published `finish`: **1500ms**
+drain allowance and **up to500ms** independent terminal-receipt allowance within
+one **2000ms absolute added wait**. First OS/internal cancellation tightens the
+deadline to **first request+250ms**, inclusive of existing job cleanup, not another
+allowance afterward. If already expired, there is no added diagnostic wait.
+An auto-reset signal and timed async waits replace neither the job deadline nor
+the existing callback watchdog. No STA `.get()`, storage polling, retry or deletion.
+Normal WinRT awaiters restore the finalizer's calling COM context; file work runs
+on the background pool with the existing MTA-usage guard.
+
+A separate bounded diagnostic receipt has schema
+`4d-pdf-printer.activation-journal-terminal`, version1, at:
+`LocalCache\DesktopPdfJournal-<activation32hex>.json`. A native backend creates its
+same-directory `.partial` with CREATE_NEW, writes <=4096UTF8bytes, flushes, closes,
+then uses no-replace `MoveFileFromAppW`. The existing package-name/publisher guard
+applies; no new capability, custom DACL/SID, alternate path or fallback identity.
+This avoids reusing FileIO safe-save for the error sink, not the underlying disk.
+The atomic-visibility strategy still needs supported-filesystem validation; neither
+flush nor rename promises power-loss durability or a physical I/O time limit.
+
+The immutable receipt freezes **before** its own I/O and the deferral attempt.
+It carries reason, drain state (`drained/failed/deadline/canceled/unavailable`),
+accepted/dequeued/published/finish cursors, rejection counts, monotonic deadline,
+in-flight stage/leaf, first raw HRESULT and nullable sequence/checkpoint. Its
+`deferral_release_observed` is always false: it cannot attest a later return,
+process exit or DLL unload. An in-flight `cancel_requested` describes an attempt
+already observed at decision time, not an acknowledgement or future cancel call.
+A late successful rename never upgrades a frozen timeout/cancellation decision.
+The sink's own failure is debugger-reported with stage/code; missing final receipt
+or staging alone is unknown, never success. No recursive durable fallback/retry.
+
+Outstanding event/report/cancellation workers retain buffers/state and the **own
+C++/WinRT module lock** until their continuations clean up. Cancel is best effort,
+not proof I/O stopped. Timing bounds application waiting, not blocked COM/filesystem
+calls, OS scheduling or the Windows background-task execution quota. A deferral
+does not guarantee survival past that quota; a module lock does not keep a process
+alive. A wedged filesystem can retain work beyond the finalizer deadline; this is
+not a process-wide resource/repeated-reliability guarantee.
+
+Future observers must read/hash **finalized immutable files only**, using compatible
+sharing. Active pending/`.~tmp`/`.partial` entries get names/kinds/length metadata,
+not restrictive-share content hashing. Preserve raw metadata before interpreting;
+unknown staging, missing terminal or incomplete/lost events blocks full journal
+certification. Existing consumed operators and their failed results are unchanged;
+this is not an allowlist, new collector or retrospective evidence normalization.
+
+Portable tests exercise production journal/gate/budgets, races, retained failures,
+late publication, the no-retry backend algorithm and injected native-stage errors.
+Native fixtures execute real tracked FileIO, native no-replace publication,
+injected failures/pending operations and the real Task finalizer with a test
+deferral. They do not activate a PSA, install a package, print, or prove actual
+AppContainer access/background-task scheduling. Native compile/run results remain
+separate exact-commit CI evidence. Deployment and later print trials remain on hold.
 
 Client verbs below describe an interface, **not operator instructions or consent
 to execute on Windows**:

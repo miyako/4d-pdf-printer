@@ -2,6 +2,8 @@
 #include "../ActivationDiagnostics.h"
 #include "../HostArguments.h"
 #include "ActivationLifetime.h"
+#include "ActivationJournal.h"
+#include "ActivationJournalNative.h"
 #include <iostream>
 
 using namespace pdf;
@@ -13,6 +15,9 @@ template<typename F> void Reject(F function) {
 int main() {
     try {
         init_apartment(apartment_type::multi_threaded);
+        tests::JournalChecks();
+        tests::ReportChecks();
+        tests::NativeJournalChecks();
         tests::LifetimeChecks(get_module_lock());
         static_assert(!std::is_copy_constructible_v<activation::ModuleLifetime> &&
             !std::is_move_constructible_v<activation::ModuleLifetime>);

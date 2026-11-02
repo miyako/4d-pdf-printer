@@ -1,6 +1,5 @@
 """Source/provenance checks only. Does not execute or emulate Windows APIs."""
 from pathlib import Path
-import hashlib
 import re
 import subprocess
 import unittest
@@ -10,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEPENDENCY = "8b34e5669bec822bb82768fd61b0483bbdd74567"
 PROOF = "12cc27915d08fcf29c5b1f00c422e0a16cc23e1b"
 INTEGRATION_BASELINE = "245373012067c928781e5c85b7aafddd191b800d"
+JOURNAL_BASELINE = "66740903d715cbd9a6572486eefb83c4fe7b9375"
 NS = {
     "m": "http://schemas.microsoft.com/appx/manifest/foundation/windows10",
     "u10": "http://schemas.microsoft.com/appx/manifest/uap/windows10/10",
@@ -23,12 +23,10 @@ def original(ref, path):
 
 
 class Source(unittest.TestCase):
-    def test_topology_candidate_preserves_producer_and_worker_sources(self):
-        for path in ("desktop-pdf/Task.cpp", "desktop-pdf/ActivationDiagnostics.h",
-                     "printer/psa/App.cpp", "desktop-pdf/Client.cpp", "desktop-pdf/Contract.h",
+    def test_journal_preserves_routing_job_and_worker_sources(self):
+        for path in ("printer/psa/App.cpp", "desktop-pdf/Client.cpp", "desktop-pdf/Contract.h",
                      "desktop-pdf/WorkerProcess.cpp", "desktop-pdf/WorkerProcess.h", "desktop-pdf/Job.h",
-                     "printer/package/DiagnosticPdc.xml", "desktop-pdf/package/Strings/en-US/Resources.resw",
-                     "desktop-pdf/CMakeLists.txt"):
+                     "printer/package/DiagnosticPdc.xml", "desktop-pdf/package/Strings/en-US/Resources.resw"):
             with self.subTest(path=path):
                 self.assertEqual((ROOT / path).read_bytes(), original(INTEGRATION_BASELINE, path))
         helper = (ROOT / "desktop-pdf/HostArguments.h").read_text()
@@ -55,9 +53,11 @@ class Source(unittest.TestCase):
         baseline_workflow = original(INTEGRATION_BASELINE, ".github/workflows/renderer-windows.yml").decode()
         fetch = f"git fetch --no-tags --depth=1 origin {DEPENDENCY} {PROOF} ae53b92a5e1f3fa442f41246079cde7e2f4afd47"
         self.assertEqual(baseline_workflow.count(fetch), 1)
-        self.assertEqual(workflow, baseline_workflow.replace(fetch, fetch + " " + INTEGRATION_BASELINE, 1))
+        self.assertEqual(workflow, baseline_workflow.replace(
+            fetch, fetch + " " + INTEGRATION_BASELINE + " " + JOURNAL_BASELINE, 1))
         refs = re.search(r"git fetch --no-tags --depth=1 origin ([^\n]+)", workflow).group(1).split()
-        self.assertEqual(refs, [DEPENDENCY, PROOF, "ae53b92a5e1f3fa442f41246079cde7e2f4afd47", INTEGRATION_BASELINE])
+        self.assertEqual(refs, [DEPENDENCY, PROOF, "ae53b92a5e1f3fa442f41246079cde7e2f4afd47",
+                                INTEGRATION_BASELINE, JOURNAL_BASELINE])
 
     def test_activation_diagnostics_are_separate_and_bounded(self):
         trace = (ROOT / "desktop-pdf/ActivationDiagnostics.h").read_text()
@@ -70,7 +70,8 @@ class Source(unittest.TestCase):
         self.assertIn("defined(WINRT_NO_MODULE_LOCK) || defined(WINRT_CUSTOM_MODULE_LOCK)", trace)
         for forbidden in ("FreeLibrary", "LoadLibrary", "HMODULE"):
             self.assertNotIn(forbidden, trace)
-        self.assertIn("accepted == EventLimit", trace)
+        self.assertIn("accepted == EventLimit - 1", trace)
+        self.assertIn("events[accepted++] = finish", trace)
         self.assertIn('L"4d-pdf-printer.activation-diagnostic"', trace)
         self.assertIn('L"ActivationDiagnostics"', trace)
         self.assertIn("GetCurrentApplicationUserModelId(&length, buffer.data())", trace)
@@ -84,22 +85,19 @@ class Source(unittest.TestCase):
         self.assertIn("Require(type == APTTYPE_MTA", trace)
         writer = trace.split("static fire_and_forget Drain(", 1)[1].split("\npublic:\n", 1)[0]
         self.assertLess(writer.index("co_await resume_background()"), writer.index("Apartment apartment"))
-        self.assertLess(writer.index("co_await resume_background()"), writer.index("co_await Root()"))
-        self.assertIn("if (failed) return;", trace)
-        self.assertIn("self->failed = true; self->writing = false;", writer)
-        self.assertIn("if (self->failed || !self->journal.Pop(event))", writer)
-        self.assertLess(writer.index("self->failed ||"), writer.index("self->journal.Pop(event)"))
+        self.assertLess(writer.index("co_await resume_background()"), writer.index("self->io->Cache()"))
+        self.assertIn("if (self->state.stop || !self->state.journal.Pop(event))", writer)
+        self.assertIn("self->state.Fail(static_cast<std::uint32_t>(hr.value))", writer)
         enqueue_failure = trace.split('Failure(L"activation diagnostics enqueue"', 1)[1]
-        self.assertIn("failed = true;", enqueue_failure)
-        self.assertNotIn("writing = false", enqueue_failure)
+        self.assertIn("state.Fail(static_cast<std::uint32_t>(hr.value))", enqueue_failure)
         self.assertIn('Failure(L"activation diagnostics write", hr)', trace)
         self.assertNotIn("get_strong", trace)
         self.assertNotIn("BackgroundTaskDeferral", trace)
         for forbidden in ("JobTitle", "destination", "SourceContent", "source.oxps",
-                          "Jobs", "Registrations", ".get()", "init_apartment", "std::thread",
-                          "StartDoc", "SetPrinter", "CreateEvent", "WaitForSingleObject"):
+                          "Jobs", "Registrations", "init_apartment", "std::thread",
+                          "StartDoc", "SetPrinter", "WaitForSingleObject"):
             self.assertNotIn(forbidden, trace)
-        add = trace.split("void Add(", 1)[1]
+        add = trace.split("void Add(", 1)[1].split("void Cancel(", 1)[0]
         self.assertNotIn("co_await", add)
         self.assertNotIn("Publish(", add)
         begin = task.split("fire_and_forget Begin()", 1)[1].split("fire_and_forget Data(", 1)[0]
@@ -122,28 +120,53 @@ class Source(unittest.TestCase):
 
     def test_activation_instrumentation_preserves_job_finalizer(self):
         task = (ROOT / "desktop-pdf/Task.cpp").read_text()
-        self.assertEqual(hashlib.sha256((ROOT / "desktop-pdf/Task.cpp").read_bytes()).hexdigest(),
-                         "014eb6e7a32ab673cbec3b4552324f47345d890d407a2f01abdd92d0f6491653",
-                         "Module-lifetime correction must leave entire reviewed Task/deferral code byte-exact")
-        baseline = original("ae53b92a5e1f3fa442f41246079cde7e2f4afd47", "desktop-pdf/Task.cpp").decode()
-        # No trace additions or behavior edits in capture/launch/wait/publication.
+        baseline = original(JOURNAL_BASELINE, "desktop-pdf/Task.cpp").decode()
+        # Only timestamp the existing cancellation; no job/publication rewrite.
         start = '            if (mode == Mode::Silent) {\n                auto claim'
         end = '        } catch (...) {\n            primary = to_hresult();'
         self.assertEqual(task.split(start, 1)[1].split(end, 1)[0],
-                         baseline.split(start, 1)[1].split(end, 1)[0])
+                         baseline.split(start, 1)[1].split(end, 1)[0].replace(
+                             "canceled = true;", "ObserveCancellation();", 1))
         self.assertEqual(task.count("args.CompleteJob(status);"), 1)
         self.assertIn("auto deadline = GetTickCount64() + 45000;", task)
-        self.assertIn("if (!working.exchange(true) && !finished)", task)
-        self.assertIn("if (finished.exchange(true)) return;", task)
-        self.assertIn("if (!self->working.exchange(true)) self->Finish();", task)
+        self.assertIn("if (!gate.ClaimFinish(dataOwner)) return;", task)
+        self.assertIn("if (!gate.ClaimData())", task)
+        self.assertIn("activation::FinalAttempt release", task)
+        self.assertIn("co_await diagnostics->Finish(finalReason.load(), deferral != nullptr)", task)
+        self.assertEqual(task.count("deferral.Complete();"), 1)
+        tail = '        if (primary.value < 0 && job) {'
+        self.assertEqual(task.split(tail, 1)[1].split("struct Factory", 1)[0],
+                         baseline.split(tail, 1)[1].split("struct Factory", 1)[0].replace(
+                             "Finish();", "Finish(activation::Reason::Normal, true);", 1))
         self.assertIn("primary = to_hresult(); Trace(activation::Point::CompleteFailure, primary);", task)
         self.assertIn("Failure(stage.c_str(), primary);", task)
         # The SDK COM header declares this export without noexcept; body/factory stay exact.
         unload = 'extern "C" HRESULT __stdcall DllCanUnloadNow()'
         baseline_factory = baseline.split("struct Factory", 1)[1]
-        self.assertEqual(baseline_factory.count(unload + " noexcept"), 1)
-        self.assertEqual(task.split("struct Factory", 1)[1],
-                         baseline_factory.replace(unload + " noexcept", unload, 1))
+        self.assertEqual(task.split("struct Factory", 1)[1], baseline_factory)
+        self.assertIn(unload, task)
+
+    def test_journal_terminal_backend_and_ack_boundary(self):
+        trace = (ROOT / "desktop-pdf/ActivationDiagnostics.h").read_text()
+        backend = (ROOT / "desktop-pdf/ActivationJournalReport.h").read_text()
+        self.assertIn("DrainMs = 1500, FinalizeMs = 2000, ReportMs = 500, CancelMs = 250", trace)
+        self.assertIn("published = event.sequence", trace)
+        publish = trace.split("static IAsyncAction PublishEvent(", 1)[1].split("static fire_and_forget Drain(", 1)[0]
+        self.assertLess(publish.index("self->io->Rename("), publish.index("self->state.Published(event)"))
+        self.assertIn("if (!failure) failure =", trace)
+        self.assertIn("Require(!decision", trace)
+        self.assertIn('L"deferral_release_observed", JsonValue::CreateBooleanValue(false)', trace)
+        self.assertIn("co_await resume_on_signal", trace)
+        self.assertNotRegex(trace, r"\b(?:action|operation|launch)\.get\(")
+        self.assertIn("CREATE_NEW", backend)
+        self.assertIn("MoveFileFromAppW", backend)
+        self.assertIn("FlushFileBuffers", backend)
+        for forbidden in ("DeleteFile", "MoveFileEx", "REPLACE_EXISTING", "FileIO::", "SetSecurity"):
+            self.assertNotIn(forbidden, backend)
+        self.assertIn('L"\\\\DesktopPdfJournal-"', backend)
+        for guard in ('L"Miyako.DesktopPdfIntegration"', 'L"CN=DesktopPdfPrototypeDev"'):
+            self.assertIn(guard, backend)
+        self.assertIn("PRIVATE OneCore", (ROOT / "desktop-pdf/CMakeLists.txt").read_text())
 
     def test_dependency_snapshot_exact(self):
         names = subprocess.check_output(

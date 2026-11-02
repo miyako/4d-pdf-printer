@@ -16,27 +16,55 @@ struct Task : implements<Task, IBackgroundTask> {
     IBackgroundTaskInstance instance{nullptr};
     PrintWorkflowVirtualPrinterSession session{nullptr};
     IAsyncOperation<FullTrustProcessLaunchResult> launch{nullptr};
-    event_token dataToken{}, cancelToken{};
+    activation::Subscription<event_token> dataToken, cancelToken;
     std::mutex mutex;
-    std::atomic<bool> canceled{false}, working{false}, finished{false};
-    bool subscribed = false, cancelSubscribed = false;
+    std::atomic<bool> canceled{false};
+    activation::TaskGate gate;
+    std::atomic<activation::Reason> finalReason{activation::Reason::Normal};
     std::shared_ptr<activation::Trace> diagnostics;
     void Trace(activation::Point point, hresult error = {}, std::wstring_view job = {}) noexcept {
         if (diagnostics) diagnostics->Add(point, error, job);
     }
     hstring GetRuntimeClassName() const { return L"DesktopPdfIntegration.Task"; }
 
-    void Finish() noexcept {
-        if (finished.exchange(true)) return;
-        Trace(activation::Point::Finish);
-        std::scoped_lock lock(mutex);
-        try { if (subscribed) session.VirtualPrinterDataAvailable(dataToken); }
-        catch (...) { Failure(L"unsubscribe data", to_hresult()); }
-        try { if (cancelSubscribed) instance.Canceled(cancelToken); }
-        catch (...) { Failure(L"unsubscribe cancellation", to_hresult()); }
+    void ObserveCancellation() noexcept {
+        canceled = true;
+        auto normal = activation::Reason::Normal;
+        finalReason.compare_exchange_strong(normal, activation::Reason::Canceled);
+        if (diagnostics) diagnostics->Cancel(GetTickCount64());
+    }
+    void ReleaseDeferral() noexcept {
         try { if (deferral) deferral.Complete(); }
         catch (...) { Failure(L"task deferral", to_hresult()); }
         deferral = nullptr;
+        gate.Closed();
+    }
+    fire_and_forget Finalize() {
+        auto lifetime = get_strong();
+        activation::FinalAttempt release([this]() noexcept { ReleaseDeferral(); });
+        std::optional<event_token> data, cancel;
+        try {
+            { std::scoped_lock lock(mutex); data = dataToken.Take(); }
+            try { if (data) session.VirtualPrinterDataAvailable(*data); }
+            catch (...) { Failure(L"unsubscribe data", to_hresult()); }
+            if (diagnostics) co_await diagnostics->Finish(finalReason.load(), deferral != nullptr);
+            else Failure(L"journal unavailable", E_OUTOFMEMORY);
+        } catch (...) { Failure(L"journal finalization", to_hresult()); }
+        try {
+            { std::scoped_lock lock(mutex); cancel = cancelToken.Take(); }
+            if (cancel) instance.Canceled(*cancel);
+        }
+        catch (...) { Failure(L"unsubscribe cancellation", to_hresult()); }
+    }
+    void Finish(activation::Reason reason = activation::Reason::Normal, bool dataOwner = false) noexcept {
+        auto normal = activation::Reason::Normal;
+        if (reason != normal) finalReason.compare_exchange_strong(normal, reason);
+        if (!gate.ClaimFinish(dataOwner)) return;
+        try { Finalize(); }
+        catch (...) {
+            Failure(L"finalizer scheduling", to_hresult());
+            ReleaseDeferral();
+        }
     }
     void Run(IBackgroundTaskInstance const& task) {
         try { diagnostics = std::make_shared<activation::Trace>(); }
@@ -45,21 +73,23 @@ struct Task : implements<Task, IBackgroundTask> {
         try {
             instance = task; deferral = task.GetDeferral();
             Trace(activation::Point::DeferralAcquired);
-            {
-                std::scoped_lock lock(mutex);
-                cancelToken = task.Canceled([weak = get_weak()](auto const&, auto const&) {
+            auto token = task.Canceled([weak = get_weak()](auto const&, auto const&) {
                     if (auto self = weak.get()) {
                         self->Trace(activation::Point::Canceled);
-                        self->canceled = true;
-                        if (!self->working.exchange(true)) self->Finish();
+                        self->ObserveCancellation();
+                        self->Finish(activation::Reason::Canceled);
                     }
                 });
-                cancelSubscribed = true;
+            bool installed;
+            {
+                std::scoped_lock lock(mutex);
+                installed = cancelToken.Install(token, gate.Closing());
             }
+            if (!installed) task.Canceled(token);
             Begin();
         } catch (...) {
             auto hr = to_hresult(); Trace(activation::Point::RunFailure, hr);
-            Failure(L"task activation", hr); Finish();
+            Failure(L"task activation", hr); Finish(activation::Reason::ActivationError);
         }
     }
     fire_and_forget Begin() {
@@ -69,35 +99,34 @@ struct Task : implements<Task, IBackgroundTask> {
             auto details = instance.TriggerDetails().as<PrintWorkflowVirtualPrinterTriggerDetails>();
             Trace(activation::Point::TriggerAcquired);
             Trace(activation::Point::SessionBefore);
-            {
-                std::scoped_lock lock(mutex);
-                if (finished || canceled) co_return;
-                session = details.VirtualPrinterSession();
-                dataToken = session.VirtualPrinterDataAvailable(
-                    [self = get_strong()](auto const&, auto const& args) { self->Data(args); });
-                subscribed = true;
-            }
+            if (gate.Closing() || canceled) co_return;
+            session = details.VirtualPrinterSession();
+            auto token = session.VirtualPrinterDataAvailable(
+                [self = get_strong()](auto const&, auto const& args) { self->Data(args); });
+            bool installed;
+            { std::scoped_lock lock(mutex); installed = dataToken.Install(token, gate.Closing()); }
+            if (!installed) { session.VirtualPrinterDataAvailable(token); co_return; }
             Trace(activation::Point::SessionSubscribed);
             Trace(activation::Point::StartBefore);
             session.Start();
             auto deadline = GetTickCount64() + 45000;
             Trace(activation::Point::StartReturned);
-            while (!working && !finished && GetTickCount64() < deadline)
+            while (gate.Waiting() && GetTickCount64() < deadline)
                 co_await resume_after(std::chrono::milliseconds(25));
-            if (!working.exchange(true) && !finished) {
+            if (gate.Waiting()) {
                 Trace(activation::Point::CallbackDeadline, hresult{HRESULT_FROM_WIN32(ERROR_TIMEOUT)});
                 Failure(L"data callback deadline", HRESULT_FROM_WIN32(ERROR_TIMEOUT));
-                Finish();
+                Finish(activation::Reason::CallbackDeadline);
             }
         } catch (...) {
             auto hr = to_hresult(); Trace(activation::Point::SessionFailure, hr);
-            Failure(L"session start", hr); if (!working.exchange(true)) Finish();
+            Failure(L"session start", hr); Finish(activation::Reason::SessionError);
         }
     }
     fire_and_forget Data(PrintWorkflowVirtualPrinterDataAvailableEventArgs args) {
         auto lifetime = get_strong();
         Trace(activation::Point::DataEnter);
-        if (working.exchange(true)) {
+        if (!gate.ClaimData()) {
             Trace(activation::Point::DuplicateData);
             try { args.CompleteJob(PrintWorkflowSubmittedStatus::Failed); }
             catch (...) {
@@ -197,7 +226,7 @@ struct Task : implements<Task, IBackgroundTask> {
             while (!(co_await Exists(job, L"result.json"))) {
                 bool regCanceled = registrationFolder && (co_await Exists(registrationFolder, L"cancel.json"));
                 if (stop() || regCanceled) {
-                    canceled = true;
+                    ObserveCancellation();
                     if (!cancelSent) {
                         co_await Publish(job, L"cancel.json", Record(id, mode, L"cancel"));
                         cancelSent = true; cleanupEnd = GetTickCount64() + 5000;
@@ -297,7 +326,7 @@ struct Task : implements<Task, IBackgroundTask> {
                 co_await Publish(job, L"completion.json", completion);
             } catch (...) { Failure(L"completion record", to_hresult()); }
         }
-        Finish();
+        Finish(activation::Reason::Normal, true);
     }
 };
 struct Factory : implements<Factory, IActivationFactory> {
