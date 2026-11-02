@@ -119,5 +119,7 @@ int main() {
         Reject([&] { BoundJob(binding, job); });
         std::cout << "Native WinRT production record/status checks passed; NOT activation/rendering/printing proof.\n";
         return 0;
+    } catch (std::exception const& error) {
+        std::cerr << "Native fixture assertion: " << error.what() << '\n'; return 1;
     } catch (...) { Failure(L"native record/status test", to_hresult()); return 1; }
 }
