@@ -216,18 +216,18 @@ class Source(unittest.TestCase):
 
     def test_distinct_identity_and_endpoints(self):
         manifest_bytes = (ROOT / "desktop-pdf/package/AppxManifest.xml").read_bytes()
-        self.assertEqual(manifest_bytes.count(b'Version="0.1.0.3"'), 1)
-        self.assertEqual(manifest_bytes.replace(b'Version="0.1.0.3"', b'Version="0.1.0.2"', 1),
+        self.assertEqual(manifest_bytes.count(b'Version="0.1.0.4"'), 1)
+        self.assertEqual(manifest_bytes.replace(b'Version="0.1.0.4"', b'Version="0.1.0.2"', 1),
                          original(JOURNAL_BASELINE, "desktop-pdf/package/AppxManifest.xml"))
         helper_bytes = (ROOT / "desktop-pdf/build.ps1").read_bytes()
-        self.assertEqual(helper_bytes.count(b"'0.1.0.3'"), 1)
-        self.assertEqual(helper_bytes.replace(b"'0.1.0.3'", b"'0.1.0.2'", 1),
+        self.assertEqual(helper_bytes.count(b"'0.1.0.4'"), 1)
+        self.assertEqual(helper_bytes.replace(b"'0.1.0.4'", b"'0.1.0.2'", 1),
                          original(JOURNAL_BASELINE, "desktop-pdf/build.ps1"))
         package = ET.parse(ROOT / "desktop-pdf/package/AppxManifest.xml").getroot()
         identity = package.find("m:Identity", NS)
         self.assertEqual(identity.attrib["Name"], "Miyako.DesktopPdfIntegration")
         self.assertEqual(identity.attrib["Publisher"], "CN=DesktopPdfPrototypeDev")
-        self.assertEqual(identity.attrib["Version"], "0.1.0.3")
+        self.assertEqual(identity.attrib["Version"], "0.1.0.4")
         apps = {app.attrib["Id"]: app for app in package.findall("m:Applications/m:Application", NS)}
         self.assertEqual(len(package.findall("m:Applications/m:Application", NS)), 2)
         self.assertEqual(set(apps), {"SaveAs", "Client"})
@@ -323,7 +323,7 @@ class Source(unittest.TestCase):
         host = (ROOT / "desktop-pdf/Host.cpp").read_text()
         self.assertLess(host.index("ConfiguredRuntime(root)"), host.index("Render(runtime,"))
         helper = (ROOT / "desktop-pdf/build.ps1").read_text()
-        self.assertIn("$identity.Version -cne '0.1.0.3'", helper)
+        self.assertIn("$identity.Version -cne '0.1.0.4'", helper)
         self.assertIn("'Build', 'Package', 'SignCopy'", helper)
         self.assertIn("No automatic fetch/install.", helper)
         for ref in (DEPENDENCY, PROOF):

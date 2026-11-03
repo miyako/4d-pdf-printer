@@ -1,13 +1,19 @@
 # Desktop PDF integration: local source-review checkpoint
 
-**Source-only cancellation instrumentation; deployment and further print trials
-are on hold.** Package version/identity, AppIDs, capabilities, endpoints and job/
-worker protocols are unchanged. The installed **0.1.0.3** is the preceding source,
-not this dirty worktree. Build/sign/update procedures require separate approval.
+**Version-only 0.1.0.4 working-tree draft; deployment and further print trials
+are on hold.** Only the package version and its source checks advance from
+0.1.0.3; package Name/Publisher, AppIDs, capabilities, endpoints and job/worker
+protocols are unchanged. The installed **0.1.0.3** remains the preceding source,
+not this draft. Commit/build/sign/update procedures require separate approval.
 Actual Silent attempt03 produced one independently validated PDF; the user
 reported no UI and correct text/rectangle display. Its original technical result
 remains **false**: scrambled collector ordering and an independently canceled,
 non-drained journal are distinct failures. Neither is retrospectively repaired.
+
+The bounded ARM64 native-fixture and PS5.1 synthetic lane was accepted only for
+`896426a` (tree `e8b2c67`). This 0.1.0.4 draft has not been built, signed,
+installed or printed. A successor needs its own exact-source evidence; accepted
+896 receipts, binaries and source ledgers must not be relabelled as its acceptance.
 
 The bounded instrumentation adds no Status getter, callback worker, wait, handler,
 Cancel call or budget. Fixed immutable lock-free cells distinguish first entry,
@@ -57,7 +63,7 @@ No recompression/postprocessing, resident broker, native file dialog, elevation,
 services/session 0 or pre-login. No promise of smaller PDFs or fixes to upstream
 Windows/driver/app bugs.
 
-The separate candidate manifest defines `Miyako.DesktopPdfIntegration` 0.1.0.3, publisher
+The separate candidate manifest defines `Miyako.DesktopPdfIntegration` 0.1.0.4, publisher
 `CN=DesktopPdfPrototypeDev`, and **4D PDF Integration (Save As)** /
 **4D PDF Integration (Silent)**. These are source definitions, not authorization
 to register identity, trust a certificate, create queues or install anything.
