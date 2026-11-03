@@ -379,10 +379,10 @@ class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>
         return value;
     }
     bool ApiEntry(std::uint8_t route, std::shared_ptr<TrackedOperation> const& current) noexcept {
-        auto identity = reinterpret_cast<std::uintptr_t>(current.get());
-        auto owned = observed.ApiEntry(route, {ObservationStamp(), current->observed, identity, {}});
+        auto operationIdentity = reinterpret_cast<std::uintptr_t>(current.get());
+        auto owned = observed.ApiEntry(route, {ObservationStamp(), current->observed, operationIdentity, {}});
         auto prior = current->outcome.Read();
-        if (prior.payload) observed.Await(current->observed, identity, *prior.payload);
+        if (prior.payload) observed.Await(current->observed, operationIdentity, *prior.payload);
         return owned;
     }
     void Outcome(std::shared_ptr<TrackedOperation> const& current, observation::Outcome const& value) noexcept {
