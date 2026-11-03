@@ -18,13 +18,13 @@ inline activation::observation::Snapshot MaxObservation() {
     for (std::uint8_t c = 0; c != 5; ++c) {
         Finish f;
         f.entry = {n, p}; f.caller = c; f.requested = requests[c]; f.owner = c == 4;
-        if (c != 4) { f.cas = 2; f.expected = 4; }
+        if (c != 4) { f.cas = 2; f.expected = std::uint8_t{4}; }
         s.attempts[c] = {2, false, f};
     }
     auto elected = *s.attempts[4].payload; elected.gate = true;
     s.winner = {2, false, elected}; s.began = {2, false, Stamp{n, p}};
     s.passed = {2, false, PassedReason{n, 3}};
-    Operation op{65535, 5, {}};
+    Operation op{std::uint16_t{65535}, 5, {}};
     for (std::size_t i = 0; i != 3; ++i) {
         ApiHead head{{n, p}, op, 1, {}};
         if (i == 2) head.launch = Stamp{n, p};
@@ -48,7 +48,7 @@ inline std::string MaxObservationReceipt() {
     std::copy(pending.begin(), pending.end(), d.pending.begin());
     observation::Context c{0, false, {n, UINT32_MAX}, UINT32_MAX};
     d.observations.first = observation::Applied{c, n}; d.observations.minimum = *d.observations.first;
-    d.observations.operation = observation::Operation{65535, 5, {}};
+    d.observations.operation = observation::Operation{std::uint16_t{65535}, 5, {}};
     return ReceiptWire(d, std::wstring(32, L'f'), std::wstring(32, L'f'),
         MaxObservation(), UINT32_MAX, n, n);
 }
@@ -93,7 +93,7 @@ inline void ObservationChecks() {
                 for (bool owner : {false, true}) for (bool gate : {false, true}) {
                     o::Finish f{{12, 3}, caller, std::array<std::uint8_t, 5>{1, 3, 2, 4, 0}[caller],
                         cas, owner, gate, false, {}};
-                    if (expected) f.expected = expected - 1;
+                    if (expected) f.expected = static_cast<std::uint8_t>(expected - 1);
                     bool valid = owner == (caller == 4) &&
                         (caller == 4 ? cas == 0 && !f.expected :
                          (cas == 1 && caller != 3 && f.expected == 0) ||
@@ -111,8 +111,8 @@ inline void ObservationChecks() {
     encoding(false, [&] { o::Number(9007199254740992ull); });
     encoding(false, [&] { o::Native(0); });
     encoding(false, [&] { o::Text("bad\\quote\""); });
-    encoding(false, [&] { o::Put(o::Outcome{{12, 3}, 0}); });
-    encoding(false, [&] { o::Put(o::Operation{0, 0, {}}); });
+    encoding(false, [&] { o::Put(o::Outcome{{12, 3}, std::uint32_t{0}}); });
+    encoding(false, [&] { o::Put(o::Operation{std::uint16_t{0}, 0, {}}); });
     o::OperationKeys keys;
     for (unsigned i = 1; i <= 65535; ++i) Require(keys.Next() == i, "distinct checked operation key");
     Require(!keys.Next() && !keys.Next(), "operation key exhaustion is sticky unknown, never reuse");
@@ -160,7 +160,7 @@ inline void ObservationChecks() {
     auto finish = observations.EnterFinish({{13, 6}, 4, 0, 0, true, true, false, {}});
     observations.FinishAttempt(finish);
     observations.Began({14, 6}); observations.Passed({15, 4});
-    o::Operation a{1, 9, 17}, b{2, 9, 18};
+    o::Operation a{std::uint16_t{1}, 9, std::uint8_t{17}}, b{std::uint16_t{2}, 9, std::uint8_t{18}};
     Require(observations.ApiEntry(1, {{16, 7}, a, 11, {}}), "exact retained API head");
     observations.Await(b, 22, {{17, 8}, {}});
     Require(observations.Read().api[1].awaited.state == 0, "B cannot acknowledge A");
