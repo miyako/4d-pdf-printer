@@ -1,5 +1,58 @@
 # Windows continuation checkpoint
 
+## Windows04 package, update and first 005 silent print
+
+All run from an ordinary user PowerShell 7.6.9 window under root
+`C:\Users\miyako\Desktop\version005-native-scoped-build-04`, each gate
+separately approved, no retry/kill/uninstall/queue change.
+
+- **Package** (`build.ps1 -Stage Package`, profile `isolated-journal-v3`,
+  from `ScopedBuildOutput/build`): `Package/DesktopPdfIntegration.msix`
+  621699 bytes, SHA256
+  `475da76c590a1e2c4fd6f5476df3d7f0596bc296ffe1dcf4a5154e706256ae26`.
+- **SignCopy** (cert `CN=DesktopPdfPrototypeDev`, thumbprint
+  `0C2B96E9...37BB`, no timestamp): `SignCopy/DesktopPdfIntegration-signed.msix`
+  624796 bytes, SHA256
+  `e0be3fa39c53862fa98a7a94824792a15fd528bc56cdc403be080d667dba62b2`,
+  signature Valid, identity `Miyako.DesktopPdfIntegration` 0.1.0.5 arm64.
+- **Update 004 -> 005** (`RunUpdate.ps1` SHA256 `0d47d155...e479`, one
+  `Add-AppxPackage`, 14:31:41Z-14:31:43Z): `Update/result.json`
+  (`b644185a...ec50`) outcome **`verified-update-only`**; 144/144 package data
+  files unchanged, both queues unchanged, 0 jobs, 0 package processes.
+  Installed payload matches the Windows04 build hashes below.
+- **One silent print** (`RunSilentPrint.ps1` SHA256 `079896b5...c803`,
+  14:52:25Z-14:52:37Z): same flow as 004 attempt02 (`IntegrationClient
+  register` -> `submitted` -> PrintProbe `fbf24a3c...c8c3` on
+  "4D PDF Integration (Silent)"), passive observation only (no
+  `IntegrationClient wait`, so no client `cancel.json`). Evidence
+  `SilentPrint01/` (`result.json` `a04d580d...03ab`). Registration
+  `6b842db3...f1e9`, spooler job 29, job `58ca81d7...7e52`, activation
+  `e7245a1e...a182`. Completion `succeeded`, stage
+  `host/serialization/worker`, hresult 0, first observed 4.9 s after probe
+  start; `silent-005-01.pdf` 17670 bytes `%PDF-1.7`, SHA256
+  `45572825...16c1` (= `result.json`). Queue empty and no package process
+  afterwards. Outcome recorded as `CAPTURED-FOR-REVIEW-NOT-PRODUCT-SUCCESS`.
+
+**Journal terminal (version 3) reproduces 004 exactly in shape**:
+`finalize_reason`/`drain_state` `canceled`, accepted 21, dequeued 18, last
+published 16, finish 20, `outstanding_io_at_decision` true, deferral acquired
+and release planned but not observed, in-flight sequence 17
+`complete-job-before`/`rename-final`, `first_failure` null. Framework
+cancellation context `c[0]` raw reason **7 (SystemPolicy)** on a different
+thread from the worker.
+
+New v3 `j` field (decoded via `ObservationWire.h` `CompleteWire`):
+`CompleteJob` entered with status 0 (`Succeeded`) at tick 667760453 on thread
+6204 and **returned without exception** at tick 667760468 on thread 6204. The
+first framework cancellation (thread 14264, tick 667760468) sampled
+`completeCancellation` and already saw both the entry and the return
+published (`ReadComplete` reads `returned` before `entry`). So in this run the
+SystemPolicy cancellation was observed **after** `CompleteJob(Succeeded)` had
+returned; what it truncates is the activation's own post-`CompleteJob`
+journaling/deferral release, not the print. Ticks are equal at
+`GetTickCount64` resolution, so ordering rests on the publish/read sample,
+not on timestamps; this is still a single observation, not causal proof.
+
 ## Windows04 result (supersedes "Immediate continuation" below)
 
 Windows04 completed the committed scoped Build for source
