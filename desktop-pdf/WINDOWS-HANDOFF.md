@@ -25,8 +25,14 @@ once, no retry. Route: Windows-only (no Mac-prepared handoff/bundle); fresh
   `659a5d87d90f5e26468ae8685f6460c9c0698243a92004b8c721154c25511a46`,
   signature Valid, thumbprint `0C2B96E9...37BB` (expires 2026-11-28), no
   timestamp.
-- Not yet: update 005 -> 006, silent print series. 006 behavior is unproven
-  on device until those run.
+- **Update 005 -> 006** (`RunUpdate006.ps1`, 005 `RunUpdate.ps1` with
+  versions/root/hashes substituted; one `Add-AppxPackage`,
+  21:15:53Z-21:15:58Z): `Update/result.json` outcome
+  **`verified-update-only`**; 284/284 package data files unchanged (no
+  removed/added/changed), queues unchanged, 0 jobs, 0 package processes,
+  installed payload matches the 006 build hashes above.
+- Not yet: silent print series. 006 behavior is unproven on device until
+  that runs.
 
 ## Windows04 package, update and first 005 silent print
 
