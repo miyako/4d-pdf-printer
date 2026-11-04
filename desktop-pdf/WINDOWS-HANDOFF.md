@@ -53,6 +53,35 @@ journaling/deferral release, not the print. Ticks are equal at
 `GetTickCount64` resolution, so ordering rests on the publish/read sample,
 not on timestamps; this is still a single observation, not causal proof.
 
+**Repeat series, runs 02-06** (`RunSilentPrintSeries.ps1` SHA256
+`510ce96e...cdf9`, per-run `RunSilentPrintRun.ps1` `da7f03c3...b764` = run 01
+script with only run index/evidence dir/destination changed; 15:09:26Z-15:10:48Z;
+sequential fresh processes, idle check + 5 s gap, stop on first anomaly).
+Evidence `SilentPrint02`..`06/`, table `SilentPrintSeries2/series.json`
+(`efdbbee7...a87a`). `SilentPrintSeries/` is an aborted first attempt of the
+series script (variable-name bug, failed before any print) and is kept.
+All five: completion `succeeded`, PDF 17670 bytes with the same SHA256 as run
+01, queue empty, no package process, no errors.
+
+| Run | Completion ms | CompleteJob entry -> return | Cancel (reason 7) at | Cancel sample saw | Published/dequeued |
+|---|---|---|---|---|---|
+| 01 | 4901 | 667760453 -> 667760468 | 667760468 | returned | 16/18 |
+| 02 | 3514 | 668788187 -> 668788203 | 668788218 | returned | 10/12 |
+| 03 | 2768 | 668804125 -> 668804140 | 668804203 | returned | 9/11 |
+| 04 | 2460 | 668819843 -> 668819843 | 668819843 | returned | 10/12 |
+| 05 | 2894 | 668835703 -> 668835718 | 668835718 | returned | 10/12 |
+| 06 | 2556 | 668851046 -> 668851062 | 668851062 | entered, not returned | 13/15 |
+
+In 6/6 runs: `CompleteJob(Succeeded)` returned without exception, the
+terminal is `canceled` with framework reason 7 (SystemPolicy), deferral
+release not observed, `first_failure` null. The framework cancellation never
+preceded `CompleteJob` entry (0-78 ms after it); in run 06 it raced the call
+(sampled between entry and return, same tick) and `CompleteJob` still
+returned normally. Working reading: the SystemPolicy cancellation is the
+platform tearing down the task in response to `CompleteJob`, and what it
+loses is the journal tail (in-flight sequence 10-17 across runs), not the
+print. Still observational, not causal proof.
+
 ## Windows04 result (supersedes "Immediate continuation" below)
 
 Windows04 completed the committed scoped Build for source
