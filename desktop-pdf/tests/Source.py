@@ -69,7 +69,7 @@ public:
         self.assertLess(run.index("Point::RunEnter"), run.index("task.GetDeferral()"))
         self.assertLess(run.index("task.GetDeferral()"), run.index("task.Canceled("))
         for path, digest in {
-            "ActivationDiagnostics.h": "991cbd412b9e5c41bf4510c1133f9642edf5f1cdc93db48817591294c843f8c4",
+            "ActivationDiagnostics.h": "7579d032bbe14edbabbd8865d7b277f32c4faa27abca957a23c38850f572f34c",
             "ActivationObservations.h": "16c76b4c965387ba4ce9c73b2485dc2d1d35f6bcac68eab2a88589e143fb65b2",
             "ObservationWire.h": "23b4daaa921de9ffe581c3d8f9cd2cf795c464aa457e93f9ea325b01172a67f5",
             "tools/journal.py": "0348fc6c6acfe644d1d7854193f22bb2a1fe8daed9f3811f3bdcf17b9e4deb68",
@@ -356,7 +356,7 @@ public:
                           "RenameAsync", "WriteTextAsync", "IAsyncInfo", "IAsyncOperation", "CancelOperation",
                           "CancelCurrent", "TrackedOperation", "Track(", "ApiEntry(", "cancelRequested"):
             self.assertNotIn(forbidden, trace)
-        self.assertIn("inline constexpr std::uint64_t TeardownDrainMs = 125;", trace)
+        self.assertIn("inline constexpr std::uint64_t ReceiptReserveMs = 60, TeardownDrainMs = CancelMs - ReceiptReserveMs;", trace)
         self.assertIn("if (!failure) failure =", trace)
         self.assertIn("Require(!decision", trace)
         self.assertIn('{"deferral_release_observed", "false"}', trace)
@@ -429,20 +429,20 @@ public:
 
     def test_distinct_identity_and_endpoints(self):
         manifest_bytes = (ROOT / "desktop-pdf/package/AppxManifest.xml").read_bytes()
-        self.assertEqual(manifest_bytes.count(b'Version="0.1.0.7"'), 1)
-        self.assertEqual(manifest_bytes.replace(b'Version="0.1.0.7"', b'Version="0.1.0.2"', 1),
+        self.assertEqual(manifest_bytes.count(b'Version="0.1.0.8"'), 1)
+        self.assertEqual(manifest_bytes.replace(b'Version="0.1.0.8"', b'Version="0.1.0.2"', 1),
                          original(JOURNAL_BASELINE, "desktop-pdf/package/AppxManifest.xml"))
         helper_bytes = (ROOT / "desktop-pdf/build.ps1").read_bytes()
-        self.assertEqual(helper_bytes.count(b"'0.1.0.7'"), 1)
+        self.assertEqual(helper_bytes.count(b"'0.1.0.8'"), 1)
         def manifest_guard(raw):
             return raw.split(b"function Manifest(", 1)[1].split(b"function PackageEvidence(", 1)[0]
-        self.assertEqual(manifest_guard(helper_bytes).replace(b"'0.1.0.7'", b"'0.1.0.2'", 1),
+        self.assertEqual(manifest_guard(helper_bytes).replace(b"'0.1.0.8'", b"'0.1.0.2'", 1),
                          manifest_guard(original(JOURNAL_BASELINE, "desktop-pdf/build.ps1")))
         package = ET.parse(ROOT / "desktop-pdf/package/AppxManifest.xml").getroot()
         identity = package.find("m:Identity", NS)
         self.assertEqual(identity.attrib["Name"], "Miyako.DesktopPdfIntegration")
         self.assertEqual(identity.attrib["Publisher"], "CN=DesktopPdfPrototypeDev")
-        self.assertEqual(identity.attrib["Version"], "0.1.0.7")
+        self.assertEqual(identity.attrib["Version"], "0.1.0.8")
         apps = {app.attrib["Id"]: app for app in package.findall("m:Applications/m:Application", NS)}
         self.assertEqual(len(package.findall("m:Applications/m:Application", NS)), 2)
         self.assertEqual(set(apps), {"SaveAs", "Client"})
@@ -538,7 +538,7 @@ public:
         host = (ROOT / "desktop-pdf/Host.cpp").read_text()
         self.assertLess(host.index("ConfiguredRuntime(root)"), host.index("Render(runtime,"))
         helper = (ROOT / "desktop-pdf/build.ps1").read_text()
-        self.assertIn("$identity.Version -cne '0.1.0.7'", helper)
+        self.assertIn("$identity.Version -cne '0.1.0.8'", helper)
         self.assertIn("'Build', 'Package', 'SignCopy'", helper)
         self.assertIn("No automatic fetch/install.", helper)
         for ref in (DEPENDENCY, PROOF):

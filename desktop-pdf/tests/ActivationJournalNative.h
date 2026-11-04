@@ -552,6 +552,31 @@ inline void NativeJournalChecks(FreshTrialRoot const* suite = nullptr) {
             L"CreateFile2FromAppW/WriteFile/MoveFileFromAppW in the isolated test root.\n", timed, elapsed, elapsed / timed);
     }
     {
+        // 0.1.0.7 device runs 02/03: completion.json delayed Finish until cancel + 125 ms (seal after the old window).
+        TrialDirectory directory(suite);
+        auto io = std::make_shared<TrialIo>(directory.path.wstring());
+        auto trace = std::make_shared<Trace>(io);
+        trace->Add(Point::CompleteBefore);
+        trace->Add(Point::CompleteReturned);
+        trace->Add(Point::Canceled);
+        observation::Context cancellation;
+        cancellation.entry = ObservationStamp();
+        cancellation = trace->Observe().EnterCancel(cancellation);
+        auto tick = GetTickCount64();
+        trace->Cancel(tick, cancellation, true);
+        Sleep(150);
+        AwaitTest(trace->Finish(Reason::PostCompleteTeardown, false));
+        Require(io->reported, "late-sealed teardown still writes the terminal receipt");
+        auto r = Parse(io->receipt, 4096);
+        Require(r.GetNamedString(L"drain_state") == L"drained" && r.GetNamedString(L"cancellation_drain") == L"continued" &&
+            Integer(r, L"accepted_count") == 4 && Integer(r, L"last_published_sequence") == 3 &&
+            Integer(r, L"sealed_tick_ms") >= tick + 125,
+            "finish sealed after the old 125 ms teardown window is still drained");
+        auto folder = directory.path / L"DesktopPdf" / L"ActivationDiagnostics" / std::wstring(r.GetNamedString(L"activation"));
+        Require(ReadRecord(folder / L"3.json").GetNamedString(L"checkpoint") == L"finish",
+            "late-sealed finish record published");
+    }
+    {
         TrialDirectory directory(suite);
         auto io = std::make_shared<TrialIo>(directory.path.wstring());
         io->pauseWrite = true;

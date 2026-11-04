@@ -91,6 +91,12 @@ inline void JournalChecks() {
         "post-complete teardown keeps issuing inside its share of the cancel budget");
     Require(!teardown.MayIssue(120 + TeardownDrainMs) && teardown.stop && !teardown.failure,
         "post-complete teardown drain stops at its budget without inventing I/O error");
+    PublicationState lateSeal;
+    lateSeal.Cancel(120, true);
+    lateSeal.finalizing = 245;
+    Require(ReceiptReserveMs == 60 && TeardownDrainMs + ReceiptReserveMs == CancelMs &&
+        lateSeal.DrainEnd(245) == 120 + CancelMs - ReceiptReserveMs && lateSeal.MayIssue(245 + 15) && !lateSeal.stop,
+        "teardown drain stays open for a finish sealed 125 ms after the cancel (0.1.0.7 device runs 02/03)");
     PublicationState continued;
     continued.Cancel(50, true);
     continued.journal.Seal(finish);

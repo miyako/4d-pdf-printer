@@ -1,5 +1,28 @@
 # Desktop PDF integration: local source-review checkpoint
 
+## 0.1.0.8 (draft: teardown drain anchored to the receipt reserve)
+
+**0.1.0.8 is an unbuilt-for-release, unsigned, uninstalled source draft**, under the same
+gates as 0.1.0.7 below. The only behaviour change is the post-complete teardown drain bound.
+
+Evidence basis: the 0.1.0.7 Windows silent print series (`WINDOWS-HANDOFF.md`). Native
+record writes worked on the device. The pre-CompleteJob flush completed 18/18 in 0–16 ms,
+and 4/6 runs drained fully. In runs 02/03 only `finish` (seq 20) was lost. The data path
+publishes `completion.json` (StorageFile) between CompleteJob and `Finish`. That sealed
+the journal 62–125 ms after the teardown cancel. Seals at cancel + 125 ms landed on the
+old `TeardownDrainMs = 125` bound and froze as `deadline` with no I/O in flight.
+
+- `TeardownDrainMs` is now `CancelMs - ReceiptReserveMs` = 250 − 60 = 190 ms after the
+  teardown cancel. 60 ms stays reserved before the unchanged cancel + 250 ms terminal
+  deadline for the native receipt, which takes a few ms. The bound is still computed in
+  `PublicationState::DrainEnd`. A real cancel still stops at once.
+- Terminal schema (v5), record layout, CompleteJob ordering, `completion.json` and all
+  other budgets are unchanged.
+- Tests:
+  - A state test checks that a finish sealed 125 ms after teardown can still issue.
+  - A native fixture seals `Finish` 150 ms after a teardown cancel. It requires `drained`
+    with the `finish` record published.
+
 ## 0.1.0.7 (draft: native journal record writes and post-complete teardown drain)
 
 **0.1.0.7 is an unbuilt-for-release, unsigned, uninstalled source draft.** It stays a

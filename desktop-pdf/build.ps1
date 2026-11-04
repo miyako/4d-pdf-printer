@@ -37,7 +37,7 @@ function Manifest([xml]$Xml) {
     }.GetEnumerator()) { $ns.AddNamespace($pair.Key, $pair.Value) }
     $identity = $Xml.SelectSingleNode('/m:Package/m:Identity', $ns)
     $families = @($Xml.SelectNodes('/m:Package/m:Dependencies/m:TargetDeviceFamily', $ns))
-    if ($identity.Name -cne 'Miyako.DesktopPdfIntegration' -or $identity.Version -cne '0.1.0.7' -or
+    if ($identity.Name -cne 'Miyako.DesktopPdfIntegration' -or $identity.Version -cne '0.1.0.8' -or
         $identity.Publisher -cne 'CN=DesktopPdfPrototypeDev' -or $identity.ProcessorArchitecture -cne $arch) {
         throw 'Unexpected integration identity/version/publisher/architecture.'
     }
