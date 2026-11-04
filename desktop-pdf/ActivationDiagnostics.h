@@ -196,8 +196,10 @@ public:
     }
 };
 inline std::string ReceiptWire(Decision const& d, std::wstring_view id, std::wstring_view job,
-    observation::Snapshot const& snapshot, std::uint32_t process, std::uint64_t begin, std::uint64_t end) {
+    observation::Snapshot const& snapshot, std::uint32_t process, std::uint64_t begin, std::uint64_t end,
+    std::uint8_t version = 3) {
     using namespace observation;
+    Require(version == 2 || version == 3, "explicit terminal version");
     Require(Id(id) && (job.empty() || Id(job)), "terminal activation/known-job domain");
     Require(static_cast<std::size_t>(d.reason) < ReasonNames.size() &&
         static_cast<std::size_t>(d.state) < DrainNames.size(), "terminal decision enum");
@@ -225,7 +227,7 @@ inline std::string ReceiptWire(Decision const& d, std::wstring_view id, std::wst
     if (d.failure) failure = Object({{"sequence", event(d.failure->event)}, {"checkpoint", point(d.failure->event)},
         {"stage", stage(d.failure->stage)}, {"code_domain", Text("hresult")}, {"code_u32", Number(d.failure->code, UINT32_MAX)}});
     auto wire = Object({
-        {"schema", Text("4d-pdf-printer.activation-journal-terminal")}, {"version", "2"},
+        {"schema", Text("4d-pdf-printer.activation-journal-terminal")}, {"version", Number(version, 3)},
         {"activation", Text(Ascii(id))}, {"job", Text(Ascii(job))},
         {"finalize_reason", Text(Ascii(ReasonNames[static_cast<std::size_t>(d.reason)]))},
         {"drain_state", Text(Ascii(DrainNames[static_cast<std::size_t>(d.state)]))},
@@ -237,9 +239,9 @@ inline std::string ReceiptWire(Decision const& d, std::wstring_view id, std::wst
         {"outstanding_io_at_decision", Boolean(d.outstanding)}, {"deferral_acquired", Boolean(d.deferral)},
         {"deferral_release_planned", Boolean(d.deferral)}, {"deferral_release_observed", "false"},
         {"inflight", inflight}, {"first_failure", failure},
-        {"observations", Encode(snapshot, d.observations, process, begin, end)}
+        {"observations", Encode(snapshot, d.observations, process, begin, end, version)}
     });
-    Require(wire.size() <= 2300, "source-bound terminal v2 wire maximum");
+    Require(wire.size() <= (version == 2 ? 2300u : 3300u), "source-bound terminal wire maximum");
     JsonWire(wire, 4096).Check();
     return wire;
 }

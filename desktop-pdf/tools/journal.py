@@ -142,10 +142,46 @@ def api_head(value, route):
         need(value[5] is None, "no journal Status getter")
 
 
+def complete_call(value):
+    seq(value, 2)
+    def entry(item):
+        seq(item, 3)
+        stamp(*item[:2])
+        number(item[2], 2)
+    head = cell(value[0], entry, True)
+    returned = cell(value[1], outcome)
+    need(returned is None or head is not None, "CompleteJob entry dependency")
+    if returned is not None:
+        need(head[0] <= returned[0], "CompleteJob stamp order")
+
+
+def complete_shape(o):
+    seq(o["j"], 2)
+    current, cancellation = o["j"]
+    complete_call(current)
+    def sampled(value):
+        seq(value, 3)
+        stamp(*seq(value[0], 2))
+        stamp(*seq(value[1], 2))
+        need(value[0][0] <= value[1][0] and value[0][1] == value[1][1],
+             "CompleteJob cancellation sample interval")
+        context = ready(o["c"][0])
+        need(context is not None and value[0] == context[:2], "CompleteJob framework context binding")
+        complete_call(value[2])
+        for before, after in zip(value[2], current):
+            need(before[0] <= after[0], "CompleteJob immutable phase progression")
+            if before[0] == 2:
+                need(before[-1] == after[-1], "CompleteJob immutable payload")
+                need(before[-1][0] <= value[1][0], "CompleteJob payload before sample end")
+        need(not value[2][0][1] or current[0][1], "CompleteJob repeated is sticky")
+    cell(cancellation, sampled)
+
+
 def observation_shape(terminal):
     o = terminal["observations"]
-    need(type(o) is dict and set(o) == OBS_KEYS, "exact11 observation keys")
-    number(o["v"], 1, 1)
+    extended = terminal["version"] == 3
+    need(type(o) is dict and set(o) == OBS_KEYS | ({"j"} if extended else set()), "exact observation keys")
+    number(o["v"], 2 if extended else 1, 2 if extended else 1)
     number(o["pid"], 0xffffffff, 1)
     seq(o["span"], 2)
     for tick in o["span"]:
@@ -216,17 +252,19 @@ def observation_shape(terminal):
         need((returned is None and awaited is None) or api is not None, "API phase head dependency")
         if route == 2:
             need(value[2] == [0, None], "no new launch await")
+    if extended:
+        complete_shape(o)
     return o
 
 
 def terminal_shape(raw, activation, expected_version, job=None):
-    need(type(expected_version) is int and expected_version in (1, 2), "explicit expected source version")
+    need(type(expected_version) is int and expected_version in (1, 2, 3), "explicit expected source version")
     need(v1.identifier(activation), "expected activation binding")
     value = v1.wire(raw, 4096)
     need(type(value.get("version")) is int and value["version"] == expected_version, "unexpected terminal version")
     if expected_version == 1:
         return v1.terminal_shape(raw, activation, job)
-    need(job is None, "general v2 shape is not expected-job admission")
+    need(job is None, "general shape is not expected-job admission")
     need(set(value) == v1.TERMINAL_KEYS | {"observations"}, "exact23 terminal fields")
     need(value["schema"] == "4d-pdf-printer.activation-journal-terminal", "terminal schema")
     need(value["activation"] == activation and type(value["job"]) is str and
@@ -278,6 +316,11 @@ def sample_flags(terminal):
     o = terminal["observations"]
     phases = list(o["c"]) + [o["r"]] + list(o["f"]) + list(o["w"])
     phases += [phase for api in o["x"] for phase in api]
+    if terminal["version"] == 3:
+        phases += o["j"][0] + [o["j"][1]]
+        sampled = ready(o["j"][1])
+        if sampled is not None:
+            phases += sampled[2]
     flags = 1 if any(value[0] == 1 for value in phases) else 0
     firsts = o["c"] + o["f"] + [api[0] for api in o["x"]]
     if any(value[1] for value in firsts):
@@ -314,6 +357,12 @@ def sample_flags(terminal):
             terminal["finalize_reason"] == "normal" and r is not None) or (
             terminal["drain_state"] != "canceled" and any(ready(c) is not None for c in o["c"])):
         flags |= 128
+    if terminal["version"] == 3:
+        call, cancellation = o["j"]
+        if (call[0][0] != 0 and call[1][0] != 2) or (o["c"][0][0] != 0 and cancellation[0] != 2):
+            flags |= 256
+        if call[0][1] or (ready(cancellation) is not None and ready(cancellation)[2][0][1]):
+            flags |= 512
     return flags
 
 
@@ -382,6 +431,32 @@ def general_v2(raw, activation):
     return terminal_shape(raw, activation, 2)
 
 
+def general_v3(raw, activation):
+    """Explicit CompleteJob observations; unchanged journal admission predicate."""
+    return terminal_shape(raw, activation, 3)
+
+
+def complete_assessment(o):
+    def phase(call):
+        if call[0][1]:
+            return "repeated-ambiguous"
+        if any(value[0] == 1 for value in call):
+            return "partial"
+        if call[0][0] == 0:
+            return "not-attempted-at-entry-read"
+        returned = ready(call[1])
+        if returned is None:
+            return "entry-recorded-return-unobserved"
+        return "returned" if returned[2] == 0 else "failed"
+    call, cancellation = o["j"]
+    sampled = ready(cancellation)
+    return dict(snapshot_phase=phase(call), attempted_status=ready(call[0])[2] if ready(call[0]) else None,
+                outcome=ready(call[1]),
+                framework_sample_phase=phase(sampled[2]) if sampled is not None else
+                "partial" if cancellation[0] == 1 else "not-recorded",
+                framework_sample=sampled, os_call_order="not-established")
+
+
 def journal_admission(raw_records, raw_terminal, activation, job, old_activations, *, expected_version):
     need(v1.identifier(job), "genuine expected job context required")
     if expected_version == 1 and type(expected_version) is int:
@@ -401,7 +476,7 @@ def assess(raw_terminal, activation, *, expected_version, job=None, raw_records=
     try:
         envelope = v1.wire(raw_terminal, 4096)
         version = envelope.get("version")
-        if type(version) is not int or version not in (1, 2):
+        if type(version) is not int or version not in (1, 2, 3):
             result["receipt_shape"] = "unsupported"
             raise ValueError("unsupported source terminal version")
         if type(expected_version) is not int or version != expected_version:
@@ -433,6 +508,8 @@ def assess(raw_terminal, activation, *, expected_version, job=None, raw_records=
     if version == 1:
         return result
     o = terminal["observations"]
+    if version == 3:
+        result["complete_job"] = complete_assessment(o)
     flags = sample_flags(terminal)
     result.update(sample_flags=flags, sample_state="partial-sample" if flags else "ready-sample")
     head = ready(o["w"][0])

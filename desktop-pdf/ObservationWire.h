@@ -123,8 +123,24 @@ template<typename T> std::string OnceWire(Sample<T> const& value) {
 template<typename T> std::string FirstWire(Sample<T> const& value) {
     return FirstWire(value, [](T const& item) { return Put(item); });
 }
+inline std::string Put(CompleteEntry const& value) {
+    return Array({Number(value.observed.tick), Native(value.observed.thread), Number(value.status, 2)});
+}
+inline std::string CompleteWire(CompleteSample const& value) {
+    Require(value.returned.state != 2 || value.entry.state == 2, "CompleteJob entry dependency");
+    if (value.returned.payload && value.entry.payload)
+        Require(value.entry.payload->observed.tick <= value.returned.payload->observed.tick,
+            "CompleteJob stamp order");
+    return Array({FirstWire(value.entry), OnceWire(value.returned)});
+}
+inline std::string Put(CompleteCancellation const& value) {
+    Require(value.begin.tick <= value.end.tick && value.begin.thread == value.end.thread,
+        "CompleteJob cancellation sample interval");
+    return Array({Put(value.begin), Put(value.end), CompleteWire(value.call)});
+}
 inline std::string Encode(Snapshot const& value, Frozen const& frozen, std::uint32_t pid,
-    std::uint64_t begin, std::uint64_t end) {
+    std::uint64_t begin, std::uint64_t end, std::uint8_t version = 3) {
+    Require(version == 2 || version == 3, "explicit observation version");
     Require(!value.invalid && begin <= end, "observation capture invalid");
     auto cancel = [](Context const& item) { return Cancellation(item); };
     auto api = [](ApiSample const& item) {
@@ -134,8 +150,8 @@ inline std::string Encode(Snapshot const& value, Frozen const& frozen, std::uint
     Require(value.api[2].awaited.state == 0, "launch has no new await");
     Require(value.passed.state != 2 || value.began.state == 2, "finalizer reason dependency");
     Require(value.began.state != 2 || value.winner.state == 2, "finalizer began dependency");
-    return Object({
-        {"v", "1"}, {"pid", Native(pid)}, {"span", Array({Number(begin), Number(end)})},
+    auto wire = Object({
+        {"v", version == 2 ? "1" : "2"}, {"pid", Native(pid)}, {"span", Array({Number(begin), Number(end)})},
         {"c", Array({FirstWire(value.cancellation[0], cancel), FirstWire(value.cancellation[1], cancel)})},
         {"r", OnceWire(value.reason)},
         {"a", Array({frozen.first ? Put(*frozen.first) : "null", frozen.minimum ? Put(*frozen.minimum) : "null"})},
@@ -147,5 +163,16 @@ inline std::string Encode(Snapshot const& value, Frozen const& frozen, std::uint
         {"x", Array({api(value.api[0]), api(value.api[1]), api(value.api[2])})},
         {"journal_status", "null"}
     });
+    if (version == 3) {
+        if (value.completeCancellation.payload) {
+            Require(value.cancellation[0].payload.has_value(), "CompleteJob framework context dependency");
+            auto const& entry = value.cancellation[0].payload->entry;
+            auto const& sample = value.completeCancellation.payload->begin;
+            Require(entry.tick == sample.tick && entry.thread == sample.thread, "CompleteJob framework context binding");
+        }
+        wire.pop_back();
+        wire += ",\"j\":" + Array({CompleteWire(value.complete), OnceWire(value.completeCancellation)}) + '}';
+    }
+    return wire;
 }
 }

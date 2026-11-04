@@ -1,6 +1,7 @@
 #pragma once
 #include "../Task.cpp"
 #include <filesystem>
+#include "NativeTrialRoot.h"
 
 namespace pdf::tests {
 inline handle TestSignal() {
@@ -23,11 +24,16 @@ inline void ReleasedTest(std::weak_ptr<activation::Trace> const& trace) {
 }
 struct TrialDirectory {
     std::filesystem::path path;
-    TrialDirectory() {
-        path = std::filesystem::temp_directory_path() / (L"DesktopPdfJournalTest-" + RandomId());
-        Require(std::filesystem::create_directory(path), "fresh owned native test directory");
+    bool retained{};
+    explicit TrialDirectory(FreshTrialRoot const* suite = nullptr) : retained(suite != nullptr) {
+        if (suite) path = suite->NewCase();
+        else {
+            path = std::filesystem::temp_directory_path() / (L"DesktopPdfJournalTest-" + RandomId());
+            Require(std::filesystem::create_directory(path), "fresh owned native test directory");
+        }
     }
     ~TrialDirectory() noexcept {
+        if (retained) return;
         std::error_code error;
         std::filesystem::remove_all(path, error);
         if (error) Failure(L"owned journal test directory cleanup", hresult{HRESULT_FROM_WIN32(error.value())});
@@ -45,15 +51,29 @@ struct TrialIo : activation::JournalIo, std::enable_shared_from_this<TrialIo> {
     explicit TrialIo(std::wstring folder) : path(std::move(folder)) {
         root = StorageFolder::GetFolderFromPathAsync(path).get();
     }
+    void Confined(StorageFolder const& folder) const {
+        auto actual = std::wstring(folder.Path());
+        Require(actual == path || (actual.starts_with(path + L"\\") &&
+            actual.find(L"\\..") == std::wstring::npos), "trial I/O folder confinement");
+        auto attributes = GetFileAttributesW(actual.c_str());
+        Require(attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) &&
+            !(attributes & FILE_ATTRIBUTE_REPARSE_POINT), "plain trial I/O folder");
+    }
     StorageFolder Cache() override { return root; }
     IAsyncOperation<StorageFolder> Folder(StorageFolder const& parent, hstring const& name,
         CreationCollisionOption collision) override {
+        Confined(parent);
+        Require(name == L"DesktopPdf" || name == L"ActivationDiagnostics" || Id(name.c_str()),
+            "fixed trial journal folder name");
         auto stage = name == L"DesktopPdf" ? activation::Stage::Root :
             name == L"ActivationDiagnostics" ? activation::Stage::Parent : activation::Stage::Folder;
         if (fault == stage) throw hresult_error(E_ACCESSDENIED);
         return JournalIo::Folder(parent, name, collision);
     }
     IAsyncOperation<StorageFile> Create(StorageFolder const& parent, hstring const& name) override {
+        Confined(parent);
+        auto leaf = std::wstring_view(name);
+        Require(leaf.starts_with(L"pending-") && Id(leaf.substr(8)), "fixed trial staging filename");
         if (fault == activation::Stage::Create) throw hresult_error(E_ACCESSDENIED);
         return JournalIo::Create(parent, name);
     }
@@ -65,13 +85,28 @@ struct TrialIo : activation::JournalIo, std::enable_shared_from_this<TrialIo> {
         co_await FileIO::WriteTextAsync(file, text, UnicodeEncoding::Utf8);
     }
     IAsyncAction Write(StorageFile const& file, hstring const& text) override {
+        ConfinedFile(file);
         if (fault == activation::Stage::Write) throw hresult_error(E_ACCESSDENIED);
         if (pauseWrite) return PausedWrite(shared_from_this(), file, text);
         return JournalIo::Write(file, text);
     }
     IAsyncAction Rename(StorageFile const& file, hstring const& name) override {
+        ConfinedFile(file);
+        auto leaf = std::wstring_view(name);
+        Require(leaf.size() >= 6 && leaf.size() <= 7 && leaf.ends_with(L".json") &&
+            std::all_of(leaf.begin(), leaf.end() - 5, [](wchar_t c) { return c >= L'0' && c <= L'9'; }),
+            "fixed trial final filename");
         if (fault == activation::Stage::Rename) throw hresult_error(E_ACCESSDENIED);
         return JournalIo::Rename(file, name);
+    }
+    void ConfinedFile(StorageFile const& file) const {
+        std::filesystem::path actual(file.Path().c_str());
+        auto parent = actual.parent_path().wstring();
+        Require(parent.starts_with(path + L"\\") && parent.find(L"\\..") == std::wstring::npos,
+            "trial I/O file confinement");
+        auto attributes = GetFileAttributesW(actual.c_str());
+        Require(attributes != INVALID_FILE_ATTRIBUTES &&
+            !(attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)), "plain trial I/O file");
     }
     activation::ReportResult Report(std::wstring_view id, std::string_view bytes) override {
         activation::FinalAttempt done([&]() noexcept { SetEvent(reportExited.get()); });
@@ -140,11 +175,46 @@ inline void RealFinalizer(std::shared_ptr<activation::Trace> trace, bool failCom
     WaitTest(done.get());
     Require(calls == 1 && apartment == APTTYPE_MTA, "real finalizer once and caller COM context");
 }
-inline void NativeJournalChecks() {
+inline void NativeJournalChecks(FreshTrialRoot const* suite = nullptr) {
     using namespace activation;
     auto moduleBaseline = static_cast<std::uint32_t>(get_module_lock());
+    if (suite) {
+        std::filesystem::path retained;
+        {
+            TrialDirectory directory(suite);
+            retained = directory.path;
+        }
+        Require(std::filesystem::is_directory(retained), "successful case tree retained");
+        struct RetainedCaseFailure {};
+        try {
+            TrialDirectory directory(suite);
+            retained = directory.path;
+            throw RetainedCaseFailure{};
+        } catch (RetainedCaseFailure const&) {}
+        Require(std::filesystem::is_directory(retained), "failed case tree retained");
+        bool rejected = false;
+        try { FreshTrialRoot existing(suite->path.wstring()); }
+        catch (std::exception const&) { rejected = true; }
+        Require(rejected, "existing root rejected without reuse");
+        TrialDirectory directory(suite);
+        auto io = std::make_shared<TrialIo>(directory.path.wstring());
+        rejected = false;
+        try { io->Confined(StorageFolder::GetFolderFromPathAsync(suite->path.wstring()).get()); }
+        catch (std::exception const&) { rejected = true; }
+        Require(rejected, "parent outside case rejected before trial writes");
+        rejected = false;
+        try { (void)io->Folder(io->root, L"..", CreationCollisionOption::OpenIfExists); }
+        catch (std::exception const&) { rejected = true; }
+        Require(rejected && std::filesystem::is_empty(directory.path), "folder traversal rejected without writes");
+        rejected = false;
+        try { (void)make_self<::Task>(std::shared_ptr<Trace>{}); }
+        catch (std::exception const&) { rejected = true; }
+        Require(rejected, "null explicit diagnostic override rejected");
+        auto defaultTask = make_self<::Task>();
+        Require(defaultTask->diagnostics == nullptr, "default construction creates no Trace or I/O");
+    }
     {
-        TrialDirectory directory;
+        TrialDirectory directory(suite);
         auto id = RandomId();
         NativeReportBackend first(directory.path.wstring(), id);
         Require(PublishTerminal(first, R"({"test":true})").Published(), "real native report publication");
@@ -159,7 +229,7 @@ inline void NativeJournalChecks() {
         Require(FileIO::ReadTextAsync(file).get() == L"{\"test\":true}", "collision preserves original bytes");
     }
     for (auto fault : {Stage::None, Stage::Root, Stage::Parent, Stage::Folder, Stage::Create, Stage::Write, Stage::Rename}) {
-        TrialDirectory directory;
+        TrialDirectory directory(suite);
         auto io = std::make_shared<TrialIo>(directory.path.wstring());
         io->fault = fault;
         auto trace = std::make_shared<Trace>(io);
@@ -173,7 +243,7 @@ inline void NativeJournalChecks() {
             L"decision_tick_ms", L"deadline_tick_ms", L"outstanding_io_at_decision", L"deferral_acquired",
             L"deferral_release_planned", L"deferral_release_observed", L"inflight", L"first_failure", L"observations"});
         Require(r.GetNamedString(L"schema") == L"4d-pdf-printer.activation-journal-terminal" &&
-            Integer(r, L"version") == 2 && r.GetNamedString(L"job").empty() &&
+            Integer(r, L"version") == 3 && r.GetNamedString(L"job").empty() &&
             !r.GetNamedBoolean(L"deferral_release_observed"),
             "terminal schema and honest acknowledgement boundary");
         if (fault == Stage::None) {
@@ -195,7 +265,7 @@ inline void NativeJournalChecks() {
         }
     }
     {
-        TrialDirectory directory;
+        TrialDirectory directory(suite);
         auto io = std::make_shared<TrialIo>(directory.path.wstring());
         io->pauseWrite = true;
         auto trace = std::make_shared<Trace>(io);
@@ -222,12 +292,13 @@ inline void NativeJournalChecks() {
         std::weak_ptr<Trace> weak = trace;
         trace.reset();
         Require(!weak.expired(), "pending coroutine retains actual trace/module owner");
+        Require(std::filesystem::is_directory(directory.path), "pending owner tree retained");
         SetEvent(io->release.get()); WaitTest(io->writeExited.get());
         ReleasedTest(weak);
         Require(Parse(io->receipt, 4096).GetNamedString(L"drain_state") == L"deadline", "late completion cannot rewrite receipt");
     }
     {
-        TrialDirectory directory;
+        TrialDirectory directory(suite);
         auto io = std::make_shared<TrialIo>(directory.path.wstring());
         auto trace = std::make_shared<Trace>(io);
         auto expired = GetTickCount64() - 1000;
@@ -242,13 +313,13 @@ inline void NativeJournalChecks() {
         Require(!io->reported && std::filesystem::is_empty(directory.path), "pre-detach normal deadline never resets");
     }
     for (bool fail : {false, true}) {
-        TrialDirectory directory;
+        TrialDirectory directory(suite);
         auto io = std::make_shared<TrialIo>(directory.path.wstring());
         io->failReport = fail;
         RealFinalizer(std::make_shared<Trace>(io), fail);
     }
     {
-        TrialDirectory directory;
+        TrialDirectory directory(suite);
         auto io = std::make_shared<TrialIo>(directory.path.wstring());
         io->pauseReport = true;
         auto trace = std::make_shared<Trace>(io);
@@ -262,13 +333,19 @@ inline void NativeJournalChecks() {
             "late native publication is not retrospective deferral proof");
         ReleasedTest(weak);
     }
-    {
+    for (unsigned instanceIndex = 0; instanceIndex < 2; ++instanceIndex) {
+        TrialDirectory directory(suite);
+        auto io = std::make_shared<TrialIo>(directory.path.wstring());
+        auto injected = std::make_shared<Trace>(io);
+        std::weak_ptr<Trace> weak = injected;
         std::atomic<unsigned> calls{};
         auto done = TestSignal(); APTTYPE apartment{};
-        auto task = make_self<::Task>();
+        auto task = make_self<::Task>(injected);
+        Require(task->diagnostics == nullptr, "override construction does not begin diagnostics");
         auto deferral = make<TestDeferral>(calls, done.get(), false, apartment).as<BackgroundTaskDeferral>();
         auto instance = make_self<ReentrantInstance>(deferral);
         task->Run(instance.as<IBackgroundTaskInstance>());
+        Require(task->diagnostics == injected, "real Run preserves per-instance injected diagnostics");
         WaitTest(done.get());
         Require(calls == 1 && instance->added == 1 && instance->removed == 1 && instance->triggers == 0,
             "actual Run handles synchronous cancellation before token return, no second deferral");
@@ -277,9 +354,14 @@ inline void NativeJournalChecks() {
             snapshot.cancellation[0].payload->raw == static_cast<std::uint32_t>(BackgroundTaskCancellationReason::Abort) &&
             snapshot.winner.payload && snapshot.winner.payload->caller == 3,
             "actual pre-job framework callback observes raw category and elected caller, not an OS cause");
+        task->diagnostics.reset();
+        injected.reset();
+        Require(!weak.expired(), "immutable override retains injected trace through Task lifetime");
+        task = nullptr;
+        ReleasedTest(weak);
     }
     for (bool dataOwner : {false, true}) {
-        TrialDirectory directory;
+        TrialDirectory directory(suite);
         auto io = std::make_shared<TrialIo>(directory.path.wstring());
         std::atomic<unsigned> calls{};
         auto done = TestSignal(); APTTYPE apartment{};
@@ -297,7 +379,7 @@ inline void NativeJournalChecks() {
             "actual finalizer can drain pre-job activation/Data failure without inventing a job binding");
     }
     {
-        TrialDirectory directory;
+        TrialDirectory directory(suite);
         auto io = std::make_shared<TrialIo>(directory.path.wstring());
         std::exception_ptr error;
         std::thread sta([&] {

@@ -3,6 +3,7 @@ param(
     [ValidateSet('Build', 'Package', 'SignCopy')][string]$Stage = 'Build',
     [Parameter(Mandatory)][ValidateSet('x64', 'ARM64')][string]$Architecture,
     [ValidateSet('2022', '2026')][string]$VisualStudioVersion = '2022',
+    [ValidateSet('full-suite', 'isolated-journal-v3')][string]$ValidationProfile = 'full-suite',
     [Parameter(Mandatory)][string]$OutputRoot,
     [string]$BuildDirectory, [string]$CMakePath, [string]$PythonPath,
     [string]$UnsignedPackage, [string]$SignedOutput, [string]$CertificateThumbprint
@@ -12,6 +13,7 @@ Set-StrictMode -Version Latest
 if (-not $IsWindows) { throw 'Windows only; this helper does not install tools.' }
 $root = $PSScriptRoot
 . (Join-Path $root '../printer/BuildSupport.ps1')
+. (Join-Path $root 'BuildValidation.ps1')
 function Checked([string]$Program, [string[]]$Arguments) {
     & $Program @Arguments | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "$Program failed ($LASTEXITCODE); stop without repair/retry." }
@@ -35,7 +37,7 @@ function Manifest([xml]$Xml) {
     }.GetEnumerator()) { $ns.AddNamespace($pair.Key, $pair.Value) }
     $identity = $Xml.SelectSingleNode('/m:Package/m:Identity', $ns)
     $families = @($Xml.SelectNodes('/m:Package/m:Dependencies/m:TargetDeviceFamily', $ns))
-    if ($identity.Name -cne 'Miyako.DesktopPdfIntegration' -or $identity.Version -cne '0.1.0.4' -or
+    if ($identity.Name -cne 'Miyako.DesktopPdfIntegration' -or $identity.Version -cne '0.1.0.5' -or
         $identity.Publisher -cne 'CN=DesktopPdfPrototypeDev' -or $identity.ProcessorArchitecture -cne $arch) {
         throw 'Unexpected integration identity/version/publisher/architecture.'
     }
@@ -134,6 +136,14 @@ try {
     $dirty = & git -C $root status --porcelain --untracked-files=normal
     if ($LASTEXITCODE -ne 0 -or $dirty) { throw 'Clean exact-source checkout required; put new outputs under ignored out or outside the repository.' }
     $receipt.source_sha = $sha
+    $sourceTree = & git -C $root rev-parse 'HEAD^{tree}'
+    if ($LASTEXITCODE -ne 0 -or $sourceTree -cnotmatch '^[0-9a-f]{40}$') { throw 'Exact source tree required.' }
+    $receipt.source_tree = $sourceTree
+    $receipt.validation_profile = $ValidationProfile
+    if ($ValidationProfile -ceq 'isolated-journal-v3' -and
+        ($PSVersionTable.PSVersion -lt [version]'7.4' -or $receipt.process_architecture.ToLowerInvariant() -cne $arch)) {
+        throw 'Scoped validation requires native PowerShell7.4+ byte-preserving capture.'
+    }
     $sdk = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/bin/10.0.26100.0/x64'
     $payload = @('IntegrationApp.exe', 'IntegrationTask.dll', 'IntegrationHost.exe', 'IntegrationClient.exe')
     if ($Stage -eq 'Package' -and (-not [IO.Path]::IsPathFullyQualified($BuildDirectory) -or
@@ -159,6 +169,10 @@ try {
             $unsignedReceipt.stage -cne 'Package' -or $unsignedReceipt.outcome -cne 'success' -or
             $unsignedReceipt.source_sha -cne $sha -or $unsignedReceipt.architecture -cne $arch -or
             $unsignedReceipt.package_sha256 -cne $before) { throw 'Matching successful unsigned package receipt required.' }
+        $unsignedProfile = if ($unsignedReceipt.PSObject.Properties.Name -contains 'validation_profile') {
+            $unsignedReceipt.validation_profile
+        } else { 'full-suite' }
+        if ($unsignedProfile -cne $ValidationProfile) { throw 'Unsigned package validation profile mismatch.' }
         $archive = [IO.Compression.ZipFile]::OpenRead($UnsignedPackage)
         try {
             if ($null -ne $archive.GetEntry('AppxSignature.p7x')) { throw 'Unsigned input already signed.' }
@@ -211,22 +225,72 @@ try {
             $BuildDirectory = Join-Path $out 'build'
             Checked $CMakePath @('-S', $root, '-B', $BuildDirectory, '-G', $plan.CMakeGenerator,
                 '-A', $plan.CMakePlatform, '-T', 'v143', '-DCMAKE_SYSTEM_VERSION=10.0.26100.0', "-DCMAKE_GENERATOR_INSTANCE=$($instances[0])")
-            Checked $CMakePath @('--build', $BuildDirectory, '--config', 'Release', '--parallel', '2')
-            $pe = foreach ($name in $payload + @('IntegrationContract.exe', 'IntegrationNative.exe', 'IntegrationProcessTests.exe', 'IntegrationWorkerFixture.exe')) {
+            if ($ValidationProfile -ceq 'full-suite') {
+                Checked $CMakePath @('--build', $BuildDirectory, '--config', 'Release', '--parallel', '2')
+                $peNames = $payload + @('IntegrationContract.exe', 'IntegrationNative.exe', 'IntegrationProcessTests.exe', 'IntegrationWorkerFixture.exe')
+            } else {
+                Checked $CMakePath @('--build', $BuildDirectory, '--config', 'Release', '--target',
+                    'IntegrationApp', 'IntegrationTask', 'IntegrationHost', 'IntegrationClient', 'IntegrationContract', 'IntegrationNative', '--parallel', '2')
+                $peNames = $payload + @('IntegrationContract.exe', 'IntegrationNative.exe')
+            }
+            $pe = foreach ($name in $peNames) {
                 $path = Join-Path $BuildDirectory "Release/$name"
                 Assert-PrinterPeMachine -Bytes ([IO.File]::ReadAllBytes($path)) -Architecture $Architecture -Name $name
                 [ordered]@{ file = $name; sha256 = Digest $path }
             }
-            Checked $ctest @('--test-dir', $BuildDirectory, '-C', 'Release', '--output-on-failure', '--verbose', '--no-tests=error', '--timeout', '60')
-            [ordered]@{ source_sha = $sha; architecture = $arch; ctests = 'passed'; pe = @($pe) } |
-                ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $BuildDirectory 'own-build.json') -Encoding utf8
+            if ($ValidationProfile -ceq 'full-suite') {
+                Checked $ctest @('--test-dir', $BuildDirectory, '-C', 'Release', '--output-on-failure', '--verbose', '--no-tests=error', '--timeout', '60')
+                $buildRecord = [ordered]@{ source_sha = $sha; architecture = $arch; ctests = 'passed'; pe = @($pe) }
+            } else {
+                $tools = @(Get-ScopedBuildTools $BuildDirectory $CMakePath $instances[0] (Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10') $arch)
+                $checks = @(Invoke-ScopedBuildChecks $BuildDirectory)
+                $toolsAfter = @(Get-ScopedBuildTools $BuildDirectory $CMakePath $instances[0] (Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10') $arch)
+                if (($tools | ConvertTo-Json -Depth 6 -Compress) -cne ($toolsAfter | ConvertTo-Json -Depth 6 -Compress)) {
+                    throw 'Scoped build tooling changed during checks.'
+                }
+                foreach ($entry in $pe) {
+                    if ((Digest (Join-Path $BuildDirectory "Release/$($entry.file)")) -cne $entry.sha256) {
+                        throw 'Scoped payload/test bytes changed during checks.'
+                    }
+                }
+                $afterSha = & git -C $root rev-parse HEAD
+                if ($LASTEXITCODE -ne 0 -or $afterSha -cne $sha) { throw 'Scoped source HEAD changed.' }
+                $afterDirty = & git -C $root status --porcelain --untracked-files=normal
+                if ($LASTEXITCODE -ne 0 -or $afterDirty) { throw 'Scoped source changed during checks.' }
+                $buildRecord = [ordered]@{ source_sha=$sha;source_tree=$sourceTree;architecture=$arch
+                    validation_profile=$ValidationProfile;validation_status='passed';tools=$tools
+                    configuration='Release';targets=@('IntegrationApp','IntegrationTask','IntegrationHost','IntegrationClient','IntegrationContract','IntegrationNative')
+                    pe=@($payload | ForEach-Object { $file=Join-Path $BuildDirectory "Release/$_"
+                        [ordered]@{file=$_;bytes=(Get-Item -LiteralPath $file).Length;sha256=(Digest $file)} })
+                    checks=$checks;test_root=(Join-Path $BuildDirectory 'isolated-journal-v3-files') }
+            }
+            $buildRecord | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $BuildDirectory 'own-build.json') -Encoding utf8
             $receipt.build_directory = $BuildDirectory
         } else {
-            $build = Get-Content -LiteralPath (Join-Path $BuildDirectory 'own-build.json') -Raw | ConvertFrom-Json
-            if ($build.source_sha -cne $sha -or $build.architecture -cne $arch -or $build.ctests -cne 'passed') { throw 'Exact-source successful native build receipt required.' }
+            $build = if ($ValidationProfile -ceq 'isolated-journal-v3') {
+                ConvertFrom-ScopedBuildReceipt ([IO.File]::ReadAllText((Join-Path $BuildDirectory 'own-build.json'),[Text.UTF8Encoding]::new($false,$true)))
+            } else {
+                Get-Content -LiteralPath (Join-Path $BuildDirectory 'own-build.json') -Raw | ConvertFrom-Json
+            }
+            $tools = if ($ValidationProfile -ceq 'isolated-journal-v3') {
+                @(Get-ScopedBuildTools $BuildDirectory $CMakePath $instances[0] (Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10') $arch)
+            } else { @() }
+            Assert-BuildValidation $build $ValidationProfile $sha $sourceTree $arch $BuildDirectory $tools
+            if ($ValidationProfile -ceq 'isolated-journal-v3') {
+                foreach ($tool in $build.tools) { Assert-BuildFileBytes $tool }
+                foreach ($check in $build.checks) {
+                    Assert-BuildFileBytes $check.image_after
+                    Assert-BuildFileBytes $check.stdout
+                    Assert-BuildFileBytes $check.stderr
+                }
+            }
             foreach ($name in $payload) {
                 $entry = @($build.pe | Where-Object file -CEQ $name)
                 if ($entry.Count -ne 1 -or (Digest (Join-Path $BuildDirectory "Release/$name")) -cne $entry[0].sha256) { throw 'Tested own binary changed/missing.' }
+                if ($ValidationProfile -ceq 'isolated-journal-v3' -and
+                    (Get-Item -LiteralPath (Join-Path $BuildDirectory "Release/$name")).Length -ne $entry[0].bytes) {
+                    throw 'Scoped payload byte count mismatch.'
+                }
             }
             $makepri = Join-Path $sdk 'makepri.exe'; $makeappx = Join-Path $sdk 'makeappx.exe'
             foreach ($tool in @($makepri, $makeappx)) {

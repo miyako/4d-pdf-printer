@@ -1,17 +1,66 @@
 # Desktop PDF integration: local source-review checkpoint
 
-**Version-only 0.1.0.4 working-tree draft; deployment and further print trials
-are on hold.** Only the package version and its source checks advance from
-0.1.0.3; package Name/Publisher, AppIDs, capabilities, endpoints and job/worker
-protocols are unchanged. The installed **0.1.0.3** remains the preceding source,
-not this draft. Commit/build/sign/update procedures require separate approval.
+**0.1.0.5 is an uncommitted offline diagnostic revision, not a built or installed
+package.** The installed 004 and every historical result remain unchanged.
+`build.ps1` defaults to the original `full-suite` build/CTest behavior.
+An explicitly selected `isolated-journal-v3` profile instead builds the four
+package payloads plus Contract/Native test targets and runs only Contract NOARG
+and Native's selected isolated journal scope. It retains its fresh private tree,
+started/closed check records and byte-bound logs. It never runs no-argument Native,
+process fixtures or CTest. This profile requires separate Windows build/run
+authorization; importing receipt helpers does not execute it.
+
+Scoped build receipts contain no `ctests='passed'` claim. Package and SignCopy must
+select the same profile: scoped Package checks the exact source SHA/tree,
+compiler/SDK/tool facts, four payloads, selected argv, successful check records,
+test images and logs. Legacy full-suite receipts retain their original meaning
+only in the full-suite path. The clean Git checkout guard remains mandatory;
+the current dirty/untracked source cannot truthfully pass it until a separately
+authorized complete source commit exists. Build/package/sign, same-family
+004-to-005 update, and one future print are separate gates, none authorized here.
+Name/Publisher/endpoints/queues/renderer/client semantics remain unchanged.
+
+The explicit native **test-only isolation revision** adds a selected journal/
+deferral scope, separate from the legacy no-argument native record/status suite.
+It requires a caller-specified fresh absolute fixed-local-drive directory with
+existing non-reparse ancestors. The selected scope creates only fresh case
+children there and **retains every tree on success or failure**; it never
+recursively cleans up, retries, or kills pending owners. Ancestor handles exclude
+delete-sharing while the root scope lives. This is path confinement for a private,
+non-concurrently-modified test tree, not protection against a hostile same-user
+writer replacing descendants. No installed printer/package cache is used by this
+scope. The legacy no-argument suite remains broader and is not authorized by
+isolated-scope approval; its historical temporary-directory cleanup remains.
+
+An internal per-instance `Task` diagnostic override is non-null and immutable.
+Normal WinRT/default construction still creates a fresh default `Trace` at the
+original point on **each** `Run`, never at construction. Injected real-Run
+reentry fixtures use only `TrialIo`; the override intentionally keeps that Trace
+alive through Task destruction, without a backend-to-Task cycle. No production
+cancellation, observation, finalizer, budget, schema or admission policy changes.
+This is a new source revision; earlier twelve-file snapshots and accepted
+compile/Contract receipts do not validate it.
+
+Selected native cases exercise real WinRT storage/FileIO and native report
+publication/collision, real Task finalization and COM MTA/STA return with mocked
+instances/deferrals and manually injected cancellation. They do not execute PSA
+activation, actual printing or real `CompleteJob`, or explain live SystemPolicy
+cancellation. Existing waits have local deadlines, but synchronous OS I/O,
+WinRT `.get()`, scheduling and thread joins provide **no hard process time bound**.
+Failure may leave active async owners; retained files are not proof those owners
+have stopped. Windows compilation and selected execution require separate review
+and authority; offline source checks are not Windows behavioral evidence.
+
+**Deployment and further print trials are on hold.** Package Name/Publisher,
+AppIDs, capabilities, endpoints and job/worker protocols are unchanged.
+Commit/build/sign/update procedures require separate approval.
 Actual Silent attempt03 produced one independently validated PDF; the user
 reported no UI and correct text/rectangle display. Its original technical result
 remains **false**: scrambled collector ordering and an independently canceled,
 non-drained journal are distinct failures. Neither is retrospectively repaired.
 
 The bounded ARM64 native-fixture and PS5.1 synthetic lane was accepted only for
-`896426a` (tree `e8b2c67`). This 0.1.0.4 draft has not been built, signed,
+`896426a` (tree `e8b2c67`). This 0.1.0.5 draft has not been built, signed,
 installed or printed. A successor needs its own exact-source evidence; accepted
 896 receipts, binaries and source ledgers must not be relabelled as its acceptance.
 
@@ -31,6 +80,43 @@ fresh producer context, exact32hex binding and the unchanged normal journal/
 lifecycle predicate. The separate exact17-key assessment is always review-only:
 shape, sampled readiness and first/minimum cancellation provenance are distinct.
 No historical false result or primary PDF/job outcome is promoted.
+
+The current source emits terminal **v3 / observations v2** for independent,
+in-memory `CompleteJob` boundary observations. Explicit expected-v1 and expected-v2
+decoders retain their original contracts; v2 never accepts the additional `j`
+field. No historical binary, receipt or native failure is upgraded by this source
+change. A future capture must explicitly select v3; existing frozen operators
+and their expected-v2 evidence are not silently adapted.
+
+`j = [call, frameworkSample]`, where `call = [firstEntry, return]`.
+The entry payload is `[tick, thread, attemptedSubmittedStatus]` (raw SDK enum0..2).
+The return payload uses the existing `[tick, thread, failed, nullableHRESULT]`
+outcome convention. The first framework-cancellation sample payload is
+`[[entryTick, thread], [sampleEndTick, thread], call]`, bound to the first framework
+cancellation context. These fixed cells require no file I/O, waits, new locks,
+Status getter or new phase synchronization. Both primary and duplicate-data
+completion paths record attempts; repeated attempts mark the first result
+ambiguous rather than borrowing a different call's outcome.
+
+Sampling reads return before entry, and the terminal reads the immutable
+framework sample before the current call cells. It does **not** make those reads
+atomic. Unseen/publishing/ready, missing framework samples and repeated attempts
+remain explicit. `entry-recorded-return-unobserved` includes a call not yet
+entered, in progress, or already returned before its AFTER observation published.
+`not-attempted-at-entry-read` applies only at that read. A ready return proves the
+projected call returned before that observation, not before cancellation entry.
+There is a gap between the BEFORE stamp and the API call, and between its return
+or caught failure and the AFTER stamp; equal millisecond ticks cannot order them.
+The framework sampling interval starts at callback entry and may overlap a return.
+The parser never manufactures an atomic OS-call/cancellation ordering.
+
+The v3 assessment adds `complete_job` to the historical17-key assessment,
+including race-honest snapshot/framework phases, attempted status, original
+outcome and `os_call_order="not-established"`. Additional sample flags256/512
+denote incomplete boundary evidence/repeated attempts. This is diagnostic
+instrumentation, not a cancellation-cause fix, admission exception or execution
+lifetime guarantee. Receipt I/O can still be absent or fail; retaining observations
+in memory does not prove process lifetime or persistence.
 
 `tools/JournalCapture.ps1` supplies reusable functions, **not a runnable print
 operator**. Explicit integer dictionary indexing orders bounded0..31 mappings
@@ -171,7 +257,7 @@ Normal WinRT awaiters restore the finalizer's calling COM context; file work run
 on the background pool with the existing MTA-usage guard.
 
 A separate bounded diagnostic receipt has schema
-`4d-pdf-printer.activation-journal-terminal`, version2, at:
+`4d-pdf-printer.activation-journal-terminal`, version3, at:
 `LocalCache\DesktopPdfJournal-<activation32hex>.json`. A native backend creates its
 same-directory `.partial` with CREATE_NEW, writes <=4096UTF8bytes, flushes, closes,
 then uses no-replace `MoveFileFromAppW`. The existing package-name/publisher guard
@@ -180,10 +266,13 @@ This avoids reusing FileIO safe-save for the error sink, not the underlying disk
 The atomic-visibility strategy still needs supported-filesystem validation; neither
 flush nor rename promises power-loss durability or a physical I/O time limit.
 
-The compact ASCII integer encoder has a reviewed2300-byte field-envelope bound
-within that unchanged4096-byte backend cap. Out-of-domain observations explicitly
+The historical v2 compact ASCII encoder retains its reviewed2300-byte envelope.
+The v3 encoder uses a conservative3300-byte limit: the new fixed `j` field is
+bounded by1000bytes over the old envelope (including both copies, maximum-width
+integers and tuple/key punctuation). The backend cap remains4096bytes.
+Out-of-domain observations explicitly
 fail diagnostic reporting rather than truncate, normalize or downgrade. Historical
-version1 receipts remain accepted only with expected version1.
+v1/v2 receipts remain accepted only with their explicit expected version.
 
 The immutable receipt freezes **before** its own I/O and the deferral attempt.
 It carries reason, drain state (`drained/failed/deadline/canceled/unavailable`),

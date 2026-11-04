@@ -15,6 +15,9 @@ template<typename F> void Reject(F function) {
 }
 int main(int argc, char** argv) {
     try {
+        if (argc == 2 && std::string_view(argv[1]) == "--observation-wire-maximum-v3") {
+            std::cout << tests::MaxObservationReceipt(3); return 0;
+        }
         if (argc == 2 && std::string_view(argv[1]) == "--observation-wire-maximum") {
             std::cout << tests::MaxObservationReceipt(); return 0;
         }

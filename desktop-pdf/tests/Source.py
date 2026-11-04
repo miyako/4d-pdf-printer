@@ -1,5 +1,6 @@
 """Source/provenance checks only. Does not execute or emulate Windows APIs."""
 from pathlib import Path
+import hashlib
 import re
 import subprocess
 import unittest
@@ -24,6 +25,119 @@ def original(ref, path):
 
 
 class Source(unittest.TestCase):
+    def test_scoped_build_profile_is_not_full_suite(self):
+        helper = (ROOT / "desktop-pdf/build.ps1").read_text()
+        checks = (ROOT / "desktop-pdf/BuildValidation.ps1").read_text()
+        self.assertIn("$ValidationProfile = 'full-suite'", helper)
+        self.assertIn("Clean exact-source checkout required", helper)
+        self.assertIn("Assert-BuildValidation $build $ValidationProfile $sha $sourceTree", helper)
+        self.assertIn("Unsigned package validation profile mismatch.", helper)
+        self.assertIn("'IntegrationApp', 'IntegrationTask', 'IntegrationHost', 'IntegrationClient', 'IntegrationContract', 'IntegrationNative'", helper)
+        self.assertIn("Checked $ctest @('--test-dir'", helper)
+        scoped = helper.split("$checks = @(Invoke-ScopedBuildChecks", 1)[1].split("$receipt.build_directory", 1)[0]
+        self.assertNotIn("ctests = 'passed'", scoped)
+        self.assertIn("validation_status='passed'", scoped)
+        self.assertIn("Scoped source changed during checks", scoped)
+        self.assertIn("@('contract','isolated-journal-v3')", checks)
+        self.assertIn("@('--isolated-journal',$testRoot)", checks)
+        self.assertNotIn("ctest", checks.split("function Invoke-ScopedBuildChecks", 1)[1])
+        self.assertNotIn("Remove-Item", checks)
+        self.assertNotIn("Stop-Process", checks)
+        self.assertIn("started_utc=", checks)
+        self.assertIn("image_after=", checks)
+        self.assertIn("Exact four scoped payloads required", checks)
+        self.assertIn("Scoped compiler/SDK/tool facts mismatch", checks)
+
+    def test_isolated_native_task_seam_only(self):
+        task = (ROOT / "desktop-pdf/Task.cpp").read_text()
+        seam = """private:
+    std::shared_ptr<activation::Trace> const diagnosticOverride;
+public:
+    Task() = default;
+    explicit Task(std::shared_ptr<activation::Trace> trace) : diagnosticOverride(std::move(trace)) {
+        Require(diagnosticOverride != nullptr, "explicit task diagnostic override");
+    }
+"""
+        self.assertEqual(task.count(seam), 1)
+        old = task.replace(seam, "", 1).replace(
+            "diagnosticOverride ? diagnosticOverride : std::make_shared<activation::Trace>()",
+            "std::make_shared<activation::Trace>()", 1)
+        self.assertEqual(hashlib.sha256(old.encode()).hexdigest(),
+                         "7bd2d57610b90521234fd9ed8b2fba090a0364ebccf82052c2307f5da9d3f280")
+        run = task.split("void Run(", 1)[1]
+        self.assertLess(run.index("diagnostics = diagnosticOverride ?"), run.index("Point::RunEnter"))
+        self.assertLess(run.index("Point::RunEnter"), run.index("task.GetDeferral()"))
+        self.assertLess(run.index("task.GetDeferral()"), run.index("task.Canceled("))
+        for path, digest in {
+            "ActivationDiagnostics.h": "be3f8d5b6232ac997b8b685d723b97fd600946a5952659612e73b39db97ab9b8",
+            "ActivationObservations.h": "16c76b4c965387ba4ce9c73b2485dc2d1d35f6bcac68eab2a88589e143fb65b2",
+            "ObservationWire.h": "a74f2289d53bfab53400648a7d6fe500844b31a0ea8fe4f27dd3559dab9e1971",
+            "tools/journal.py": "5be357157707bc3e1795884b2aeef0d82f7ed9145a75d6843861647b0a403c0b",
+        }.items():
+            self.assertEqual(hashlib.sha256((ROOT / "desktop-pdf" / path).read_bytes()).hexdigest(), digest)
+
+    def test_isolated_native_selector_and_retention(self):
+        native = (ROOT / "desktop-pdf/tests/Native.cpp").read_text()
+        selected = native.split("if (argc != 1) {", 1)[1].split("\n        init_apartment", 1)[0]
+        self.assertIn('argc == 3 && std::wstring_view(argv[1]) == L"--isolated-journal"', selected)
+        self.assertIn("tests::FreshTrialRoot root(argv[2]);", selected)
+        self.assertIn("tests::NativeJournalChecks(&root);", selected)
+        self.assertIn("return 0;", selected)
+        for forbidden in ("make_shared", "JournalChecks();", "ReportChecks();", "LifetimeChecks("):
+            self.assertNotIn(forbidden, selected)
+        journal = (ROOT / "desktop-pdf/tests/ActivationJournalNative.h").read_text()
+        self.assertNotIn("TrialDirectory directory;", journal)
+        directory = journal.split("struct TrialDirectory", 1)[1].split("struct TrialIo", 1)[0]
+        self.assertIn("retained(suite != nullptr)", directory)
+        self.assertLess(directory.index("if (retained) return;"), directory.index("remove_all"))
+        self.assertIn("if (suite) path = suite->NewCase();", directory)
+        for label in ("successful case tree retained", "failed case tree retained", "pending owner tree retained"):
+            self.assertIn(label, journal)
+        root = (ROOT / "desktop-pdf/tests/NativeTrialRoot.h").read_text()
+        for forbidden in ("remove_all", "remove(", "temp_directory", "Package::", "ApplicationData::"):
+            self.assertNotIn(forbidden, root)
+
+    def test_isolated_native_injection_and_lifetime(self):
+        journal = (ROOT / "desktop-pdf/tests/ActivationJournalNative.h").read_text()
+        self.assertNotIn("make_shared<Trace>()", journal)
+        self.assertNotIn("Package::Current", journal)
+        self.assertNotIn("ApplicationData::Current", journal)
+        self.assertIn("make_self<::Task>(std::shared_ptr<Trace>{})", journal)
+        reentry = journal.split("for (unsigned instanceIndex", 1)[1].split("for (bool dataOwner", 1)[0]
+        self.assertIn("instanceIndex < 2", reentry)
+        self.assertIn("make_self<::Task>(injected)", reentry)
+        self.assertIn("task->Run(instance.as<IBackgroundTaskInstance>());", reentry)
+        self.assertIn("task->diagnostics == injected", reentry)
+        self.assertLess(reentry.index("task->diagnostics.reset()"), reentry.index("!weak.expired()"))
+        self.assertLess(reentry.index("task = nullptr;"), reentry.index("ReleasedTest(weak)"))
+        self.assertIn("StorageFolder Cache() override { return root; }", journal)
+        report = journal.split("activation::ReportResult Report(", 1)[1].split("struct TestDeferral", 1)[0]
+        self.assertIn("activation::NativeReportBackend backend(path, id);", report)
+        self.assertNotIn("JournalIo::Report", report)
+
+    def test_isolated_native_root_and_io_guards(self):
+        root = (ROOT / "desktop-pdf/tests/NativeTrialRoot.h").read_text()
+        constructor = root.split("explicit FreshTrialRoot(", 1)[1]
+        self.assertLess(constructor.index("TrialPathText("), constructor.index("GetDriveTypeW("))
+        self.assertLess(constructor.index("Hold(current)"), constructor.index("create_directory(path)"))
+        self.assertIn("DRIVE_FIXED", constructor)
+        self.assertIn("FILE_FLAG_OPEN_REPARSE_POINT", root)
+        self.assertIn("FILE_ATTRIBUTE_REPARSE_POINT", root)
+        self.assertNotIn("FILE_SHARE_DELETE", root)
+        self.assertIn("OPEN_EXISTING", root)
+        self.assertIn("path.parent_path().relative_path()", root)
+        self.assertIn('path / (L"case-" + RandomId())', root)
+        self.assertIn('part == L"." || part == L".."', root)
+        self.assertIn('stem == L"CON"', root)
+        self.assertIn("TrialPathChecks()", root)
+        journal = (ROOT / "desktop-pdf/tests/ActivationJournalNative.h").read_text()
+        self.assertEqual(journal.count("Confined(parent);"), 2)
+        self.assertEqual(journal.count("ConfinedFile(file);"), 2)
+        self.assertIn('Id(leaf.substr(8))', journal)
+        self.assertIn('leaf.ends_with(L".json")', journal)
+        self.assertIn("FreshTrialRoot existing(suite->path.wstring());", journal)
+        self.assertIn("io->Confined(StorageFolder::GetFolderFromPathAsync(suite->path.wstring()).get())", journal)
+
     def test_journal_preserves_routing_job_and_worker_sources(self):
         for path in ("printer/psa/App.cpp", "desktop-pdf/Client.cpp", "desktop-pdf/Contract.h",
                      "desktop-pdf/WorkerProcess.cpp", "desktop-pdf/WorkerProcess.h", "desktop-pdf/Job.h",
@@ -44,12 +158,13 @@ class Source(unittest.TestCase):
         self.assertIn('Validate(request, hostActivation.id, hostActivation.mode, L"request")', native)
         build = (ROOT / "desktop-pdf/build.ps1").read_text()
         baseline_build = original(INTEGRATION_BASELINE, "desktop-pdf/build.ps1").decode()
-        self.assertEqual(build.split("function Manifest(", 1)[0], baseline_build.split("function Manifest(", 1)[0])
-        before = "$receipt.app_ids = @('SaveAs', 'Silent', 'Client')"
-        after = "$receipt.app_ids = @('SaveAs', 'Client')"
-        baseline_tail = baseline_build.split("function PackageEvidence(", 1)[1]
-        self.assertEqual(baseline_tail.count(before), 1)
-        self.assertEqual(build.split("function PackageEvidence(", 1)[1], baseline_tail.replace(before, after, 1))
+        prefix = build.split("function Manifest(", 1)[0]
+        prefix = prefix.replace("    [ValidateSet('full-suite', 'isolated-journal-v3')][string]$ValidationProfile = 'full-suite',\n", "", 1)
+        prefix = prefix.replace(". (Join-Path $root 'BuildValidation.ps1')\n", "", 1)
+        self.assertEqual(prefix, baseline_build.split("function Manifest(", 1)[0])
+        self.assertEqual(build.split("function PackageEvidence(", 1)[1].split("\nFresh $OutputRoot", 1)[0],
+                         baseline_build.split("function PackageEvidence(", 1)[1].split("\nFresh $OutputRoot", 1)[0])
+        self.assertIn("$receipt.app_ids = @('SaveAs', 'Client')", build)
         workflow = (ROOT / ".github/workflows/renderer-windows.yml").read_text()
         baseline_workflow = original(INTEGRATION_BASELINE, ".github/workflows/renderer-windows.yml").decode()
         fetch = f"git fetch --no-tags --depth=1 origin {DEPENDENCY} {PROOF} ae53b92a5e1f3fa442f41246079cde7e2f4afd47"
@@ -148,10 +263,23 @@ class Source(unittest.TestCase):
         self.assertIn("co_await diagnostics->Finish(reason, deferral != nullptr, began)", task)
         self.assertEqual(task.count("deferral.Complete();"), 1)
         tail = '        if (primary.value < 0 && job) {'
-        self.assertEqual(task.split(tail, 1)[1].split("struct Factory", 1)[0],
+        observed_tail = task.split(tail, 1)[1].split("struct Factory", 1)[0]
+        for addition in (
+            "        bool completeOwned = false;\n",
+            "            if (diagnostics) completeOwned = diagnostics->Observe().CompleteEnter(\n"
+            "                {activation::ObservationStamp(), static_cast<std::uint32_t>(status)});\n",
+            "            if (diagnostics) diagnostics->Observe().CompleteReturn(completeOwned, {activation::ObservationStamp(), {}});\n",
+            "            if (diagnostics) diagnostics->Observe().CompleteReturn(\n"
+            "                completeOwned, {activation::ObservationStamp(), static_cast<std::uint32_t>(primary.value)});\n",
+        ):
+            self.assertEqual(observed_tail.count(addition), 1)
+            observed_tail = observed_tail.replace(addition, "", 1)
+        observed_tail = observed_tail.replace("primary = to_hresult();\n            Trace(",
+                                              "primary = to_hresult(); Trace(", 1)
+        self.assertEqual(observed_tail,
                          baseline.split(tail, 1)[1].split("struct Factory", 1)[0].replace(
                              "Finish(activation::Reason::Normal, true);", "Finish(activation::Reason::Normal, true, 4);", 1))
-        self.assertIn("primary = to_hresult(); Trace(activation::Point::CompleteFailure, primary);", task)
+        self.assertIn("primary = to_hresult(); Trace(activation::Point::CompleteFailure, primary);", observed_tail)
         self.assertIn("Failure(stage.c_str(), primary);", task)
         # The SDK COM header declares this export without noexcept; body/factory stay exact.
         unload = 'extern "C" HRESULT __stdcall DllCanUnloadNow()'
@@ -169,8 +297,8 @@ class Source(unittest.TestCase):
         self.assertIn("if (!failure) failure =", trace)
         self.assertIn("Require(!decision", trace)
         self.assertIn('{"deferral_release_observed", "false"}', trace)
-        self.assertIn('{"version", "2"}', trace)
-        self.assertIn("wire.size() <= 2300", trace)
+        self.assertIn('{"version", Number(version, 3)}', trace)
+        self.assertIn("version == 2 ? 2300u : 3300u", trace)
         baseline = original(OBSERVATION_BASELINE, "desktop-pdf/ActivationDiagnostics.h").decode()
         state = trace.split("class PublicationState {", 1)[1].split("\ninline std::string ReceiptWire", 1)[0]
         old_state = baseline.split("class PublicationState {", 1)[1].split("\n}\n\n#ifdef _WIN32", 1)[0]
@@ -216,18 +344,20 @@ class Source(unittest.TestCase):
 
     def test_distinct_identity_and_endpoints(self):
         manifest_bytes = (ROOT / "desktop-pdf/package/AppxManifest.xml").read_bytes()
-        self.assertEqual(manifest_bytes.count(b'Version="0.1.0.4"'), 1)
-        self.assertEqual(manifest_bytes.replace(b'Version="0.1.0.4"', b'Version="0.1.0.2"', 1),
+        self.assertEqual(manifest_bytes.count(b'Version="0.1.0.5"'), 1)
+        self.assertEqual(manifest_bytes.replace(b'Version="0.1.0.5"', b'Version="0.1.0.2"', 1),
                          original(JOURNAL_BASELINE, "desktop-pdf/package/AppxManifest.xml"))
         helper_bytes = (ROOT / "desktop-pdf/build.ps1").read_bytes()
-        self.assertEqual(helper_bytes.count(b"'0.1.0.4'"), 1)
-        self.assertEqual(helper_bytes.replace(b"'0.1.0.4'", b"'0.1.0.2'", 1),
-                         original(JOURNAL_BASELINE, "desktop-pdf/build.ps1"))
+        self.assertEqual(helper_bytes.count(b"'0.1.0.5'"), 1)
+        def manifest_guard(raw):
+            return raw.split(b"function Manifest(", 1)[1].split(b"function PackageEvidence(", 1)[0]
+        self.assertEqual(manifest_guard(helper_bytes).replace(b"'0.1.0.5'", b"'0.1.0.2'", 1),
+                         manifest_guard(original(JOURNAL_BASELINE, "desktop-pdf/build.ps1")))
         package = ET.parse(ROOT / "desktop-pdf/package/AppxManifest.xml").getroot()
         identity = package.find("m:Identity", NS)
         self.assertEqual(identity.attrib["Name"], "Miyako.DesktopPdfIntegration")
         self.assertEqual(identity.attrib["Publisher"], "CN=DesktopPdfPrototypeDev")
-        self.assertEqual(identity.attrib["Version"], "0.1.0.4")
+        self.assertEqual(identity.attrib["Version"], "0.1.0.5")
         apps = {app.attrib["Id"]: app for app in package.findall("m:Applications/m:Application", NS)}
         self.assertEqual(len(package.findall("m:Applications/m:Application", NS)), 2)
         self.assertEqual(set(apps), {"SaveAs", "Client"})
@@ -323,7 +453,7 @@ class Source(unittest.TestCase):
         host = (ROOT / "desktop-pdf/Host.cpp").read_text()
         self.assertLess(host.index("ConfiguredRuntime(root)"), host.index("Render(runtime,"))
         helper = (ROOT / "desktop-pdf/build.ps1").read_text()
-        self.assertIn("$identity.Version -cne '0.1.0.4'", helper)
+        self.assertIn("$identity.Version -cne '0.1.0.5'", helper)
         self.assertIn("'Build', 'Package', 'SignCopy'", helper)
         self.assertIn("No automatic fetch/install.", helper)
         for ref in (DEPENDENCY, PROOF):
@@ -332,10 +462,14 @@ class Source(unittest.TestCase):
                           "Assert-PrinterPackage", "Assert-PrinterResourceDump", "printer/build.ps1",
                           "'/nv'", "Invoke-WebRequest", "git fetch"):
             self.assertNotIn(forbidden, helper)
-        package = helper.split("} else {\n            $build = Get-Content", 1)[1]
+        package_marker = "} else {\n            $build = if ($ValidationProfile -ceq 'isolated-journal-v3') {"
+        self.assertEqual(helper.count(package_marker), 1)
+        package = helper[helper.index(package_marker):]
         self.assertNotIn("'--build'", package)
         self.assertNotIn("Checked $ctest", package)
         self.assertIn("PackageEvidence $package $pri", package)
+        self.assertIn("ConvertFrom-ScopedBuildReceipt ([IO.File]::ReadAllText", package)
+        self.assertIn("Get-Content -LiteralPath (Join-Path $BuildDirectory 'own-build.json') -Raw | ConvertFrom-Json", package)
 
     def test_workflow_execution_contract(self):
         # Deliberately static guards, not a YAML parser or Windows execution proof.

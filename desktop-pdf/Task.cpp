@@ -12,6 +12,13 @@ using namespace Windows::ApplicationModel::Background;
 using namespace Windows::Graphics::Printing::Workflow;
 
 struct Task : implements<Task, IBackgroundTask> {
+private:
+    std::shared_ptr<activation::Trace> const diagnosticOverride;
+public:
+    Task() = default;
+    explicit Task(std::shared_ptr<activation::Trace> trace) : diagnosticOverride(std::move(trace)) {
+        Require(diagnosticOverride != nullptr, "explicit task diagnostic override");
+    }
     BackgroundTaskDeferral deferral{nullptr};
     IBackgroundTaskInstance instance{nullptr};
     PrintWorkflowVirtualPrinterSession session{nullptr};
@@ -100,7 +107,7 @@ struct Task : implements<Task, IBackgroundTask> {
         }
     }
     void Run(IBackgroundTaskInstance const& task) {
-        try { diagnostics = std::make_shared<activation::Trace>(); }
+        try { diagnostics = diagnosticOverride ? diagnosticOverride : std::make_shared<activation::Trace>(); }
         catch (...) { Failure(L"activation diagnostics setup", to_hresult()); }
         Trace(activation::Point::RunEnter);
         try {
@@ -111,7 +118,13 @@ struct Task : implements<Task, IBackgroundTask> {
                         activation::observation::Context context;
                         context.entry = activation::ObservationStamp();
                         context.raw = static_cast<std::uint32_t>(reason);
-                        if (self->diagnostics) context = self->diagnostics->Observe().EnterCancel(context);
+                        if (self->diagnostics) {
+                            auto& observations = self->diagnostics->Observe();
+                            auto complete = observations.ReadComplete();
+                            auto sampled = activation::ObservationStamp();
+                            context = observations.EnterCancel(context);
+                            observations.CompleteCanceled(context, complete, sampled);
+                        }
                         self->Trace(activation::Point::Canceled);
                         self->ObserveCancellation(context);
                         self->Finish(activation::Reason::Canceled, false, 3);
@@ -167,9 +180,17 @@ struct Task : implements<Task, IBackgroundTask> {
         Trace(activation::Point::DataEnter);
         if (!gate.ClaimData()) {
             Trace(activation::Point::DuplicateData);
-            try { args.CompleteJob(PrintWorkflowSubmittedStatus::Failed); }
+            auto owned = diagnostics && diagnostics->Observe().CompleteEnter(
+                {activation::ObservationStamp(), static_cast<std::uint32_t>(PrintWorkflowSubmittedStatus::Failed)});
+            try {
+                args.CompleteJob(PrintWorkflowSubmittedStatus::Failed);
+                if (diagnostics) diagnostics->Observe().CompleteReturn(owned, {activation::ObservationStamp(), {}});
+            }
             catch (...) {
-                auto hr = to_hresult(); Trace(activation::Point::CompleteFailure, hr);
+                auto hr = to_hresult();
+                if (diagnostics) diagnostics->Observe().CompleteReturn(
+                    owned, {activation::ObservationStamp(), static_cast<std::uint32_t>(hr.value)});
+                Trace(activation::Point::CompleteFailure, hr);
                 Failure(L"duplicate completion", hr);
             }
             co_return;
@@ -368,12 +389,19 @@ struct Task : implements<Task, IBackgroundTask> {
             } catch (...) { Failure(L"failure record", to_hresult()); }
         }
         if (outcome == L"indeterminate") status = PrintWorkflowSubmittedStatus::Failed;
+        bool completeOwned = false;
         try {
             Trace(activation::Point::CompleteBefore);
+            if (diagnostics) completeOwned = diagnostics->Observe().CompleteEnter(
+                {activation::ObservationStamp(), static_cast<std::uint32_t>(status)});
             args.CompleteJob(status);
+            if (diagnostics) diagnostics->Observe().CompleteReturn(completeOwned, {activation::ObservationStamp(), {}});
             Trace(activation::Point::CompleteReturned);
         } catch (...) {
-            primary = to_hresult(); Trace(activation::Point::CompleteFailure, primary);
+            primary = to_hresult();
+            if (diagnostics) diagnostics->Observe().CompleteReturn(
+                completeOwned, {activation::ObservationStamp(), static_cast<std::uint32_t>(primary.value)});
+            Trace(activation::Point::CompleteFailure, primary);
             Failure(L"CompleteJob", primary);
             stage = L"CompleteJob";
             outcome = published || commitStarted || outcome == L"indeterminate" ? L"saved-or-unknown-acknowledgement" : L"completion-failed";

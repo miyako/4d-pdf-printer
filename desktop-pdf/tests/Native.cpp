@@ -12,8 +12,18 @@ template<typename F> void Reject(F function) {
     try { function(); } catch (...) { rejected = true; }
     Require(rejected, "expected rejection");
 }
-int main() {
+int wmain(int argc, wchar_t** argv) {
     try {
+        if (argc != 1) {
+            Require(argc == 3 && std::wstring_view(argv[1]) == L"--isolated-journal",
+                "expected explicit isolated-journal selector and fresh local root");
+            tests::TrialPathChecks();
+            tests::FreshTrialRoot root(argv[2]);
+            init_apartment(apartment_type::multi_threaded);
+            tests::NativeJournalChecks(&root);
+            std::cout << "Isolated native journal/deferral fixtures passed; retained test root; NOT PSA/printing/SystemPolicy proof.\n";
+            return 0;
+        }
         init_apartment(apartment_type::multi_threaded);
         tests::JournalChecks();
         tests::ReportChecks();

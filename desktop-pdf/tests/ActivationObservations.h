@@ -34,7 +34,7 @@ inline activation::observation::Snapshot MaxObservation() {
     }
     return s;
 }
-inline std::string MaxObservationReceipt() {
+inline std::string MaxObservationReceipt(std::uint8_t version = 2) {
     using namespace activation;
     constexpr std::uint64_t n = 9007199254740991ull;
     Decision d;
@@ -49,8 +49,13 @@ inline std::string MaxObservationReceipt() {
     observation::Context c{0, false, {n, UINT32_MAX}, UINT32_MAX};
     d.observations.first = observation::Applied{c, n}; d.observations.minimum = *d.observations.first;
     d.observations.operation = observation::Operation{std::uint16_t{65535}, 5, {}};
+    auto snapshot = MaxObservation();
+    snapshot.complete.entry = {2, true, observation::CompleteEntry{{n, UINT32_MAX}, 2}};
+    snapshot.complete.returned = {2, false, observation::Outcome{{n, UINT32_MAX}, UINT32_MAX}};
+    snapshot.completeCancellation = {2, false, observation::CompleteCancellation{
+        {n, UINT32_MAX}, {n, UINT32_MAX}, snapshot.complete}};
     return ReceiptWire(d, std::wstring(32, L'f'), std::wstring(32, L'f'),
-        MaxObservation(), UINT32_MAX, n, n);
+        snapshot, UINT32_MAX, n, n, version);
 }
 inline std::string ObservationReceipt(bool bound, bool full = false) {
     using namespace activation;
@@ -77,7 +82,7 @@ inline std::string ObservationReceipt(bool bound, bool full = false) {
     while (state.journal.Pop(event)) state.Published(event);
     auto decision = state.Freeze(Reason::Normal, 100, 110, 2100, true);
     return ReceiptWire(decision, std::wstring(32, L'a'), bound ? std::wstring(32, L'b') : L"",
-        observations.Read(), 100, 111, 112);
+        observations.Read(), 100, 111, 112, 2);
 }
 inline void ObservationChecks() {
     using namespace activation;
@@ -176,6 +181,27 @@ inline void ObservationChecks() {
     Require(snapshot.api[1].awaited.payload->observed.tick == 18 &&
         snapshot.api[1].returned.payload->observed.tick == 19, "natural outcome and API return are separate");
     Require(MaxObservationReceipt().size() == 2295, "producer field-envelope emission below2300");
+    Require(MaxObservationReceipt(3).size() <= 3300, "CompleteJob envelope below3300/backend4096");
+    o::Observations complete;
+    Require(complete.ReadComplete().entry.state == 0, "CompleteJob not attempted at read");
+    auto owned = complete.CompleteEnter({{20, 7}, 0});
+    Require(owned && complete.ReadComplete().returned.state == 0, "entry alone is not in-progress proof");
+    auto context = complete.EnterCancel({0, false, {21, 8}, 7});
+    auto atCancel = complete.ReadComplete();
+    complete.CompleteCanceled(context, atCancel, {22, 8});
+    complete.CompleteReturn(owned, {{23, 7}, {}});
+    auto completeSnapshot = complete.Read();
+    Require(completeSnapshot.complete.returned.state == 2 &&
+        completeSnapshot.completeCancellation.payload->call.returned.state == 0,
+        "framework sample stays immutable after return");
+    Require(!complete.CompleteEnter({{24, 9}, 2}), "duplicate completion cannot steal outcome");
+    complete.CompleteReturn(false, {{25, 9}, 0x80004005u});
+    Require(complete.ReadComplete().entry.repeated &&
+        !complete.ReadComplete().returned.payload->error, "repeated ambiguity retains first result");
+    o::Observations failed;
+    auto failedOwner = failed.CompleteEnter({{20, 7}, 2});
+    failed.CompleteReturn(failedOwner, {{21, 7}, 0x80070005u});
+    Require(failed.ReadComplete().returned.payload->error == 0x80070005u, "original CompleteJob HRESULT");
     Require(ObservationReceipt(false).find("\"job\":\"\"") != std::string::npos,
         "pre-job business failure can emit unbound Normal/drained activation receipt");
     for (auto [mask, value] : {std::pair{9, 1}, {9, 9}, {11, 2}, {11, 10}, {15, 4}, {15, 8}, {15, 12}})

@@ -220,7 +220,7 @@ class Consumer(unittest.TestCase):
         t = canceled()
         t["observations"]["r"] = [1, None]
         self.assertEqual(journal.assess(wire(t), A, expected_version=2)["question"], "bound-context-incomplete")
-        for version, expected, label in ((3, 2, "unsupported"), (2, 1, "unexpected-version")):
+        for version, expected, label in ((4, 2, "unsupported"), (2, 1, "unexpected-version")):
             t = terminal()
             t["version"] = version
             result = journal.assess(wire(t), A, expected_version=expected)

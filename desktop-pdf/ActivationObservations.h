@@ -112,6 +112,15 @@ struct ApiSample {
     Sample<ApiHead> head;
     Sample<Outcome> returned, awaited;
 };
+struct CompleteEntry { Stamp observed; std::uint32_t status{}; };
+struct CompleteSample {
+    Sample<CompleteEntry> entry;
+    Sample<Outcome> returned;
+};
+struct CompleteCancellation {
+    Stamp begin, end;
+    CompleteSample call;
+};
 struct Snapshot {
     std::array<Sample<Context>, 2> cancellation;
     Sample<Reason> reason;
@@ -120,6 +129,8 @@ struct Snapshot {
     Sample<Stamp> began;
     Sample<PassedReason> passed;
     std::array<ApiSample, 3> api;
+    CompleteSample complete;
+    Sample<CompleteCancellation> completeCancellation;
     bool invalid{};
 };
 struct Frozen {
@@ -134,8 +145,28 @@ class Observations {
     Once<Stamp> began;
     Once<PassedReason> passed;
     std::array<Api, 3> api;
+    First<CompleteEntry> completeEntry;
+    Once<Outcome> completeReturned;
+    Once<CompleteCancellation> completeCancellation;
     std::atomic<bool> invalid{};
 public:
+    bool CompleteEnter(CompleteEntry value) noexcept {
+        if (!completeEntry.Claim()) return false;
+        completeEntry.Publish(value); return true;
+    }
+    void CompleteReturn(bool owned, Outcome value) noexcept {
+        if (owned && !completeReturned.TryPublish(value)) invalid = true;
+    }
+    CompleteSample ReadComplete() const noexcept {
+        CompleteSample result;
+        result.returned = completeReturned.Read();
+        result.entry = completeEntry.Read();
+        return result;
+    }
+    void CompleteCanceled(Context const& context, CompleteSample const& sample, Stamp end) noexcept {
+        if (context.origin == 0 && context.first &&
+            !completeCancellation.TryPublish({context.entry, end, sample})) invalid = true;
+    }
     Context EnterCancel(Context context) noexcept {
         if (context.origin >= cancellation.size()) { invalid = true; return context; }
         context.first = cancellation[context.origin].Claim();
@@ -180,6 +211,8 @@ public:
     }
     Snapshot Read() const noexcept {
         Snapshot result;
+        result.completeCancellation = completeCancellation.Read();
+        result.complete = ReadComplete();
         result.passed = passed.Read(); result.began = began.Read(); result.winner = winner.Read();
         for (std::size_t i = 0; i != api.size(); ++i) {
             result.api[i].returned = api[i].returned.Read();
