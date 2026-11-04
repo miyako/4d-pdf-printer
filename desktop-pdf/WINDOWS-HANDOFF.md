@@ -31,8 +31,36 @@ once, no retry. Route: Windows-only (no Mac-prepared handoff/bundle); fresh
   **`verified-update-only`**; 284/284 package data files unchanged (no
   removed/added/changed), queues unchanged, 0 jobs, 0 package processes,
   installed payload matches the 006 build hashes above.
-- Not yet: silent print series. 006 behavior is unproven on device until
-  that runs.
+- **Silent print series** (`RunSilentPrintRun006.ps1` `00401807...773c`,
+  `RunSilentPrintSeries006.ps1` `af9a4d33...08a1`; 005 scripts with
+  root/version/payload substituted and v4 flush columns added; runs 01-06
+  sequential, passive observation, no retry/kill): `SilentPrintSeries/series.json`
+  (`17cc06cd...3c11`). All 6 `CAPTURED-FOR-REVIEW-NOT-PRODUCT-SUCCESS`,
+  completion `succeeded`, PDFs 17670 bytes, all SHA256 `45572825...16c1`
+  (identical to 005), queue empty after each run.
+
+  | run | finalize_reason | drain | accepted | last pub | flush | target/pub | flush ms | cancel-CompleteJob entry ms |
+  |---|---|---|---|---|---|---|---|---|
+  | 01 | post-complete-teardown | canceled | 21 | 14 | deadline | 18/14 | 515 | 32 |
+  | 02 | post-complete-teardown | canceled | 21 | 13 | deadline | 18/13 | 625 | 47 |
+  | 03 | post-complete-teardown | canceled | 21 | 16 | deadline | 18/16 | 515 | 31 |
+  | 04 | post-complete-teardown | canceled | 21 | 17 | flushed | 18/18 | 312 | 32 |
+  | 05 | post-complete-teardown | canceled | 21 | 15 | deadline | 18/16 | 500 | 0 |
+  | 06 | post-complete-teardown | canceled | 21 | 18 | flushed | 18/18 | 407 | 0 |
+
+  All: framework cancel reason 7 (SystemPolicy), `CompleteJob(Succeeded)`
+  returned without error, ordering `cancel-after-CompleteJob-returned`.
+
+  **Interpretation.** Fix B is confirmed on device: every post-CompleteJob
+  SystemPolicy cancel is now labelled `post-complete-teardown`, never
+  `canceled`. Fix A is only partial: the journal writer publishes too slowly
+  (about 30 ms per record via StorageFile create/write/rename), so the
+  pre-CompleteJob backlog of 18 records reached the 500 ms budget in 4/6 runs
+  and the flush delayed CompleteJob by 312-625 ms (625 > budget: wait-slice and
+  scheduling overshoot). Records after CompleteJob are still always lost
+  because the teardown cancel follows within 0-47 ms. Print output is
+  unaffected. A future change would need cheaper journal writes (fewer files /
+  batching) rather than a longer pre-CompleteJob wait.
 
 ## Windows04 package, update and first 005 silent print
 
