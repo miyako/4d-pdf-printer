@@ -21,6 +21,9 @@ int main(int argc, char** argv) {
         if (argc == 2 && std::string_view(argv[1]) == "--observation-wire-maximum-v4") {
             std::cout << tests::MaxObservationReceipt(4); return 0;
         }
+        if (argc == 2 && std::string_view(argv[1]) == "--observation-wire-maximum-v5") {
+            std::cout << tests::MaxObservationReceipt(5); return 0;
+        }
         if (argc == 2 && std::string_view(argv[1]) == "--observation-wire-maximum") {
             std::cout << tests::MaxObservationReceipt(); return 0;
         }

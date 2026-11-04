@@ -117,6 +117,8 @@ public:
 };
 inline constexpr std::uint64_t DrainMs = 1500, FinalizeMs = 2000, ReportMs = 500, CancelMs = 250;
 inline constexpr std::uint64_t PreCompleteFlushMs = 500, PreCompleteSliceMs = 25;
+// Post-complete teardown drains for this share of CancelMs; the rest stays reserved for the terminal receipt.
+inline constexpr std::uint64_t TeardownDrainMs = 125;
 inline std::uint64_t FinalizeDeadline(std::uint64_t started, std::optional<std::uint64_t> cancel) {
     auto normal = started + FinalizeMs;
     return cancel ? (std::min)(normal, *cancel + CancelMs) : normal;
@@ -158,7 +160,8 @@ struct Decision {
     std::optional<Event> inflight;
     Stage stage{};
     std::array<wchar_t, 41> pending{};
-    bool outstanding{}, cancel{}, deferral{};
+    // continued: post-complete teardown applied, but the writer kept draining (terminal v5).
+    bool outstanding{}, continued{}, deferral{};
     observation::Frozen observations;
     PreCompleteFlush flush{};
 };
@@ -181,13 +184,14 @@ inline std::string FlushWire(PreCompleteFlush const& value) {
 class PublicationState {
 public:
     Journal journal;
-    bool writing{}, stop{}, cancelRequested{};
+    bool writing{}, stop{};
     std::optional<std::uint32_t> published;
     std::optional<DiagnosticFailure> failure;
     std::optional<Event> inflight;
     Stage stage{};
     std::array<wchar_t, 41> pending{};
-    std::optional<std::uint64_t> canceled;
+    // canceled stops the writer at once; teardown only bounds it to the cancel budget.
+    std::optional<std::uint64_t> canceled, teardown;
     std::optional<std::uint64_t> finalizing;
     std::optional<Decision> decision;
     void Fail(std::uint32_t code) noexcept {
@@ -198,12 +202,20 @@ public:
         Require(event.sequence == (published ? *published + 1 : 0), "diagnostic publication cursor");
         published = event.sequence; inflight.reset(); pending.fill(0); stage = Stage::None;
     }
-    void Cancel(std::uint64_t tick) noexcept {
-        if (!canceled || tick < *canceled) canceled = tick;
+    void Cancel(std::uint64_t tick, bool postComplete = false) noexcept {
+        auto& cutoff = postComplete ? teardown : canceled;
+        if (!cutoff || tick < *cutoff) cutoff = tick;
+    }
+    std::optional<std::uint64_t> Cutoff() const noexcept {
+        if (!canceled || !teardown) return canceled ? canceled : teardown;
+        return (std::min)(*canceled, *teardown);
+    }
+    std::uint64_t DrainEnd(std::uint64_t began) const noexcept {
+        auto end = (std::min)(began + DrainMs, FinalizeDeadline(began, Cutoff()));
+        return teardown ? (std::min)(end, *teardown + TeardownDrainMs) : end;
     }
     bool MayIssue(std::uint64_t now) noexcept {
-        if (finalizing && (canceled || now >= (std::min)(*finalizing + DrainMs,
-            FinalizeDeadline(*finalizing, canceled)))) stop = true;
+        if (finalizing && (canceled || now >= DrainEnd(*finalizing))) stop = true;
         return !stop;
     }
     bool Drained() const noexcept {
@@ -217,22 +229,29 @@ public:
         decision = Decision{state, reason, seal, now, end, journal.Accepted(), journal.Consumed(),
             journal.RejectedBefore(), journal.RejectedAfter(), published,
             journal.Sealed() ? std::optional<std::uint32_t>(journal.Accepted() - 1) : std::nullopt,
-            failure, inflight, stage, pending, writing, cancelRequested, deferral, {}};
+            failure, inflight, stage, pending, writing, !canceled && teardown.has_value(), deferral, {}};
         stop = true;
         return *decision;
     }
 };
 inline std::string ReceiptWire(Decision const& d, std::wstring_view id, std::wstring_view job,
     observation::Snapshot const& snapshot, std::uint32_t process, std::uint64_t begin, std::uint64_t end,
-    std::uint8_t version = 4) {
+    std::uint8_t version = 5) {
     using namespace observation;
-    Require(version >= 2 && version <= 4, "explicit terminal version");
+    Require(version >= 2 && version <= 5, "explicit terminal version");
     Require(Id(id) && (job.empty() || Id(job)), "terminal activation/known-job domain");
     Require(static_cast<std::size_t>(d.reason) < ReasonNames.size() &&
         static_cast<std::size_t>(d.state) < DrainNames.size(), "terminal decision enum");
-    Require(version == 4 || d.reason != decltype(d.reason)::PostCompleteTeardown, "post-complete teardown requires terminal v4");
-    Require((d.state == DrainState::Canceled) == (d.observations.first.has_value() && d.observations.minimum.has_value()),
-        "frozen cancellation provenance");
+    Require(version >= 4 || d.reason != decltype(d.reason)::PostCompleteTeardown, "post-complete teardown requires terminal v4+");
+    auto provenance = d.observations.first.has_value() && d.observations.minimum.has_value();
+    if (version == 5) {
+        // v5: a post-complete teardown is applied provenance whose drain continued instead of stopping.
+        Require(!d.continued || d.state != DrainState::Canceled, "continued drain is not a canceled drain");
+        Require((d.state == DrainState::Canceled || d.continued) == provenance, "frozen cancellation provenance");
+    } else {
+        Require(!d.continued, "continued post-complete drain requires terminal v5");
+        Require((d.state == DrainState::Canceled) == provenance, "frozen cancellation provenance");
+    }
     auto event = [](std::optional<Event> const& value) {
         return value ? Number(value->sequence, 31) : "null";
     };
@@ -250,12 +269,12 @@ inline std::string ReceiptWire(Decision const& d, std::wstring_view id, std::wst
         std::wstring_view pending(d.pending.data());
         Require(pending.empty() || (pending.starts_with(L"pending-") && Id(pending.substr(8))), "terminal pending leaf");
         inflight = Object({{"sequence", event(d.inflight)}, {"checkpoint", point(d.inflight)}, {"stage", stage(d.stage)},
-            {"temporary_leaf", Text(Ascii(pending))}, {"cancel_requested", Boolean(d.cancel)}});
+            {"temporary_leaf", Text(Ascii(pending))}, {"cancel_requested", "false"}});
     }
     if (d.failure) failure = Object({{"sequence", event(d.failure->event)}, {"checkpoint", point(d.failure->event)},
         {"stage", stage(d.failure->stage)}, {"code_domain", Text("hresult")}, {"code_u32", Number(d.failure->code, UINT32_MAX)}});
     auto wire = Object({
-        {"schema", Text("4d-pdf-printer.activation-journal-terminal")}, {"version", Number(version, 4)},
+        {"schema", Text("4d-pdf-printer.activation-journal-terminal")}, {"version", Number(version, 5)},
         {"activation", Text(Ascii(id))}, {"job", Text(Ascii(job))},
         {"finalize_reason", Text(Ascii(ReasonNames[static_cast<std::size_t>(d.reason)]))},
         {"drain_state", Text(Ascii(DrainNames[static_cast<std::size_t>(d.state)]))},
@@ -269,10 +288,13 @@ inline std::string ReceiptWire(Decision const& d, std::wstring_view id, std::wst
         {"inflight", inflight}, {"first_failure", failure},
         {"observations", Encode(snapshot, d.observations, process, begin, end, version)}
     });
-    if (version == 4) {
+    if (version >= 4) {
         wire.pop_back();
-        wire += ",\"pre_complete_flush\":" + FlushWire(d.flush) + '}';
-    } else Require(d.flush.state == FlushState::NotAttempted, "pre-complete flush requires terminal v4");
+        wire += ",\"pre_complete_flush\":" + FlushWire(d.flush);
+        if (version == 5) wire += std::string(",\"cancellation_drain\":") +
+            (!provenance ? "\"none\"" : d.continued ? "\"continued\"" : "\"stopped\"");
+        wire += '}';
+    } else Require(d.flush.state == FlushState::NotAttempted, "pre-complete flush requires terminal v4+");
     Require(wire.size() <= (version == 2 ? 2300u : 3300u), "source-bound terminal wire maximum");
     JsonWire(wire, 4096).Check();
     return wire;
@@ -335,19 +357,37 @@ struct Apartment {
         }
     }
 };
+// Synchronous native record I/O on the single background writer; failures throw hresult_error.
 struct JournalIo {
     virtual ~JournalIo() = default;
-    virtual StorageFolder Cache() { return JournalCache(); }
-    virtual IAsyncOperation<StorageFolder> Folder(StorageFolder const& parent, hstring const& name,
-        CreationCollisionOption collision) { return parent.CreateFolderAsync(name, collision); }
-    virtual IAsyncOperation<StorageFile> Create(StorageFolder const& parent, hstring const& name) {
-        return parent.CreateFileAsync(name, CreationCollisionOption::FailIfExists);
+    virtual std::wstring Cache() { return TerminalCachePath(); }
+    // openIfExists: create-if-missing plain directory; otherwise fail-if-exists.
+    virtual void Folder(std::wstring const& path, bool openIfExists) {
+        if (CreateDirectoryFromAppW(path.c_str(), nullptr)) return;
+        auto error = GetLastError();
+        if (!openIfExists || error != ERROR_ALREADY_EXISTS) throw_hresult(HRESULT_FROM_WIN32(error));
+        WIN32_FILE_ATTRIBUTE_DATA attributes{};
+        if (!GetFileAttributesExFromAppW(path.c_str(), GetFileExInfoStandard, &attributes)) throw_last_error();
+        if (!(attributes.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ||
+            (attributes.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) throw_hresult(HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED));
     }
-    virtual IAsyncAction Write(StorageFile const& file, hstring const& text) {
-        return FileIO::WriteTextAsync(file, text, UnicodeEncoding::Utf8);
+    virtual handle Create(std::wstring const& path) {
+        CREATEFILE2_EXTENDED_PARAMETERS options{};
+        options.dwSize = sizeof(options); options.dwFileAttributes = FILE_ATTRIBUTE_NORMAL;
+        options.dwFileFlags = FILE_FLAG_OPEN_REPARSE_POINT;
+        auto raw = CreateFile2FromAppW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, CREATE_NEW, &options);
+        if (raw == INVALID_HANDLE_VALUE) throw_last_error();
+        return handle(raw);
     }
-    virtual IAsyncAction Rename(StorageFile const& file, hstring const& name) {
-        return file.RenameAsync(name, NameCollisionOption::FailIfExists);
+    // Writes every byte, then closes; no per-record FlushFileBuffers.
+    virtual void Write(handle file, std::string_view bytes) {
+        DWORD count{};
+        if (!WriteFile(file.get(), bytes.data(), static_cast<DWORD>(bytes.size()), &count, nullptr)) throw_last_error();
+        if (count != bytes.size()) throw_hresult(HRESULT_FROM_WIN32(ERROR_WRITE_FAULT));
+        if (!CloseHandle(file.detach())) throw_last_error();
+    }
+    virtual void Rename(std::wstring const& from, std::wstring const& to) {
+        if (!MoveFileFromAppW(from.c_str(), to.c_str())) throw_last_error();
     }
     virtual ReportResult Report(std::wstring_view activation, std::string_view bytes) {
         NativeReportBackend backend(TerminalCachePath(), activation);
@@ -360,17 +400,9 @@ class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>
     std::shared_ptr<JournalIo> io;
     PublicationState state;
     handle changed, flushChanged;
-    struct TrackedOperation {
-        IAsyncInfo info;
-        observation::Operation observed;
-        observation::Once<observation::Outcome> outcome;
-        explicit TrackedOperation(IAsyncInfo value) : info(std::move(value)) {}
-    };
-    std::shared_ptr<TrackedOperation> operation;
-    observation::OperationKeys operationKeys;
     observation::Observations observed;
     std::optional<observation::Applied> firstApplied, minimumApplied;
-    StorageFolder folder{nullptr};
+    std::wstring folder;
     std::wstring id;
     Identity identity;
     std::array<wchar_t, 33> knownJob{};
@@ -389,69 +421,6 @@ class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>
         state.stage = stage;
         return true;
     }
-    template<typename T> T Track(T const& value) {
-        auto tracked = std::make_shared<TrackedOperation>(value.template as<IAsyncInfo>());
-        std::shared_ptr<TrackedOperation> old;
-        bool cancel;
-        {
-            std::scoped_lock lock(mutex);
-            tracked->observed.key = operationKeys.Next();
-            tracked->observed.stage = static_cast<std::uint8_t>(state.stage);
-            if (state.inflight) tracked->observed.sequence = static_cast<std::uint8_t>(state.inflight->sequence);
-            old = std::exchange(operation, tracked);
-            cancel = state.stop;
-            if (cancel) state.cancelRequested = true;
-        }
-        if (cancel) {
-            auto owned = ApiEntry(0, tracked);
-            try {
-                tracked->info.Cancel();
-                observed.ApiReturn(0, owned, {ObservationStamp(), {}});
-            } catch (...) {
-                auto hr = to_hresult();
-                observed.ApiReturn(0, owned, {ObservationStamp(), static_cast<std::uint32_t>(hr.value)});
-                Failure(L"journal cancel", hr);
-            }
-        }
-        return value;
-    }
-    bool ApiEntry(std::uint8_t route, std::shared_ptr<TrackedOperation> const& current) noexcept {
-        auto operationIdentity = reinterpret_cast<std::uintptr_t>(current.get());
-        auto owned = observed.ApiEntry(route, {ObservationStamp(), current->observed, operationIdentity, {}});
-        auto prior = current->outcome.Read();
-        if (prior.payload) observed.Await(current->observed, operationIdentity, *prior.payload);
-        return owned;
-    }
-    void Outcome(std::shared_ptr<TrackedOperation> const& current, observation::Outcome const& value) noexcept {
-        current->outcome.TryPublish(value);
-        observed.Await(current->observed, reinterpret_cast<std::uintptr_t>(current.get()), value);
-    }
-    void ClearOperation(bool returned = false) {
-        std::shared_ptr<TrackedOperation> old;
-        { std::scoped_lock lock(mutex); old = std::exchange(operation, nullptr); }
-        if (returned && old) Outcome(old, {ObservationStamp(), {}});
-    }
-    static fire_and_forget CancelCurrent(std::shared_ptr<Trace> self, std::shared_ptr<TrackedOperation> current) {
-        bool owned = false;
-        try {
-            co_await resume_background();
-            Apartment apartment;
-            { std::scoped_lock lock(self->mutex); self->state.cancelRequested = true; }
-            owned = self->ApiEntry(1, current);
-            current->info.Cancel();
-            self->observed.ApiReturn(1, owned, {ObservationStamp(), {}});
-        } catch (...) {
-            auto hr = to_hresult();
-            self->observed.ApiReturn(1, owned, {ObservationStamp(), static_cast<std::uint32_t>(hr.value)});
-            Failure(L"journal cancel", hr);
-        }
-    }
-    void CancelOperation() noexcept {
-        std::shared_ptr<TrackedOperation> current;
-        { std::scoped_lock lock(mutex); current = operation; }
-        try { if (current) CancelCurrent(shared_from_this(), current); }
-        catch (...) { Failure(L"journal cancel scheduling", to_hresult()); }
-    }
     static Event MakeEvent(Point point, hresult error = {}, std::wstring_view job = {}) {
         Require(static_cast<std::size_t>(point) < Names.size(), "activation diagnostic checkpoint");
         Require(job.empty() || Id(job), "activation diagnostic job id");
@@ -461,29 +430,28 @@ class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>
         std::copy(job.begin(), job.end(), event.job.begin());
         return event;
     }
-    static IAsyncAction PublishEvent(std::shared_ptr<Trace> self, Event event) {
-        if (!self->StageAt(Stage::Prepare)) co_return;
+    // Record bytes match the 0.1.0.6 FileIO UTF-8 text: BOM plus compact JSON.
+    static void PublishEvent(std::shared_ptr<Trace> const& self, Event const& event) {
+        if (!self->StageAt(Stage::Prepare)) return;
         auto record = DiagnosticRecord(self->id, event, self->identity);
-        auto text = record.Stringify();
+        auto bytes = "\xEF\xBB\xBF" + to_string(record.Stringify());
         auto pending = L"pending-" + RandomId();
         {
             std::scoped_lock lock(self->mutex);
             std::copy(pending.begin(), pending.end(), self->state.pending.begin());
         }
-        if (!self->StageAt(Stage::Create)) co_return;
-        auto file = co_await self->Track(self->io->Create(self->folder, hstring(pending)));
-        self->ClearOperation(true);
-        if (!self->StageAt(Stage::Write)) co_return;
-        co_await self->Track(self->io->Write(file, text));
-        self->ClearOperation(true);
-        if (!self->StageAt(Stage::Rename)) co_return;
-        co_await self->Track(self->io->Rename(file, to_hstring(event.sequence) + L".json"));
-        self->ClearOperation(true);
+        auto staging = self->folder + L"\\" + pending;
+        if (!self->StageAt(Stage::Create)) return;
+        auto file = self->io->Create(staging);
+        if (!self->StageAt(Stage::Write)) return;
+        self->io->Write(std::move(file), bytes);
+        if (!self->StageAt(Stage::Rename)) return;
+        self->io->Rename(staging, self->folder + L"\\" + std::to_wstring(event.sequence) + L".json");
         { std::scoped_lock lock(self->mutex); self->state.Published(event); }
         self->Signal();
     }
-    static IAsyncAction Initialize(std::shared_ptr<Trace> self) {
-        if (!self->StageAt(Stage::Initialize)) co_return;
+    static void Initialize(std::shared_ptr<Trace> const& self) {
+        if (!self->StageAt(Stage::Initialize)) return;
         std::array<wchar_t, IdentityChars> buffer{};
         UINT32 length = static_cast<UINT32>(buffer.size());
         self->identity.error = static_cast<std::uint32_t>(GetCurrentApplicationUserModelId(&length, buffer.data()));
@@ -498,15 +466,16 @@ class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>
         } else if (self->identity.error != APPMODEL_ERROR_NO_APPLICATION) {
             Failure(L"activation diagnostics identity", hresult{HRESULT_FROM_WIN32(self->identity.error)});
         }
-        if (!self->StageAt(Stage::Root)) co_return;
-        auto root = co_await self->Track(self->io->Folder(self->io->Cache(), L"DesktopPdf", CreationCollisionOption::OpenIfExists));
-        self->ClearOperation(true);
-        if (!self->StageAt(Stage::Parent)) co_return;
-        auto parent = co_await self->Track(self->io->Folder(root, L"ActivationDiagnostics", CreationCollisionOption::OpenIfExists));
-        self->ClearOperation(true);
-        if (!self->StageAt(Stage::Folder)) co_return;
-        self->folder = co_await self->Track(self->io->Folder(parent, hstring(self->id), CreationCollisionOption::FailIfExists));
-        self->ClearOperation(true);
+        if (!self->StageAt(Stage::Root)) return;
+        auto root = self->io->Cache() + L"\\DesktopPdf";
+        self->io->Folder(root, true);
+        if (!self->StageAt(Stage::Parent)) return;
+        auto parent = root + L"\\" + L"ActivationDiagnostics";
+        self->io->Folder(parent, true);
+        if (!self->StageAt(Stage::Folder)) return;
+        auto folder = parent + L"\\" + self->id;
+        self->io->Folder(folder, false);
+        self->folder = std::move(folder);
     }
     static fire_and_forget Drain(std::shared_ptr<Trace> self) {
         try {
@@ -515,7 +484,7 @@ class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>
             APTTYPE type{}; APTTYPEQUALIFIER qualifier{};
             check_hresult(CoGetApartmentType(&type, &qualifier));
             Require(type == APTTYPE_MTA, "activation diagnostics writer requires MTA");
-            if (!self->folder) co_await Initialize(self);
+            if (self->folder.empty()) Initialize(self);
             for (;;) {
                 Event event;
                 {
@@ -523,16 +492,14 @@ class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>
                     if (self->state.stop || !self->state.journal.Pop(event)) break;
                     self->state.inflight = event;
                 }
-                co_await PublishEvent(self, event);
+                PublishEvent(self, event);
             }
         } catch (...) {
             auto hr = to_hresult();
             Failure(L"activation diagnostics write", hr);
             std::scoped_lock lock(self->mutex);
-            if (self->operation) self->Outcome(self->operation, {ObservationStamp(), static_cast<std::uint32_t>(hr.value)});
             self->state.Fail(static_cast<std::uint32_t>(hr.value));
         }
-        self->ClearOperation();
         bool restart = false;
         {
             std::scoped_lock lock(self->mutex);
@@ -645,12 +612,13 @@ public:
         }
         Signal();
     }
-    void Cancel(std::uint64_t tick, observation::Context const& context) noexcept {
+    // postComplete: teardown after CompleteJob entry keeps draining until the cancel budget expires.
+    void Cancel(std::uint64_t tick, observation::Context const& context, bool postComplete = false) noexcept {
         {
             std::scoped_lock lock(mutex);
             if (!firstApplied) firstApplied = observation::Applied{context, tick};
             if (!minimumApplied || tick < minimumApplied->tick) minimumApplied = observation::Applied{context, tick};
-            state.Cancel(tick);
+            state.Cancel(tick, postComplete);
         }
         Signal();
     }
@@ -676,14 +644,13 @@ public:
             {
                 std::scoped_lock lock(mutex);
                 auto now = GetTickCount64();
-                end = (std::min)(began + DrainMs, FinalizeDeadline(began, state.canceled));
+                end = state.DrainEnd(began);
                 done = state.Drained() || state.failure || state.journal.RejectedBefore() ||
                     state.canceled || now >= end;
                 if (done) {
-                    decision = state.Freeze(reason, sealed, now, FinalizeDeadline(began, state.canceled), deferral);
+                    decision = state.Freeze(reason, sealed, now, FinalizeDeadline(began, state.Cutoff()), deferral);
                     decision.observations.first = firstApplied;
                     decision.observations.minimum = minimumApplied;
-                    if (operation) decision.observations.operation = operation->observed;
                     decision.flush = preComplete;
                     jobId = knownJob.data();
                 }
@@ -692,7 +659,6 @@ public:
             auto now = GetTickCount64();
             if (now < end) co_await resume_on_signal(changed.get(), std::chrono::milliseconds(end - now));
         }
-        CancelOperation();
         auto reportEnd = (std::min)(decision.deadline, GetTickCount64() + ReportMs);
         bool reportStarted = false, reportCompleted = false;
         if (GetTickCount64() < reportEnd) {
@@ -703,7 +669,7 @@ public:
                 {
                     std::scoped_lock lock(mutex);
                     reportCompleted = reportDone;
-                    end = (std::min)(reportEnd, FinalizeDeadline(began, state.canceled));
+                    end = (std::min)(reportEnd, FinalizeDeadline(began, state.Cutoff()));
                 }
                 auto now = GetTickCount64();
                 if (reportCompleted || now >= end) break;

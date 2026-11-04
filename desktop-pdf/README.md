@@ -1,5 +1,68 @@
 # Desktop PDF integration: local source-review checkpoint
 
+## 0.1.0.7 (draft: native journal record writes and post-complete teardown drain)
+
+**0.1.0.7 is an unbuilt-for-release, unsigned, uninstalled source draft.** It stays a
+draft until the official build/package/sign/update and print gates run on its exact
+source. Dev builds and isolated native/Contract/Python checks are not install evidence.
+
+Evidence basis: the 006 Windows silent print series (table in `WINDOWS-HANDOFF.md`).
+All six installed 0.1.0.6 prints succeeded and all six terminals reported
+`post-complete-teardown` (raw reason 7, 0–47 ms after CompleteJob entry), so B works.
+A was weak:
+- Each record took about 30 ms to publish through WinRT storage
+  (`CreateFileAsync`, `WriteTextAsync`, `RenameAsync`).
+- The pre-CompleteJob flush hit its 500 ms deadline in 4/6 runs, delaying CompleteJob
+  by 312–625 ms.
+- Every record after CompleteJob was lost (accepted 21, last published 13–18),
+  because the cancel stopped the writer at once.
+
+The native terminal receipt (`CreateFile2FromAppW`/`WriteFile`/`MoveFileFromAppW` to
+LocalCache) succeeded in 12/12 device runs (005+006), even after the cancel.
+
+- **Native record writes.** The single background MTA writer now publishes each
+  record with synchronous Win32 I/O instead of WinRT storage. The layout and record
+  bytes are unchanged:
+  - `LocalCache\DesktopPdf\ActivationDiagnostics\<activation>\` is created with
+    `CreateDirectoryFromAppW`: create-if-missing for the root and parent,
+    fail-if-exists for the activation folder.
+  - Each record is written to `pending-<random>` with
+    `CreateFile2FromAppW(CREATE_NEW)`, then full-byte `WriteFile`, then close. It is
+    then moved to `<sequence>.json` with `MoveFileFromAppW` (no replace).
+  - The bytes are a UTF-8 BOM plus compact JSON, as in 0.1.0.6.
+  - There is no per-record `FlushFileBuffers`; the terminal receipt keeps it.
+  - `Add` and the `Canceled` handler never perform journal I/O.
+  - There is no async operation left to cancel, so the tracked-operation machinery
+    is removed: `Track`, `CancelCurrent`, `ApiEntry` routes 0/1 and the operation outcome.
+- **Post-complete teardown drain.**
+  - On `Reason::PostCompleteTeardown`, `Trace::Cancel(..., true)` records a teardown
+    cutoff and does not stop the writer. The queue, including the `canceled`
+    checkpoint and `finish`, keeps draining until it has fully drained or until
+    teardown + `TeardownDrainMs = 125`. The terminal deadline stays at cancel +
+    `CancelMs = 250`. The remaining 125 ms is reserved for the terminal receipt;
+    without it, a held write would exhaust the budget and no receipt could start.
+  - A real cancel (before CompleteJob entry, or host origin 1) still stops and
+    freezes at once.
+  - `DrainMs/FinalizeMs/ReportMs/CancelMs` and the 500 ms `FlushBeforeComplete`
+    budget are unchanged, as are CompleteJob status, `completion.json` and the
+    duplicate-data path.
+- **Terminal v5** (the production default):
+  - It appends `cancellation_drain` as the last key: `none`, `stopped` (a real
+    cancel, with `drain_state` `canceled`) or `continued` (post-complete teardown,
+    with `drain_state` `drained`, `deadline` or `failed`).
+  - Cancellation provenance (`observations.a`) is present exactly when
+    `drain_state` is `canceled` or `cancellation_drain` is `continued`.
+  - `inflight.cancel_requested` is always `false`.
+  - The observations object has `"v":4`. `i` (the frozen tracked operation) is
+    `null`, and the `x` routes 0/1 (the journal `IAsyncInfo::Cancel` calls) are
+    absent/never; route 2 (launch) is unchanged.
+  - The v2–v4 encoders and decoders are unchanged. `tools/journal.py` decodes v5 with
+    `general_v5`, and `assess` reports `cancellation_drain`.
+- **Isolated measurement (dev machine, not device evidence).**
+  `IntegrationNative --isolated-journal` publishes 20 records through the real native
+  backend in its test root and prints the time to stderr. Four passing dev runs measured
+  6.4–9.6 ms/record, against about 30 ms/record on the device in 006.
+
 ## 0.1.0.6 (draft: pre-CompleteJob flush and post-complete teardown label)
 
 **0.1.0.6 is an unbuilt-for-release, unsigned, uninstalled source draft.** It stays

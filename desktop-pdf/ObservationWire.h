@@ -146,9 +146,13 @@ inline std::string Put(CompleteCancellation const& value) {
 }
 inline std::string Encode(Snapshot const& value, Frozen const& frozen, std::uint32_t pid,
     std::uint64_t begin, std::uint64_t end, std::uint8_t version = 3) {
-    Require(version >= 2 && version <= 4, "explicit observation version");
-    auto teardown = version == 4;
+    Require(version >= 2 && version <= 5, "explicit observation version");
+    auto teardown = version >= 4;
     Require(!value.invalid && begin <= end, "observation capture invalid");
+    // v5 (terminal v5): record I/O is synchronous native, so no cancelable journal operation or cancel route exists.
+    Require(version < 5 || (!frozen.operation && value.api[0].head.state == 0 && value.api[0].returned.state == 0 &&
+        value.api[0].awaited.state == 0 && value.api[1].head.state == 0 && value.api[1].returned.state == 0 &&
+        value.api[1].awaited.state == 0), "v5 has no journal async operation");
     auto cancel = [](Context const& item) { return Cancellation(item); };
     auto finish = [teardown](Finish const& item) { return Put(item, teardown); };
     auto api = [](ApiSample const& item) {
@@ -159,7 +163,7 @@ inline std::string Encode(Snapshot const& value, Frozen const& frozen, std::uint
     Require(value.passed.state != 2 || value.began.state == 2, "finalizer reason dependency");
     Require(value.began.state != 2 || value.winner.state == 2, "finalizer began dependency");
     auto wire = Object({
-        {"v", version == 2 ? "1" : version == 3 ? "2" : "3"}, {"pid", Native(pid)}, {"span", Array({Number(begin), Number(end)})},
+        {"v", version == 2 ? "1" : version == 3 ? "2" : version == 4 ? "3" : "4"}, {"pid", Native(pid)}, {"span", Array({Number(begin), Number(end)})},
         {"c", Array({FirstWire(value.cancellation[0], cancel), FirstWire(value.cancellation[1], cancel)})},
         {"r", OnceWire(value.reason, [teardown](Reason const& item) { return Put(item, teardown); })},
         {"a", Array({frozen.first ? Put(*frozen.first) : "null", frozen.minimum ? Put(*frozen.minimum) : "null"})},

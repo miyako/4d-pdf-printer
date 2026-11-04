@@ -49,11 +49,17 @@ inline std::string MaxObservationReceipt(std::uint8_t version = 2) {
     observation::Context c{0, false, {n, UINT32_MAX}, UINT32_MAX};
     d.observations.first = observation::Applied{c, n}; d.observations.minimum = *d.observations.first;
     d.observations.operation = observation::Operation{std::uint16_t{65535}, 5, {}};
-    if (version == 4) {
+    if (version >= 4) {
         d.reason = Reason::PostCompleteTeardown;
         d.flush = PreCompleteFlush{FlushState::Deadline, 32, 32, n, n};
     }
     auto snapshot = MaxObservation();
+    if (version == 5) {
+        // v5 truth: continued teardown drain, no journal async operation or cancel route to observe.
+        d.state = DrainState::Deadline; d.continued = true;
+        d.observations.operation.reset();
+        snapshot.api[0] = {}; snapshot.api[1] = {};
+    }
     snapshot.complete.entry = {2, true, observation::CompleteEntry{{n, UINT32_MAX}, 2}};
     snapshot.complete.returned = {2, false, observation::Outcome{{n, UINT32_MAX}, UINT32_MAX}};
     snapshot.completeCancellation = {2, false, observation::CompleteCancellation{
@@ -191,6 +197,13 @@ inline void ObservationChecks() {
         maximum4.find("\"finalize_reason\":\"post-complete-teardown\"") != std::string::npos &&
         maximum4.find("\"pre_complete_flush\":{\"state\":\"deadline\",\"target_count\":32,") != std::string::npos,
         "terminal v4 teardown/pre-complete flush envelope below3300/backend4096");
+    auto maximum5 = MaxObservationReceipt(5);
+    Require(maximum5.size() <= 3300 && maximum5.find("\"version\":5,") != std::string::npos &&
+        maximum5.find("\"drain_state\":\"deadline\"") != std::string::npos &&
+        maximum5.find("\"cancel_requested\":false") != std::string::npos &&
+        maximum5.find("\"i\":null") != std::string::npos &&
+        maximum5.ends_with(",\"cancellation_drain\":\"continued\"}"),
+        "terminal v5 continued teardown envelope below3300/backend4096");
     {
         o::Context origin0{0, false, {12, 3}, 7}, origin1{1, false, {12, 3}, 0, 9, 1};
         encoding(true, [&] { o::Put(o::Reason{origin0, 13, 5}, true); });
@@ -217,7 +230,22 @@ inline void ObservationChecks() {
         };
         encoding(false, [&] { receipt(3); });
         encoding(false, [&] { receipt(2); });
+        encoding(false, [&] { receipt(6); });
+        Require(receipt(5).ends_with(",\"cancellation_drain\":\"none\"}"), "v5 teardown race without provenance");
+        d.continued = true;
         encoding(false, [&] { receipt(5); });
+        encoding(false, [&] { receipt(4); });
+        o::Context applied{0, false, {12, 3}, 7};
+        d.observations.first = o::Applied{applied, 13}; d.observations.minimum = d.observations.first;
+        Require(receipt(5).ends_with(",\"cancellation_drain\":\"continued\"}"), "v5 continued teardown drain");
+        encoding(false, [&] { receipt(4); });
+        d.state = DrainState::Canceled;
+        encoding(false, [&] { receipt(5); });
+        d.continued = false;
+        Require(receipt(5).ends_with(",\"cancellation_drain\":\"stopped\"}"), "v5 stopped canceled drain");
+        d.state = DrainState::Drained;
+        encoding(false, [&] { receipt(5); });
+        d.state = DrainState::Deadline; d.observations = {};
         Require(receipt(4).find("\"pre_complete_flush\":{\"state\":\"not-attempted\",\"target_count\":null,"
             "\"published_count\":null,\"begin_tick_ms\":null,\"end_tick_ms\":null}}") != std::string::npos,
             "default terminal v4 unattempted flush");

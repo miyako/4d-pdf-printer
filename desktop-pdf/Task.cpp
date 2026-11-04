@@ -41,7 +41,7 @@ public:
         auto won = finalReason.compare_exchange_strong(normal, reason);
         if (won && diagnostics) diagnostics->Observe().SetReason(context, GetTickCount64(),
             static_cast<std::uint8_t>(reason));
-        if (diagnostics) diagnostics->Cancel(GetTickCount64(), context);
+        if (diagnostics) diagnostics->Cancel(GetTickCount64(), context, reason == activation::Reason::PostCompleteTeardown);
     }
     void ReleaseDeferral() noexcept {
         try { if (deferral) deferral.Complete(); }

@@ -1,6 +1,7 @@
 #pragma once
 #include "../Task.cpp"
 #include <filesystem>
+#include <fstream>
 #include "NativeTrialRoot.h"
 
 namespace pdf::tests {
@@ -39,8 +40,7 @@ struct TrialDirectory {
         if (error) Failure(L"owned journal test directory cleanup", hresult{HRESULT_FROM_WIN32(error.value())});
     }
 };
-struct TrialIo : activation::JournalIo, std::enable_shared_from_this<TrialIo> {
-    StorageFolder root{nullptr};
+struct TrialIo : activation::JournalIo {
     std::wstring path;
     activation::Stage fault{activation::Stage::None};
     bool pauseWrite{}, pauseReport{}, failReport{};
@@ -48,65 +48,55 @@ struct TrialIo : activation::JournalIo, std::enable_shared_from_this<TrialIo> {
     handle reportExited = TestSignal(), writeExited = TestSignal();
     std::atomic<bool> reported{false};
     std::string receipt;
-    explicit TrialIo(std::wstring folder) : path(std::move(folder)) {
-        root = StorageFolder::GetFolderFromPathAsync(path).get();
-    }
-    void Confined(StorageFolder const& folder) const {
-        auto actual = std::wstring(folder.Path());
-        Require(actual == path || (actual.starts_with(path + L"\\") &&
-            actual.find(L"\\..") == std::wstring::npos), "trial I/O folder confinement");
-        auto attributes = GetFileAttributesW(actual.c_str());
+    explicit TrialIo(std::wstring folder) : path(std::move(folder)) {}
+    // Returns the leaf of a target whose parent is a plain directory inside this case tree.
+    std::wstring Confined(std::wstring const& target) const {
+        auto split = target.find_last_of(L'\\');
+        Require(split != std::wstring::npos, "trial I/O absolute target");
+        auto parent = target.substr(0, split), leaf = target.substr(split + 1);
+        Require((parent == path || parent.starts_with(path + L"\\")) && parent.find(L"\\..") == std::wstring::npos &&
+            !leaf.empty() && leaf != L"." && leaf != L".." && leaf.find(L'/') == std::wstring::npos,
+            "trial I/O folder confinement");
+        auto attributes = GetFileAttributesW(parent.c_str());
         Require(attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) &&
             !(attributes & FILE_ATTRIBUTE_REPARSE_POINT), "plain trial I/O folder");
+        return leaf;
     }
-    StorageFolder Cache() override { return root; }
-    IAsyncOperation<StorageFolder> Folder(StorageFolder const& parent, hstring const& name,
-        CreationCollisionOption collision) override {
-        Confined(parent);
-        Require(name == L"DesktopPdf" || name == L"ActivationDiagnostics" || Id(name.c_str()),
-            "fixed trial journal folder name");
+    std::wstring Cache() override { return path; }
+    void Folder(std::wstring const& target, bool openIfExists) override {
+        auto name = Confined(target);
+        Require(name == L"DesktopPdf" || name == L"ActivationDiagnostics" || Id(name), "fixed trial journal folder name");
         auto stage = name == L"DesktopPdf" ? activation::Stage::Root :
             name == L"ActivationDiagnostics" ? activation::Stage::Parent : activation::Stage::Folder;
+        Require(openIfExists == (stage != activation::Stage::Folder), "fixed trial folder collision policy");
         if (fault == stage) throw hresult_error(E_ACCESSDENIED);
-        return JournalIo::Folder(parent, name, collision);
+        JournalIo::Folder(target, openIfExists);
     }
-    IAsyncOperation<StorageFile> Create(StorageFolder const& parent, hstring const& name) override {
-        Confined(parent);
-        auto leaf = std::wstring_view(name);
-        Require(leaf.starts_with(L"pending-") && Id(leaf.substr(8)), "fixed trial staging filename");
+    handle Create(std::wstring const& target) override {
+        auto leaf = Confined(target);
+        Require(leaf.starts_with(L"pending-") && Id(std::wstring_view(leaf).substr(8)), "fixed trial staging filename");
         if (fault == activation::Stage::Create) throw hresult_error(E_ACCESSDENIED);
-        return JournalIo::Create(parent, name);
+        return JournalIo::Create(target);
     }
-    static IAsyncAction PausedWrite(std::shared_ptr<TrialIo> self, StorageFile file, hstring text) {
-        activation::ModuleLifetime lifetime;
-        activation::FinalAttempt done([&]() noexcept { SetEvent(self->writeExited.get()); });
-        SetEvent(self->entered.get());
-        co_await resume_on_signal(self->release.get());
-        co_await FileIO::WriteTextAsync(file, text, UnicodeEncoding::Utf8);
-    }
-    IAsyncAction Write(StorageFile const& file, hstring const& text) override {
-        ConfinedFile(file);
+    // Holding blocks the single background writer thread until the test releases it.
+    void Write(handle file, std::string_view bytes) override {
+        activation::FinalAttempt done([&]() noexcept { SetEvent(writeExited.get()); });
+        Require(static_cast<bool>(file), "trial staging handle");
         if (fault == activation::Stage::Write) throw hresult_error(E_ACCESSDENIED);
-        if (pauseWrite) return PausedWrite(shared_from_this(), file, text);
-        return JournalIo::Write(file, text);
+        if (pauseWrite) {
+            SetEvent(entered.get());
+            WaitTest(release.get(), 30000);
+        }
+        JournalIo::Write(std::move(file), bytes);
     }
-    IAsyncAction Rename(StorageFile const& file, hstring const& name) override {
-        ConfinedFile(file);
-        auto leaf = std::wstring_view(name);
-        Require(leaf.size() >= 6 && leaf.size() <= 7 && leaf.ends_with(L".json") &&
+    void Rename(std::wstring const& from, std::wstring const& to) override {
+        auto source = Confined(from);
+        auto leaf = Confined(to);
+        Require(source.starts_with(L"pending-") && leaf.size() >= 6 && leaf.size() <= 7 && leaf.ends_with(L".json") &&
             std::all_of(leaf.begin(), leaf.end() - 5, [](wchar_t c) { return c >= L'0' && c <= L'9'; }),
             "fixed trial final filename");
         if (fault == activation::Stage::Rename) throw hresult_error(E_ACCESSDENIED);
-        return JournalIo::Rename(file, name);
-    }
-    void ConfinedFile(StorageFile const& file) const {
-        std::filesystem::path actual(file.Path().c_str());
-        auto parent = actual.parent_path().wstring();
-        Require(parent.starts_with(path + L"\\") && parent.find(L"\\..") == std::wstring::npos,
-            "trial I/O file confinement");
-        auto attributes = GetFileAttributesW(actual.c_str());
-        Require(attributes != INVALID_FILE_ATTRIBUTES &&
-            !(attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)), "plain trial I/O file");
+        JournalIo::Rename(from, to);
     }
     activation::ReportResult Report(std::wstring_view id, std::string_view bytes) override {
         activation::FinalAttempt done([&]() noexcept { SetEvent(reportExited.get()); });
@@ -123,6 +113,28 @@ struct TrialIo : activation::JournalIo, std::enable_shared_from_this<TrialIo> {
         return result;
     }
 };
+// Unwrapped production record backend rooted at a test case; used for timing only.
+struct RootedIo : activation::JournalIo {
+    std::wstring path;
+    std::string receipt;
+    explicit RootedIo(std::wstring folder) : path(std::move(folder)) {}
+    std::wstring Cache() override { return path; }
+    activation::ReportResult Report(std::wstring_view id, std::string_view bytes) override {
+        receipt = bytes;
+        activation::NativeReportBackend backend(path, id);
+        return activation::PublishTerminal(backend, bytes);
+    }
+};
+inline std::string ReadBytes(std::filesystem::path const& file) {
+    std::ifstream stream(file, std::ios::binary);
+    Require(static_cast<bool>(stream), "read retained test file");
+    return std::string(std::istreambuf_iterator<char>(stream), {});
+}
+inline JsonObject ReadRecord(std::filesystem::path const& file) {
+    auto bytes = ReadBytes(file);
+    Require(bytes.starts_with("\xEF\xBB\xBF"), "native record keeps the 0.1.0.6 UTF-8 BOM");
+    return Parse(std::string_view(bytes).substr(3), activation::RecordLimit);
+}
 struct TestDeferral : implements<TestDeferral, IBackgroundTaskDeferral> {
     std::atomic<unsigned>& calls;
     HANDLE done;
@@ -199,11 +211,11 @@ inline void NativeJournalChecks(FreshTrialRoot const* suite = nullptr) {
         TrialDirectory directory(suite);
         auto io = std::make_shared<TrialIo>(directory.path.wstring());
         rejected = false;
-        try { io->Confined(StorageFolder::GetFolderFromPathAsync(suite->path.wstring()).get()); }
+        try { (void)io->Confined(suite->path.wstring() + L"\\DesktopPdf"); }
         catch (std::exception const&) { rejected = true; }
         Require(rejected, "parent outside case rejected before trial writes");
         rejected = false;
-        try { (void)io->Folder(io->root, L"..", CreationCollisionOption::OpenIfExists); }
+        try { io->Folder(io->path + L"\\..", true); }
         catch (std::exception const&) { rejected = true; }
         Require(rejected && std::filesystem::is_empty(directory.path), "folder traversal rejected without writes");
         rejected = false;
@@ -225,8 +237,7 @@ inline void NativeJournalChecks(FreshTrialRoot const* suite = nullptr) {
         Require(PublishTerminal(partial, R"({"test":false})").stage == ReportStage::Create,
             "existing partial blocks, never retry");
         auto final = directory.path / (L"DesktopPdfJournal-" + id + L".json");
-        auto file = StorageFile::GetFileFromPathAsync(final.wstring()).get();
-        Require(FileIO::ReadTextAsync(file).get() == L"{\"test\":true}", "collision preserves original bytes");
+        Require(ReadBytes(final) == R"({"test":true})", "collision preserves original bytes");
     }
     for (auto fault : {Stage::None, Stage::Root, Stage::Parent, Stage::Folder, Stage::Create, Stage::Write, Stage::Rename}) {
         TrialDirectory directory(suite);
@@ -242,21 +253,22 @@ inline void NativeJournalChecks(FreshTrialRoot const* suite = nullptr) {
             L"last_published_sequence", L"finish_sequence", L"admission_loss", L"sealed_tick_ms",
             L"decision_tick_ms", L"deadline_tick_ms", L"outstanding_io_at_decision", L"deferral_acquired",
             L"deferral_release_planned", L"deferral_release_observed", L"inflight", L"first_failure", L"observations",
-            L"pre_complete_flush"});
+            L"pre_complete_flush", L"cancellation_drain"});
         Require(r.GetNamedString(L"schema") == L"4d-pdf-printer.activation-journal-terminal" &&
-            Integer(r, L"version") == 4 && r.GetNamedString(L"job").empty() &&
+            Integer(r, L"version") == 5 && r.GetNamedString(L"job").empty() &&
+            r.GetNamedString(L"cancellation_drain") == L"none" &&
             r.GetNamedObject(L"pre_complete_flush").GetNamedString(L"state") == L"not-attempted" &&
             !r.GetNamedBoolean(L"deferral_release_observed"),
             "terminal schema and honest acknowledgement boundary");
         if (fault == Stage::None) {
             Require(r.GetNamedString(L"drain_state") == L"drained" &&
                 Integer(r, L"last_published_sequence") == 1 && Integer(r, L"finish_sequence") == 1,
-                "actual FileIO finalization through finish");
+                "actual native finalization through finish");
             auto activation = std::wstring(r.GetNamedString(L"activation"));
             auto folder = directory.path / L"DesktopPdf" / L"ActivationDiagnostics" / activation;
-            auto finish = StorageFile::GetFileFromPathAsync((folder / L"1.json").wstring()).get();
-            Require(Parse(to_string(FileIO::ReadTextAsync(finish).get())).GetNamedString(L"checkpoint") == L"finish",
-                "real finalized finish bytes");
+            Require(ReadRecord(folder / L"0.json").GetNamedString(L"checkpoint") == L"run-enter" &&
+                ReadRecord(folder / L"1.json").GetNamedString(L"checkpoint") == L"finish",
+                "real native finalized record bytes");
         } else {
             auto failure = r.GetNamedObject(L"first_failure");
             Require(r.GetNamedString(L"drain_state") == L"failed" &&
@@ -396,7 +408,7 @@ inline void NativeJournalChecks(FreshTrialRoot const* suite = nullptr) {
         AwaitTest(trace->Finish(Reason::Normal, true));
         auto r = Parse(io->receipt, 4096);
         auto wire = r.GetNamedObject(L"pre_complete_flush");
-        Require(Integer(r, L"version") == 4 &&
+        Require(Integer(r, L"version") == 5 &&
             wire.GetNamedString(L"state") == (fault == Stage::None ? L"flushed" : L"failed") &&
             Integer(wire, L"target_count") == 2 && Integer(wire, L"published_count") == flush.published &&
             Integer(wire, L"begin_tick_ms") == flush.begin && Integer(wire, L"end_tick_ms") == flush.end &&
@@ -442,9 +454,11 @@ inline void NativeJournalChecks(FreshTrialRoot const* suite = nullptr) {
         AwaitTest(trace->Finish(Reason::Canceled, false));
         WaitTest(io->reportExited.get());
         auto r = Parse(io->receipt, 4096);
-        Require(r.GetNamedString(L"drain_state") == L"canceled" &&
+        Require(r.GetNamedString(L"drain_state") == L"canceled" && r.GetNamedString(L"cancellation_drain") == L"stopped" &&
+            r.GetNamedBoolean(L"outstanding_io_at_decision") &&
+            r.GetNamedValue(L"last_published_sequence").ValueType() == JsonValueType::Null &&
             r.GetNamedObject(L"pre_complete_flush").GetNamedString(L"state") == L"canceled",
-            "terminal v4 records canceled pre-complete flush");
+            "real cancel before CompleteJob stops the held writer at once and records canceled flush");
         SetEvent(io->release.get()); WaitTest(io->writeExited.get());
     }
     for (bool entered : {false, true}) {
@@ -462,11 +476,13 @@ inline void NativeJournalChecks(FreshTrialRoot const* suite = nullptr) {
         WaitTest(io->reportExited.get());
         auto r = Parse(io->receipt, 4096);
         auto expected = entered ? Reason::PostCompleteTeardown : Reason::Canceled;
-        Require(calls == 1 && task->finalReason.load() == expected && Integer(r, L"version") == 4 &&
+        Require(calls == 1 && task->finalReason.load() == expected && Integer(r, L"version") == 5 &&
             r.GetNamedString(L"finalize_reason") == (entered ? L"post-complete-teardown" : L"canceled") &&
-            r.GetNamedString(L"drain_state") == L"canceled" &&
+            r.GetNamedString(L"drain_state") == (entered ? L"drained" : L"canceled") &&
+            r.GetNamedString(L"cancellation_drain") == (entered ? L"continued" : L"stopped") &&
+            (!entered || Integer(r, L"last_published_sequence") == Integer(r, L"finish_sequence")) &&
             r.GetNamedObject(L"pre_complete_flush").GetNamedString(L"state") == L"not-attempted",
-            "framework cancel after CompleteJob entry is post-complete teardown; before entry stays canceled");
+            "framework cancel after CompleteJob entry drains as post-complete teardown; before entry stops canceled");
         auto snapshot = injected->Observe().Read();
         Require(snapshot.reason.payload && snapshot.reason.payload->chosen == static_cast<std::uint8_t>(expected) &&
             snapshot.attempts[3].payload && snapshot.attempts[3].payload->requested == static_cast<std::uint8_t>(expected),
@@ -489,9 +505,114 @@ inline void NativeJournalChecks(FreshTrialRoot const* suite = nullptr) {
         task->Finish(Reason::Canceled, false, 3);
         WaitTest(done.get());
         WaitTest(io->reportExited.get());
-        Require(task->finalReason.load() == Reason::Canceled &&
-            Parse(io->receipt, 4096).GetNamedString(L"finalize_reason") == L"canceled",
+        auto r = Parse(io->receipt, 4096);
+        Require(task->finalReason.load() == Reason::Canceled && r.GetNamedString(L"finalize_reason") == L"canceled" &&
+            r.GetNamedString(L"drain_state") == L"canceled" && r.GetNamedString(L"cancellation_drain") == L"stopped",
             "host-origin cancellation after CompleteJob entry stays canceled");
+    }
+    {
+        TrialDirectory directory(suite);
+        auto io = std::make_shared<RootedIo>(directory.path.wstring());
+        auto trace = std::make_shared<Trace>(io);
+        trace->Add(Point::RunEnter);
+        AwaitTest(trace->FlushBeforeComplete());
+        Require(trace->PreComplete().state == FlushState::Flushed, "native journal initialized and first record published");
+        constexpr unsigned timed = 20;
+        LARGE_INTEGER frequency{}, begin{}, end{};
+        check_bool(QueryPerformanceFrequency(&frequency)); check_bool(QueryPerformanceCounter(&begin));
+        for (unsigned index = 0; index < timed; ++index) trace->Add(Point::DataEnter);
+        AwaitTest(trace->FlushBeforeComplete());
+        check_bool(QueryPerformanceCounter(&end));
+        auto flush = trace->PreComplete();
+        Require(flush.state == FlushState::Flushed && flush.target == timed + 1 && flush.published == timed + 1,
+            "real native backend publishes every accepted record before the flush returns");
+        AwaitTest(trace->Finish(Reason::Normal, true));
+        auto r = Parse(io->receipt, 4096);
+        Require(r.GetNamedString(L"drain_state") == L"drained" && Integer(r, L"accepted_count") == timed + 2 &&
+            Integer(r, L"last_published_sequence") == timed + 1 && Integer(r, L"finish_sequence") == timed + 1 &&
+            r.GetNamedString(L"cancellation_drain") == L"none", "real native backend drains through finish");
+        auto activation = std::wstring(r.GetNamedString(L"activation"));
+        auto folder = directory.path / L"DesktopPdf" / L"ActivationDiagnostics" / activation;
+        unsigned files = 0;
+        for (auto const& entry : std::filesystem::directory_iterator(folder)) {
+            Require(entry.is_regular_file() && !entry.path().filename().wstring().starts_with(L"pending-"),
+                "no staging leaf survives a drained native journal");
+            ++files;
+        }
+        Require(files == timed + 2, "one final file per accepted record");
+        for (unsigned sequence = 0; sequence < timed + 2; ++sequence) {
+            auto record = ReadRecord(folder / (std::to_wstring(sequence) + L".json"));
+            auto checkpoint = sequence == 0 ? L"run-enter" : sequence == timed + 1 ? L"finish" : L"data-enter";
+            Require(record.GetNamedString(L"schema") == L"4d-pdf-printer.activation-diagnostic" &&
+                Integer(record, L"sequence") == sequence && record.GetNamedString(L"activation") == activation &&
+                record.GetNamedString(L"checkpoint") == checkpoint, "native record name and content binding");
+        }
+        auto elapsed = static_cast<double>(end.QuadPart - begin.QuadPart) * 1000.0 / static_cast<double>(frequency.QuadPart);
+        fwprintf(stderr, L"Native journal timing: %u records published in %.3f ms (%.3f ms/record) via "
+            L"CreateFile2FromAppW/WriteFile/MoveFileFromAppW in the isolated test root.\n", timed, elapsed, elapsed / timed);
+    }
+    {
+        TrialDirectory directory(suite);
+        auto io = std::make_shared<TrialIo>(directory.path.wstring());
+        io->pauseWrite = true;
+        auto trace = std::make_shared<Trace>(io);
+        trace->Add(Point::CompleteBefore);
+        WaitTest(io->entered.get());
+        trace->Add(Point::CompleteReturned);
+        trace->Add(Point::Canceled);
+        observation::Context cancellation;
+        cancellation.entry = ObservationStamp();
+        cancellation = trace->Observe().EnterCancel(cancellation);
+        auto tick = GetTickCount64();
+        trace->Cancel(tick, cancellation, true);
+        auto pending = trace->Finish(Reason::PostCompleteTeardown, false);
+        SetEvent(io->release.get());
+        AwaitTest(pending);
+        auto r = Parse(io->receipt, 4096);
+        Require(r.GetNamedString(L"finalize_reason") == L"post-complete-teardown" &&
+            r.GetNamedString(L"drain_state") == L"drained" && r.GetNamedString(L"cancellation_drain") == L"continued" &&
+            Integer(r, L"accepted_count") == 4 && Integer(r, L"last_published_sequence") == 3 &&
+            Integer(r, L"finish_sequence") == 3 && Integer(r, L"deadline_tick_ms") == tick + CancelMs &&
+            !r.GetNamedBoolean(L"outstanding_io_at_decision"),
+            "post-complete teardown keeps draining through finish and reports applied provenance");
+        auto applied = r.GetNamedObject(L"observations").GetNamedArray(L"a");
+        Require(applied.GetAt(0).ValueType() == JsonValueType::Array && applied.GetAt(1).ValueType() == JsonValueType::Array,
+            "continued drain keeps frozen cancellation provenance");
+        auto folder = directory.path / L"DesktopPdf" / L"ActivationDiagnostics" / std::wstring(r.GetNamedString(L"activation"));
+        Require(ReadRecord(folder / L"2.json").GetNamedString(L"checkpoint") == L"canceled" &&
+            ReadRecord(folder / L"3.json").GetNamedString(L"checkpoint") == L"finish",
+            "canceled checkpoint and finish published after post-complete teardown");
+    }
+    {
+        TrialDirectory directory(suite);
+        auto io = std::make_shared<TrialIo>(directory.path.wstring());
+        io->pauseWrite = true;
+        auto trace = std::make_shared<Trace>(io);
+        trace->Add(Point::CompleteBefore);
+        WaitTest(io->entered.get());
+        trace->Add(Point::Canceled);
+        observation::Context cancellation;
+        cancellation.entry = ObservationStamp();
+        cancellation = trace->Observe().EnterCancel(cancellation);
+        auto tick = GetTickCount64();
+        trace->Cancel(tick, cancellation, true);
+        AwaitTest(trace->Finish(Reason::PostCompleteTeardown, false));
+        Require(io->reported, "held teardown drain still leaves budget for the terminal receipt");
+        auto r = Parse(io->receipt, 4096);
+        Require(r.GetNamedString(L"finalize_reason") == L"post-complete-teardown" &&
+            r.GetNamedString(L"drain_state") == L"deadline" && r.GetNamedString(L"cancellation_drain") == L"continued" &&
+            Integer(r, L"deadline_tick_ms") == tick + CancelMs && Integer(r, L"decision_tick_ms") >= tick + TeardownDrainMs &&
+            Integer(r, L"decision_tick_ms") < tick + CancelMs && r.GetNamedBoolean(L"outstanding_io_at_decision") &&
+            !r.GetNamedObject(L"inflight").GetNamedBoolean(L"cancel_requested") &&
+            r.GetNamedValue(L"last_published_sequence").ValueType() == JsonValueType::Null &&
+            r.GetNamedValue(L"first_failure").ValueType() == JsonValueType::Null,
+            "held post-complete teardown drain stops at its share of the cancel budget and reports deadline");
+        std::weak_ptr<Trace> weak = trace;
+        trace.reset();
+        Require(!weak.expired(), "blocked native writer retains actual trace/module owner");
+        SetEvent(io->release.get()); WaitTest(io->writeExited.get());
+        ReleasedTest(weak);
+        Require(Parse(io->receipt, 4096).GetNamedString(L"drain_state") == L"deadline", "late teardown write cannot rewrite receipt");
     }
     {
         TrialDirectory directory(suite);
@@ -500,6 +621,10 @@ inline void NativeJournalChecks(FreshTrialRoot const* suite = nullptr) {
         std::thread sta([&] {
             try {
                 init_apartment(apartment_type::single_threaded);
+                // The first STA in the process reports MAINSTA; native record I/O no longer creates one earlier.
+                APTTYPE own{}; APTTYPEQUALIFIER ownQualifier{};
+                check_hresult(CoGetApartmentType(&own, &ownQualifier));
+                Require(own == APTTYPE_STA || own == APTTYPE_MAINSTA, "STA fixture thread");
                 std::atomic<unsigned> calls{};
                 auto done = TestSignal(); APTTYPE apartment{};
                 auto task = make_self<::Task>();
@@ -510,7 +635,7 @@ inline void NativeJournalChecks(FreshTrialRoot const* suite = nullptr) {
                 DWORD index{}; auto signal = done.get();
                 check_hresult(CoWaitForMultipleHandles(COWAIT_DISPATCH_CALLS | COWAIT_DISPATCH_WINDOW_MESSAGES,
                     6000, 1, &signal, &index));
-                Require(calls == 1 && apartment == APTTYPE_STA, "actual Task finalizer restores STA context");
+                Require(calls == 1 && apartment == own, "actual Task finalizer restores STA context");
             } catch (...) { error = std::current_exception(); }
         });
         sta.join();

@@ -13,8 +13,18 @@ FLUSH_KEYS = ("state", "target_count", "published_count", "begin_tick_ms", "end_
 FLUSH_STATES = ("not-attempted", "in-progress", "flushed", "deadline", "canceled", "failed", "stopped")
 
 
+DRAINS5 = ("none", "stopped", "continued")
+
+
 def reasons(version):
-    return REASONS4 if version == 4 else tuple(v1.REASONS)
+    return REASONS4 if version >= 4 else tuple(v1.REASONS)
+
+
+def cancel_applied(terminal):
+    """v5 separates applied cancellation (stopped or continued drain) from drain_state canceled."""
+    if terminal["version"] >= 5:
+        return terminal["cancellation_drain"] != "none"
+    return terminal["drain_state"] == "canceled"
 
 class ObservationShapeError(ValueError):
     pass
@@ -191,7 +201,7 @@ def complete_shape(o):
 def observation_shape(terminal):
     o = terminal["observations"]
     version = terminal["version"]
-    extended, teardown, names = version >= 3, version == 4, reasons(version)
+    extended, teardown, names = version >= 3, version >= 4, reasons(version)
     need(type(o) is dict and set(o) == OBS_KEYS | ({"j"} if extended else set()), "exact observation keys")
     number(o["v"], version - 1, version - 1)
     number(o["pid"], 0xffffffff, 1)
@@ -204,8 +214,10 @@ def observation_shape(terminal):
         cell(o["c"][origin], lambda value, origin=origin: cancel(value, origin), True)
     r = cell(o["r"], lambda value: reason(value, teardown))
     seq(o["a"], 2)
-    need(all(value is not None for value in o["a"]) if terminal["drain_state"] == "canceled"
+    need(all(value is not None for value in o["a"]) if cancel_applied(terminal)
          else o["a"] == [None, None], "frozen applied cancellation presence")
+    if version >= 5 and terminal["cancellation_drain"] == "continued":
+        need(all(value[0] == 0 for value in o["a"]), "continued drain is framework post-complete teardown")
     for value in o["a"]:
         if value is not None:
             applied(value)
@@ -256,6 +268,9 @@ def observation_shape(terminal):
         need(v1.STAGES[o["i"][1]] == inflight["stage"] and
              (o["i"][2] is None or o["i"][2] == inflight["sequence"]), "frozen exact operation stage/event")
     seq(o["x"], 3)
+    if version >= 5:
+        need(o["i"] is None and o["x"][0] == o["x"][1] == [[0, False, None], [0, None], [0, None]],
+             "v5 synchronous native record I/O has no journal operation/cancel route")
     for route, value in enumerate(o["x"]):
         seq(value, 3)
         api = cell(value[0], lambda item, route=route: api_head(item, route), True)
@@ -296,15 +311,16 @@ def flush_shape(terminal):
 
 
 def terminal_shape(raw, activation, expected_version, job=None):
-    need(type(expected_version) is int and expected_version in (1, 2, 3, 4), "explicit expected source version")
+    need(type(expected_version) is int and expected_version in (1, 2, 3, 4, 5), "explicit expected source version")
     need(v1.identifier(activation), "expected activation binding")
     value = v1.wire(raw, 4096)
     need(type(value.get("version")) is int and value["version"] == expected_version, "unexpected terminal version")
     if expected_version == 1:
         return v1.terminal_shape(raw, activation, job)
     need(job is None, "general shape is not expected-job admission")
-    need(set(value) == v1.TERMINAL_KEYS | {"observations"} | ({"pre_complete_flush"} if expected_version == 4 else set()),
-         "exact23/24 terminal fields")
+    need(set(value) == v1.TERMINAL_KEYS | {"observations"} |
+         ({"pre_complete_flush"} if expected_version >= 4 else set()) |
+         ({"cancellation_drain"} if expected_version >= 5 else set()), "exact23/24/25 terminal fields")
     need(value["schema"] == "4d-pdf-printer.activation-journal-terminal", "terminal schema")
     need(value["activation"] == activation and type(value["job"]) is str and
          (value["job"] == "" or v1.identifier(value["job"])), "activation/unbound job domain")
@@ -335,6 +351,7 @@ def terminal_shape(raw, activation, expected_version, job=None):
              {"sequence", "checkpoint", "stage", "temporary_leaf", "cancel_requested"}, "inflight shape")
         v1.optional_event(inflight)
         boolean(inflight["cancel_requested"])
+        need(expected_version < 5 or inflight["cancel_requested"] is False, "v5 has no journal cancel request")
         need(inflight["stage"] in v1.STAGES and type(inflight["temporary_leaf"]) is str and
              (inflight["temporary_leaf"] == "" or v1.re.fullmatch("pending-[0-9a-f]{32}", inflight["temporary_leaf"])),
              "inflight fields")
@@ -344,8 +361,14 @@ def terminal_shape(raw, activation, expected_version, job=None):
         v1.optional_event(failure)
         need(failure["stage"] in v1.STAGES and failure["code_domain"] == "hresult", "first failure fields")
         number(failure["code_u32"], 0xffffffff)
-    if expected_version == 4:
+    if expected_version >= 4:
         flush_shape(value)
+    if expected_version >= 5:
+        drain = value["cancellation_drain"]
+        need(drain in DRAINS5, "cancellation drain enum")
+        need((drain == "stopped") == (value["drain_state"] == "canceled") and
+             (drain != "continued" or value["drain_state"] in ("drained", "failed", "deadline")),
+             "cancellation drain/drain state")
     try:
         observation_shape(value)
     except ValueError as error:
@@ -368,7 +391,7 @@ def sample_flags(terminal):
         flags |= 2
     if any(value[0] != 2 for value in o["w"]):
         flags |= 4
-    if (terminal["finalize_reason"] != "normal" or terminal["drain_state"] == "canceled") and o["r"][0] != 2:
+    if (terminal["finalize_reason"] != "normal" or cancel_applied(terminal)) and o["r"][0] != 2:
         flags |= 8
     if (o["i"] is not None and o["i"][0] is None) or any(
             ready(api[0]) is not None and ready(api[0])[2] is None for api in o["x"][:2]):
@@ -396,7 +419,7 @@ def sample_flags(terminal):
             ticks.append(ready(api[0])[5][0])
     if any(tick > terminal["decision_tick_ms"] for tick in ticks) or (
             terminal["finalize_reason"] == "normal" and r is not None) or (
-            terminal["drain_state"] != "canceled" and any(ready(c) is not None for c in o["c"])):
+            not cancel_applied(terminal) and any(ready(c) is not None for c in o["c"])):
         flags |= 128
     if terminal["version"] >= 3:
         call, cancellation = o["j"]
@@ -410,7 +433,8 @@ def sample_flags(terminal):
 def _normal_decision(terminal, activation, job, old_activations):
     need(v1.identifier(activation) and activation not in old_activations, "fresh activation")
     need(v1.identifier(job) and terminal["job"] == job, "exact genuine expected job binding")
-    need(terminal["finalize_reason"] == "normal" and terminal["drain_state"] == "drained", "normal drained journal")
+    need(terminal["finalize_reason"] == "normal" and terminal["drain_state"] == "drained" and
+         terminal.get("cancellation_drain", "none") == "none", "normal drained journal")
     need(terminal["decision_tick_ms"] < terminal["deadline_tick_ms"], "normal decision must precede receipt deadline")
     need(terminal["admission_loss"] is False and terminal["rejected_before_seal"] ==
          terminal["rejected_after_seal_at_decision"] == 0, "no admission losses at decision")
@@ -482,6 +506,11 @@ def general_v4(raw, activation):
     return terminal_shape(raw, activation, 4)
 
 
+def general_v5(raw, activation):
+    """v4 plus cancellation_drain; native record I/O leaves no journal operation/cancel route."""
+    return terminal_shape(raw, activation, 5)
+
+
 def complete_assessment(o):
     def phase(call):
         if call[0][1]:
@@ -522,7 +551,7 @@ def assess(raw_terminal, activation, *, expected_version, job=None, raw_records=
     try:
         envelope = v1.wire(raw_terminal, 4096)
         version = envelope.get("version")
-        if type(version) is not int or version not in (1, 2, 3, 4):
+        if type(version) is not int or version not in (1, 2, 3, 4, 5):
             result["receipt_shape"] = "unsupported"
             raise ValueError("unsupported source terminal version")
         if type(expected_version) is not int or version != expected_version:
@@ -556,8 +585,10 @@ def assess(raw_terminal, activation, *, expected_version, job=None, raw_records=
     o = terminal["observations"]
     if version >= 3:
         result["complete_job"] = complete_assessment(o)
-    if version == 4:
+    if version >= 4:
         result["pre_complete_flush"] = dict(terminal["pre_complete_flush"])
+    if version >= 5:
+        result["cancellation_drain"] = terminal["cancellation_drain"]
     flags = sample_flags(terminal)
     result.update(sample_flags=flags, sample_state="partial-sample" if flags else "ready-sample")
     head = ready(o["w"][0])
@@ -567,7 +598,7 @@ def assess(raw_terminal, activation, *, expected_version, job=None, raw_records=
     result["framework_reasons_raw"] = [first[2] if first is not None else None] + [
         value[4] if value is not None and value[0] == 0 else None for value in o["a"]]
     r = ready(o["r"])
-    if terminal["drain_state"] == "canceled":
+    if cancel_applied(terminal):
         if r is not None and all(ready(phase) is not None for phase in o["w"]):
             origins = {value[0] for value in o["a"]}
             result["question"] = ("first-min-framework-recorded" if origins == {0} else
