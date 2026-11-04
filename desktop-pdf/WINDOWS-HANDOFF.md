@@ -1,5 +1,51 @@
 # Windows continuation checkpoint
 
+## Windows04 result (supersedes "Immediate continuation" below)
+
+Windows04 completed the committed scoped Build for source
+`dce863267cfd68712a6eeacbccc4539688188e62`, tree
+`b9f07f042d88e0a3f94600c0404ef55825952944`: receipt status
+**`passed-scoped-build-only`**, phase `closed`, commands 01-19 closed exit 0.
+Root `C:\Users\miyako\Desktop\version005-native-scoped-build-04`; receipt
+`ScopedBuildResults/receipt.json` SHA256
+`31be545deff9a89eb366b73737670ece036f4519d6980b306fb51c757ccc3883`.
+Run from an ordinary user PowerShell 7.6.9 window, started
+`2026-11-04T14:19:55Z`; helper (command 17) `14:20:01Z`-`14:21:45Z`.
+
+Before launch, from the Windows machine: source closure 22/22 byte-matched
+(19 files, 2 action sources, `renderer/.gitattributes`); bundle
+`0658db64...36d9` verified with exactly three refs; all 12 Windows03 receipt
+tool hashes unchanged; real Git config held only the standard LFS definitions.
+
+The runner differs from Windows03's (`d5443496...ff60d`) **only** in the
+exact-root literal on its root guard line (`-03` -> `-04`); runner SHA256
+`ee521f4848473bf0a402740d760c50c0e22d2c737468c2b949c1ebdd740182ce`.
+`handoff.json`, `source.bundle` and `source-sha256.txt` are byte-identical.
+
+Results: full `tests/Source.py` hook 14/14 OK; source before/after equal and
+clean; Contract no-argument passed; Native `--isolated-journal` passed with
+retained test root (stderr HRESULTs are the mocked fault/deadline fixtures).
+
+| Output (ARM64) | Bytes | SHA256 |
+|---|---|---|
+| `IntegrationApp.exe` | 138752 | `7b351dc47c3b487fc721ed47c539ebb7146b1b14e1cae8c71c61dc8ccdb1ec29` |
+| `IntegrationTask.dll` | 536064 | `03c4d0448636b2a5ff7afa9d82074c4edf51d07da78bb1841293a5717a65e725` |
+| `IntegrationHost.exe` | 421376 | `39a9f7d298d14a1f3af6806a283ed4bfec879d020f4eeb87cdcfd925c7f2ce47` |
+| `IntegrationClient.exe` | 461824 | `6aabcef39aca88c130d41c6e5e0b77a15757d531aee8d4e4cd00107fb69083c5` |
+| `IntegrationContract.exe` | 150016 | `9e9621c8125381687e8d7f4db6710728cfafce04c564090061879ea687b32966` |
+| `IntegrationNative.exe` | 759296 | `0c825d61f42f118b90a0b77582b0e48b3a93de60b1c22b248973b05787915f48` |
+
+**Windows03 stays incomplete, not failed or passed.** Its receipt is unchanged
+(`8b1546d5...85ad`), command 17 remains `started` with no exit code, no owning
+process survives, and the last artifact is `Task.obj` at `13:52:37Z` with no
+`IntegrationTask.dll`. Its folder is preserved untouched.
+
+This is build and isolated-check evidence only: no full-suite/CTest run, no
+package, signing, installation, update or print result. Installed 004 is
+unchanged. Next gates (each separately approved): Package/SignCopy from the
+Windows04 build directory, measured installed-004 facts and update to 005,
+then one print.
+
 ## Source checkpoint
 
 Use **`dce863267cfd68712a6eeacbccc4539688188e62`**, tree
