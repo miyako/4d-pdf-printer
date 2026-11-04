@@ -182,8 +182,11 @@ class CompleteJob(unittest.TestCase):
         self.assertLess(read.index("completeReturned.Read()"), read.index("completeEntry.Read()"))
         snapshot = observations.split("Snapshot Read()", 1)[1]
         self.assertLess(snapshot.index("completeCancellation.Read()"), snapshot.index("ReadComplete()"))
-        self.assertIn('{"v", version == 2 ? "1" : "2"}', wire_source)
-        self.assertIn("std::uint8_t version = 3", (ROOT / "ActivationDiagnostics.h").read_text())
+        self.assertIn('{"v", version == 2 ? "1" : version == 3 ? "2" : "3"}', wire_source)
+        self.assertIn("std::uint8_t version = 4", (ROOT / "ActivationDiagnostics.h").read_text())
+        self.assertLess(primary.index("Point::CompleteBefore"), primary.index("FlushBeforeComplete()"))
+        self.assertLess(primary.index("FlushBeforeComplete()"), primary.index("CompleteEnter("))
+        self.assertEqual(task.count("FlushBeforeComplete()"), 1)
 
 
 if __name__ == "__main__":

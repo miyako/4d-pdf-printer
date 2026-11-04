@@ -63,32 +63,38 @@ inline std::string Put(Applied const& value) {
         Number(value.context.entry.tick), Native(value.context.entry.thread),
         value.context.origin == 0 ? Number(value.context.raw, UINT32_MAX) : Mask(value.context), Number(value.tick)});
 }
-inline std::string Put(Reason const& value) {
+// teardown (terminal v4 only): framework cancellation after CompleteJob entry may choose reason 5.
+inline std::string Put(Reason const& value, bool teardown = false) {
     static constexpr std::array<std::uint8_t, 5> choices{4, 4, 1, 3, 2};
-    Require(value.context.origin < choices.size() && value.chosen == choices[value.context.origin] &&
+    Require(value.context.origin < choices.size() && (value.chosen == choices[value.context.origin] ||
+        (teardown && value.context.origin == 0 && value.chosen == 5)) &&
         value.context.entry.tick <= value.sampled, "actual reason setter");
     return Array({Number(value.context.origin), Boolean(value.context.first), Number(value.context.entry.tick),
-        Native(value.context.entry.thread), Number(value.sampled), Number(value.chosen, 4)});
+        Native(value.context.entry.thread), Number(value.sampled), Number(value.chosen, teardown ? 5 : 4)});
 }
-inline std::string Put(Finish const& value) {
+inline std::string Put(Finish const& value, bool teardown = false) {
     static constexpr std::array<std::uint8_t, 5> requested{1, 3, 2, 4, 0};
-    Require(value.caller < requested.size() && value.requested == requested[value.caller] &&
+    std::uint8_t maximum = teardown ? 5 : 4;
+    Require(value.caller < requested.size() && (value.requested == requested[value.caller] ||
+        (teardown && value.caller == 3 && value.requested == 5)) &&
         value.owner == (value.caller == 4), "finish caller");
     if (value.caller == 4) Require(value.cas == 0 && !value.expected, "normal finish does not CAS");
     else {
         Require(value.expected.has_value(), "finish actual CAS expected");
         Require((value.cas == 1 && *value.expected == 0 && value.caller != 3) ||
-            (value.cas == 2 && *value.expected >= 1 && *value.expected <= 4), "finish actual CAS outcome");
+            (value.cas == 2 && *value.expected >= 1 && *value.expected <= maximum), "finish actual CAS outcome");
     }
-    return Array({Number(value.entry.tick), Native(value.entry.thread), Number(value.requested, 4),
-        Boolean(value.owner), Number(value.cas, 2), Optional(value.expected, 4), Boolean(value.gate)});
+    return Array({Number(value.entry.tick), Native(value.entry.thread), Number(value.requested, maximum),
+        Boolean(value.owner), Number(value.cas, 2), Optional(value.expected, maximum), Boolean(value.gate)});
 }
-inline std::string Winner(Finish const& value) {
+inline std::string Winner(Finish const& value, bool teardown = false) {
     Require(value.gate, "actual gate winner");
-    return Array({Number(value.caller, 4), Boolean(value.first), Put(value)});
+    return Array({Number(value.caller, 4), Boolean(value.first), Put(value, teardown)});
 }
 inline std::string Put(Stamp value) { return Array({Number(value.tick), Native(value.thread)}); }
-inline std::string Put(PassedReason value) { return Array({Number(value.tick), Number(value.value, 4)}); }
+inline std::string Put(PassedReason value, bool teardown = false) {
+    return Array({Number(value.tick), Number(value.value, teardown ? 5 : 4)});
+}
 inline std::string Put(Operation const& value) {
     Require(!value.key || *value.key != 0, "operation key domain");
     return Array({Optional(value.key, 65535), Number(value.stage, 9), Optional(value.sequence, 31)});
@@ -140,9 +146,11 @@ inline std::string Put(CompleteCancellation const& value) {
 }
 inline std::string Encode(Snapshot const& value, Frozen const& frozen, std::uint32_t pid,
     std::uint64_t begin, std::uint64_t end, std::uint8_t version = 3) {
-    Require(version == 2 || version == 3, "explicit observation version");
+    Require(version >= 2 && version <= 4, "explicit observation version");
+    auto teardown = version == 4;
     Require(!value.invalid && begin <= end, "observation capture invalid");
     auto cancel = [](Context const& item) { return Cancellation(item); };
+    auto finish = [teardown](Finish const& item) { return Put(item, teardown); };
     auto api = [](ApiSample const& item) {
         Require((item.returned.state != 2 && item.awaited.state != 2) || item.head.state == 2, "API phase binding");
         return Array({FirstWire(item.head), OnceWire(item.returned), OnceWire(item.awaited)});
@@ -151,19 +159,21 @@ inline std::string Encode(Snapshot const& value, Frozen const& frozen, std::uint
     Require(value.passed.state != 2 || value.began.state == 2, "finalizer reason dependency");
     Require(value.began.state != 2 || value.winner.state == 2, "finalizer began dependency");
     auto wire = Object({
-        {"v", version == 2 ? "1" : "2"}, {"pid", Native(pid)}, {"span", Array({Number(begin), Number(end)})},
+        {"v", version == 2 ? "1" : version == 3 ? "2" : "3"}, {"pid", Native(pid)}, {"span", Array({Number(begin), Number(end)})},
         {"c", Array({FirstWire(value.cancellation[0], cancel), FirstWire(value.cancellation[1], cancel)})},
-        {"r", OnceWire(value.reason)},
+        {"r", OnceWire(value.reason, [teardown](Reason const& item) { return Put(item, teardown); })},
         {"a", Array({frozen.first ? Put(*frozen.first) : "null", frozen.minimum ? Put(*frozen.minimum) : "null"})},
-        {"f", Array({FirstWire(value.attempts[0]), FirstWire(value.attempts[1]), FirstWire(value.attempts[2]),
-            FirstWire(value.attempts[3]), FirstWire(value.attempts[4])})},
-        {"w", Array({OnceWire(value.winner, [](Finish const& item) { return Winner(item); }),
-            OnceWire(value.began), OnceWire(value.passed)})},
+        {"f", Array({FirstWire(value.attempts[0], finish), FirstWire(value.attempts[1], finish),
+            FirstWire(value.attempts[2], finish), FirstWire(value.attempts[3], finish),
+            FirstWire(value.attempts[4], finish)})},
+        {"w", Array({OnceWire(value.winner, [teardown](Finish const& item) { return Winner(item, teardown); }),
+            OnceWire(value.began), OnceWire(value.passed, [teardown](PassedReason const& item) {
+                return Put(item, teardown); })})},
         {"i", frozen.operation ? Put(*frozen.operation) : "null"},
         {"x", Array({api(value.api[0]), api(value.api[1]), api(value.api[2])})},
         {"journal_status", "null"}
     });
-    if (version == 3) {
+    if (version >= 3) {
         if (value.completeCancellation.payload) {
             Require(value.cancellation[0].payload.has_value(), "CompleteJob framework context dependency");
             auto const& entry = value.cancellation[0].payload->entry;

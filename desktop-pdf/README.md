@@ -1,5 +1,49 @@
 # Desktop PDF integration: local source-review checkpoint
 
+## 0.1.0.6 (draft: pre-CompleteJob flush and post-complete teardown label)
+
+**0.1.0.6 is an unbuilt-for-release, unsigned, uninstalled source draft.** It stays
+a draft until the official build/package/sign/update and print gates run on its exact
+source. Dev builds and isolated native/Contract/Python checks are not install evidence.
+
+Evidence basis: in the 005 Windows04 silent print series, all six installed 0.1.0.5
+prints succeeded: the PDF was published and `completion.json` reported `succeeded`.
+Every activation journal terminal (v3) nevertheless ended with `finalize_reason: canceled`
+and `drain_state: canceled`, with framework raw reason 7 (SystemPolicy). In each case
+`CompleteJob(Succeeded)` had been entered and returned without an exception. The cancellation
+arrived 0–78 ms after CompleteJob entry, never before it. The journal tail was truncated:
+the last published sequence was 9–16, against 11–18 accepted events. The SystemPolicy
+cancellation is therefore platform teardown in response to CompleteJob: the print is fine,
+but the diagnostics were cut short and mislabeled.
+
+- **A: pre-CompleteJob flush.** After `Point::CompleteBefore`, the data path awaits
+  `Trace::FlushBeforeComplete()` before `CompleteEnter`/`args.CompleteJob(status)`:
+  - The flush waits until every event accepted at that point is published, or until
+    failure, stop, or cancellation, or until `PreCompleteFlushMs = 500` elapses.
+  - It polls in slices of at most 25 ms on a dedicated event, so it never consumes
+    Finish's wake-up.
+  - It never throws, and CompleteJob is still called exactly once. Status,
+    `completion.json`, the duplicate-data path and data-path cancellation are unchanged.
+  - Normally the flush is immediate. It adds latency before CompleteJob only when
+    journal I/O lags, and then at most 500 ms.
+- **B: post-complete teardown label.** A framework (origin 0) `Canceled` callback
+  whose `ReadComplete()` sample shows CompleteJob entry published (state 2) records
+  the reason `post-complete-teardown` instead of `canceled`:
+  - It applies to both the reason CAS/setter and `Finish(..., false, 3)`.
+  - A framework cancel before CompleteJob entry is still `canceled`, and so is any
+    host/data-path cancel (origin 1).
+  - The journal drain still stops immediately with `drain_state: canceled`; only the
+    label changes.
+- **Terminal v4** (the production default):
+  - It adds `pre_complete_flush` as the last key: `state` (`not-attempted`,
+    `in-progress`, `flushed`, `deadline`, `canceled`, `failed` or `stopped`),
+    `target_count`, `published_count`, `begin_tick_ms` and `end_tick_ms`.
+  - It allows the reason `post-complete-teardown`, and its observations object has `"v":3`.
+  - The v2 and v3 encoders and decoders are unchanged. The bounded v4 maximum
+    receipt is 2697 bytes, within the existing 3300-byte bound and the 4096-byte
+    backend limit.
+  - `tools/journal.py` decodes v4 with `general_v4`.
+
 **0.1.0.5 is an uncommitted offline diagnostic revision, not a built or installed
 package.** The installed 004 and every historical result remain unchanged.
 `build.ps1` defaults to the original `full-suite` build/CTest behavior.

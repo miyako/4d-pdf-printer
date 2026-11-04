@@ -34,12 +34,13 @@ public:
     }
     hstring GetRuntimeClassName() const { return L"DesktopPdfIntegration.Task"; }
 
-    void ObserveCancellation(activation::observation::Context const& context) noexcept {
+    void ObserveCancellation(activation::observation::Context const& context,
+        activation::Reason reason = activation::Reason::Canceled) noexcept {
         canceled = true;
         auto normal = activation::Reason::Normal;
-        auto won = finalReason.compare_exchange_strong(normal, activation::Reason::Canceled);
+        auto won = finalReason.compare_exchange_strong(normal, reason);
         if (won && diagnostics) diagnostics->Observe().SetReason(context, GetTickCount64(),
-            static_cast<std::uint8_t>(activation::Reason::Canceled));
+            static_cast<std::uint8_t>(reason));
         if (diagnostics) diagnostics->Cancel(GetTickCount64(), context);
     }
     void ReleaseDeferral() noexcept {
@@ -118,16 +119,19 @@ public:
                         activation::observation::Context context;
                         context.entry = activation::ObservationStamp();
                         context.raw = static_cast<std::uint32_t>(reason);
+                        bool teardown = false;
                         if (self->diagnostics) {
                             auto& observations = self->diagnostics->Observe();
                             auto complete = observations.ReadComplete();
                             auto sampled = activation::ObservationStamp();
                             context = observations.EnterCancel(context);
                             observations.CompleteCanceled(context, complete, sampled);
+                            teardown = context.origin == 0 && complete.entry.state == 2;
                         }
+                        auto chosen = teardown ? activation::Reason::PostCompleteTeardown : activation::Reason::Canceled;
                         self->Trace(activation::Point::Canceled);
-                        self->ObserveCancellation(context);
-                        self->Finish(activation::Reason::Canceled, false, 3);
+                        self->ObserveCancellation(context, chosen);
+                        self->Finish(chosen, false, 3);
                     }
                 });
             bool installed;
@@ -392,6 +396,8 @@ public:
         bool completeOwned = false;
         try {
             Trace(activation::Point::CompleteBefore);
+            try { if (diagnostics) co_await diagnostics->FlushBeforeComplete(); }
+            catch (...) { Failure(L"journal pre-complete flush", to_hresult()); }
             if (diagnostics) completeOwned = diagnostics->Observe().CompleteEnter(
                 {activation::ObservationStamp(), static_cast<std::uint32_t>(status)});
             args.CompleteJob(status);

@@ -63,16 +63,16 @@ public:
             "diagnosticOverride ? diagnosticOverride : std::make_shared<activation::Trace>()",
             "std::make_shared<activation::Trace>()", 1)
         self.assertEqual(hashlib.sha256(old.encode()).hexdigest(),
-                         "7bd2d57610b90521234fd9ed8b2fba090a0364ebccf82052c2307f5da9d3f280")
+                         "3381f41b1b1d438eec952b2f92b0a0af17bee32ba151201f20e58944ed5642a6")
         run = task.split("void Run(", 1)[1]
         self.assertLess(run.index("diagnostics = diagnosticOverride ?"), run.index("Point::RunEnter"))
         self.assertLess(run.index("Point::RunEnter"), run.index("task.GetDeferral()"))
         self.assertLess(run.index("task.GetDeferral()"), run.index("task.Canceled("))
         for path, digest in {
-            "ActivationDiagnostics.h": "be3f8d5b6232ac997b8b685d723b97fd600946a5952659612e73b39db97ab9b8",
+            "ActivationDiagnostics.h": "9113aa247903123768862656ffa60df3714fe48423e811e5c2afda9105e22a0d",
             "ActivationObservations.h": "16c76b4c965387ba4ce9c73b2485dc2d1d35f6bcac68eab2a88589e143fb65b2",
-            "ObservationWire.h": "a74f2289d53bfab53400648a7d6fe500844b31a0ea8fe4f27dd3559dab9e1971",
-            "tools/journal.py": "5be357157707bc3e1795884b2aeef0d82f7ed9145a75d6843861647b0a403c0b",
+            "ObservationWire.h": "ff32b1c708963457dcb34c923e2545ca1b0725625634fc8486760531dec04a54",
+            "tools/journal.py": "4f75303e090264a3019c7ddded12c82e6f8026244f4fd897467a603009f06b61",
         }.items():
             self.assertEqual(hashlib.sha256((ROOT / "desktop-pdf" / path).read_bytes()).hexdigest(), digest)
 
@@ -271,6 +271,8 @@ public:
             "            if (diagnostics) diagnostics->Observe().CompleteReturn(completeOwned, {activation::ObservationStamp(), {}});\n",
             "            if (diagnostics) diagnostics->Observe().CompleteReturn(\n"
             "                completeOwned, {activation::ObservationStamp(), static_cast<std::uint32_t>(primary.value)});\n",
+            "            try { if (diagnostics) co_await diagnostics->FlushBeforeComplete(); }\n"
+            "            catch (...) { Failure(L\"journal pre-complete flush\", to_hresult()); }\n",
         ):
             self.assertEqual(observed_tail.count(addition), 1)
             observed_tail = observed_tail.replace(addition, "", 1)
@@ -281,6 +283,27 @@ public:
                              "Finish(activation::Reason::Normal, true);", "Finish(activation::Reason::Normal, true, 4);", 1))
         self.assertIn("primary = to_hresult(); Trace(activation::Point::CompleteFailure, primary);", observed_tail)
         self.assertIn("Failure(stage.c_str(), primary);", task)
+        # 006: bounded journal flush strictly between CompleteBefore and CompleteJob entry.
+        data_tail = task.split(tail, 1)[1].split("struct Factory", 1)[0]
+        self.assertEqual(task.count("FlushBeforeComplete()"), 1)
+        self.assertLess(data_tail.index("Trace(activation::Point::CompleteBefore);"),
+                        data_tail.index("co_await diagnostics->FlushBeforeComplete();"))
+        self.assertLess(data_tail.index("co_await diagnostics->FlushBeforeComplete();"),
+                        data_tail.index("CompleteEnter("))
+        self.assertLess(data_tail.index("CompleteEnter("), data_tail.index("args.CompleteJob(status);"))
+        # 006: framework cancellation is post-complete teardown only after published CompleteJob entry.
+        canceled = task.split("auto token = task.Canceled(", 1)[1].split("bool installed;", 1)[0]
+        self.assertIn("teardown = context.origin == 0 && complete.entry.state == 2;", canceled)
+        self.assertLess(canceled.index("auto complete = observations.ReadComplete();"),
+                        canceled.index("teardown = context.origin == 0"))
+        self.assertLess(canceled.index("context = observations.EnterCancel(context);"),
+                        canceled.index("teardown = context.origin == 0"))
+        self.assertIn("auto chosen = teardown ? activation::Reason::PostCompleteTeardown : activation::Reason::Canceled;",
+                      canceled)
+        self.assertIn("self->ObserveCancellation(context, chosen);", canceled)
+        self.assertIn("self->Finish(chosen, false, 3);", canceled)
+        self.assertEqual(task.count("PostCompleteTeardown"), 1)
+        self.assertEqual(task.count("ObserveCancellation(context);"), 1)
         # The SDK COM header declares this export without noexcept; body/factory stay exact.
         unload = 'extern "C" HRESULT __stdcall DllCanUnloadNow()'
         baseline_factory = baseline.split("struct Factory", 1)[1]
@@ -297,7 +320,9 @@ public:
         self.assertIn("if (!failure) failure =", trace)
         self.assertIn("Require(!decision", trace)
         self.assertIn('{"deferral_release_observed", "false"}', trace)
-        self.assertIn('{"version", Number(version, 3)}', trace)
+        self.assertIn('{"version", Number(version, 4)}', trace)
+        self.assertIn("PreCompleteFlushMs = 500, PreCompleteSliceMs = 25;", trace)
+        self.assertIn("std::uint8_t version = 4) {", trace)
         self.assertIn("version == 2 ? 2300u : 3300u", trace)
         baseline = original(OBSERVATION_BASELINE, "desktop-pdf/ActivationDiagnostics.h").decode()
         state = trace.split("class PublicationState {", 1)[1].split("\ninline std::string ReceiptWire", 1)[0]
@@ -344,20 +369,20 @@ public:
 
     def test_distinct_identity_and_endpoints(self):
         manifest_bytes = (ROOT / "desktop-pdf/package/AppxManifest.xml").read_bytes()
-        self.assertEqual(manifest_bytes.count(b'Version="0.1.0.5"'), 1)
-        self.assertEqual(manifest_bytes.replace(b'Version="0.1.0.5"', b'Version="0.1.0.2"', 1),
+        self.assertEqual(manifest_bytes.count(b'Version="0.1.0.6"'), 1)
+        self.assertEqual(manifest_bytes.replace(b'Version="0.1.0.6"', b'Version="0.1.0.2"', 1),
                          original(JOURNAL_BASELINE, "desktop-pdf/package/AppxManifest.xml"))
         helper_bytes = (ROOT / "desktop-pdf/build.ps1").read_bytes()
-        self.assertEqual(helper_bytes.count(b"'0.1.0.5'"), 1)
+        self.assertEqual(helper_bytes.count(b"'0.1.0.6'"), 1)
         def manifest_guard(raw):
             return raw.split(b"function Manifest(", 1)[1].split(b"function PackageEvidence(", 1)[0]
-        self.assertEqual(manifest_guard(helper_bytes).replace(b"'0.1.0.5'", b"'0.1.0.2'", 1),
+        self.assertEqual(manifest_guard(helper_bytes).replace(b"'0.1.0.6'", b"'0.1.0.2'", 1),
                          manifest_guard(original(JOURNAL_BASELINE, "desktop-pdf/build.ps1")))
         package = ET.parse(ROOT / "desktop-pdf/package/AppxManifest.xml").getroot()
         identity = package.find("m:Identity", NS)
         self.assertEqual(identity.attrib["Name"], "Miyako.DesktopPdfIntegration")
         self.assertEqual(identity.attrib["Publisher"], "CN=DesktopPdfPrototypeDev")
-        self.assertEqual(identity.attrib["Version"], "0.1.0.5")
+        self.assertEqual(identity.attrib["Version"], "0.1.0.6")
         apps = {app.attrib["Id"]: app for app in package.findall("m:Applications/m:Application", NS)}
         self.assertEqual(len(package.findall("m:Applications/m:Application", NS)), 2)
         self.assertEqual(set(apps), {"SaveAs", "Client"})
@@ -453,7 +478,7 @@ public:
         host = (ROOT / "desktop-pdf/Host.cpp").read_text()
         self.assertLess(host.index("ConfiguredRuntime(root)"), host.index("Render(runtime,"))
         helper = (ROOT / "desktop-pdf/build.ps1").read_text()
-        self.assertIn("$identity.Version -cne '0.1.0.5'", helper)
+        self.assertIn("$identity.Version -cne '0.1.0.6'", helper)
         self.assertIn("'Build', 'Package', 'SignCopy'", helper)
         self.assertIn("No automatic fetch/install.", helper)
         for ref in (DEPENDENCY, PROOF):

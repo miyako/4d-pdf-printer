@@ -116,6 +116,7 @@ public:
     std::optional<Token> Take() { return std::exchange(token, std::nullopt); }
 };
 inline constexpr std::uint64_t DrainMs = 1500, FinalizeMs = 2000, ReportMs = 500, CancelMs = 250;
+inline constexpr std::uint64_t PreCompleteFlushMs = 500, PreCompleteSliceMs = 25;
 inline std::uint64_t FinalizeDeadline(std::uint64_t started, std::optional<std::uint64_t> cancel) {
     auto normal = started + FinalizeMs;
     return cancel ? (std::min)(normal, *cancel + CancelMs) : normal;
@@ -125,9 +126,18 @@ inline constexpr std::array<std::wstring_view, 10> StageNames{
     L"none", L"enqueue", L"initialize", L"create-root", L"create-parent", L"create-activation-folder",
     L"prepare-record", L"create-pending", L"write-pending", L"rename-final"
 };
-enum class Reason { Normal, ActivationError, SessionError, CallbackDeadline, Canceled };
-inline constexpr std::array<std::wstring_view, 5> ReasonNames{
-    L"normal", L"activation-error", L"session-error", L"callback-deadline", L"canceled"
+enum class Reason { Normal, ActivationError, SessionError, CallbackDeadline, Canceled, PostCompleteTeardown };
+inline constexpr std::array<std::wstring_view, 6> ReasonNames{
+    L"normal", L"activation-error", L"session-error", L"callback-deadline", L"canceled", L"post-complete-teardown"
+};
+enum class FlushState { NotAttempted, InProgress, Flushed, Deadline, Canceled, Failed, Stopped };
+inline constexpr std::array<std::wstring_view, 7> FlushNames{
+    L"not-attempted", L"in-progress", L"flushed", L"deadline", L"canceled", L"failed", L"stopped"
+};
+struct PreCompleteFlush {
+    FlushState state{};
+    std::uint32_t target{}, published{};
+    std::uint64_t begin{}, end{};
 };
 enum class DrainState { Drained, Failed, Deadline, Canceled, Unavailable };
 inline constexpr std::array<std::wstring_view, 5> DrainNames{
@@ -150,7 +160,24 @@ struct Decision {
     std::array<wchar_t, 41> pending{};
     bool outstanding{}, cancel{}, deferral{};
     observation::Frozen observations;
+    PreCompleteFlush flush{};
 };
+inline std::string FlushWire(PreCompleteFlush const& value) {
+    using namespace observation;
+    Require(static_cast<std::size_t>(value.state) < FlushNames.size() && value.target <= EventLimit &&
+        value.published <= EventLimit, "pre-complete flush domain");
+    auto attempted = value.state != FlushState::NotAttempted;
+    auto ended = attempted && value.state != FlushState::InProgress;
+    Require(attempted || (!value.target && !value.published && !value.begin && !value.end), "unattempted flush fields");
+    Require(ended || (!value.published && !value.end), "in-progress flush fields");
+    Require(!ended || value.begin <= value.end, "pre-complete flush interval");
+    Require(value.state != FlushState::Flushed || value.published >= value.target, "flushed target published");
+    return Object({{"state", Text(Ascii(FlushNames[static_cast<std::size_t>(value.state)]))},
+        {"target_count", attempted ? Number(value.target, EventLimit) : "null"},
+        {"published_count", ended ? Number(value.published, EventLimit) : "null"},
+        {"begin_tick_ms", attempted ? Number(value.begin) : "null"},
+        {"end_tick_ms", ended ? Number(value.end) : "null"}});
+}
 class PublicationState {
 public:
     Journal journal;
@@ -197,12 +224,13 @@ public:
 };
 inline std::string ReceiptWire(Decision const& d, std::wstring_view id, std::wstring_view job,
     observation::Snapshot const& snapshot, std::uint32_t process, std::uint64_t begin, std::uint64_t end,
-    std::uint8_t version = 3) {
+    std::uint8_t version = 4) {
     using namespace observation;
-    Require(version == 2 || version == 3, "explicit terminal version");
+    Require(version >= 2 && version <= 4, "explicit terminal version");
     Require(Id(id) && (job.empty() || Id(job)), "terminal activation/known-job domain");
     Require(static_cast<std::size_t>(d.reason) < ReasonNames.size() &&
         static_cast<std::size_t>(d.state) < DrainNames.size(), "terminal decision enum");
+    Require(version == 4 || d.reason != decltype(d.reason)::PostCompleteTeardown, "post-complete teardown requires terminal v4");
     Require((d.state == DrainState::Canceled) == (d.observations.first.has_value() && d.observations.minimum.has_value()),
         "frozen cancellation provenance");
     auto event = [](std::optional<Event> const& value) {
@@ -227,7 +255,7 @@ inline std::string ReceiptWire(Decision const& d, std::wstring_view id, std::wst
     if (d.failure) failure = Object({{"sequence", event(d.failure->event)}, {"checkpoint", point(d.failure->event)},
         {"stage", stage(d.failure->stage)}, {"code_domain", Text("hresult")}, {"code_u32", Number(d.failure->code, UINT32_MAX)}});
     auto wire = Object({
-        {"schema", Text("4d-pdf-printer.activation-journal-terminal")}, {"version", Number(version, 3)},
+        {"schema", Text("4d-pdf-printer.activation-journal-terminal")}, {"version", Number(version, 4)},
         {"activation", Text(Ascii(id))}, {"job", Text(Ascii(job))},
         {"finalize_reason", Text(Ascii(ReasonNames[static_cast<std::size_t>(d.reason)]))},
         {"drain_state", Text(Ascii(DrainNames[static_cast<std::size_t>(d.state)]))},
@@ -241,6 +269,10 @@ inline std::string ReceiptWire(Decision const& d, std::wstring_view id, std::wst
         {"inflight", inflight}, {"first_failure", failure},
         {"observations", Encode(snapshot, d.observations, process, begin, end, version)}
     });
+    if (version == 4) {
+        wire.pop_back();
+        wire += ",\"pre_complete_flush\":" + FlushWire(d.flush) + '}';
+    } else Require(d.flush.state == FlushState::NotAttempted, "pre-complete flush requires terminal v4");
     Require(wire.size() <= (version == 2 ? 2300u : 3300u), "source-bound terminal wire maximum");
     JsonWire(wire, 4096).Check();
     return wire;
@@ -327,7 +359,7 @@ class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>
     std::mutex mutex;
     std::shared_ptr<JournalIo> io;
     PublicationState state;
-    handle changed;
+    handle changed, flushChanged;
     struct TrackedOperation {
         IAsyncInfo info;
         observation::Operation observed;
@@ -344,9 +376,12 @@ class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>
     std::array<wchar_t, 33> knownJob{};
     bool reportDone{};
     ReportResult reportResult;
+    PreCompleteFlush preComplete;
 
     void Signal() noexcept {
         if (!SetEvent(changed.get())) Failure(L"journal signal", hresult{HRESULT_FROM_WIN32(GetLastError())});
+        // Separate auto-reset event: the pre-complete flush never consumes a Finish wake-up.
+        if (!SetEvent(flushChanged.get())) Failure(L"journal flush signal", hresult{HRESULT_FROM_WIN32(GetLastError())});
     }
     bool StageAt(Stage stage) {
         std::scoped_lock lock(mutex);
@@ -538,10 +573,58 @@ class Trace : private ModuleLifetime, public std::enable_shared_from_this<Trace>
 public:
     observation::Observations& Observe() noexcept { return observed; }
     explicit Trace(std::shared_ptr<JournalIo> backend = std::make_shared<JournalIo>()) :
-        io(std::move(backend)), changed(CreateEventExW(nullptr, nullptr, 0, EVENT_MODIFY_STATE | SYNCHRONIZE)) {
-        check_bool(static_cast<bool>(changed));
+        io(std::move(backend)), changed(CreateEventExW(nullptr, nullptr, 0, EVENT_MODIFY_STATE | SYNCHRONIZE)),
+        flushChanged(CreateEventExW(nullptr, nullptr, 0, EVENT_MODIFY_STATE | SYNCHRONIZE)) {
+        check_bool(static_cast<bool>(changed) && static_cast<bool>(flushChanged));
         Require(io != nullptr, "journal backend");
         id = RandomId();
+    }
+    PreCompleteFlush PreComplete() {
+        std::scoped_lock lock(mutex);
+        return preComplete;
+    }
+    // Bounded wait for every event accepted at entry; never throws to the CompleteJob caller.
+    IAsyncAction FlushBeforeComplete() {
+        auto self = shared_from_this();
+        PreCompleteFlush result;
+        try {
+            {
+                std::scoped_lock lock(self->mutex);
+                result.state = FlushState::InProgress;
+                result.begin = GetTickCount64();
+                result.target = self->state.journal.Accepted();
+                self->preComplete = result;
+            }
+            for (;;) {
+                std::uint64_t now;
+                {
+                    std::scoped_lock lock(self->mutex);
+                    auto const& current = self->state;
+                    now = GetTickCount64();
+                    result.published = current.published ? *current.published + 1 : 0;
+                    result.state = result.published >= result.target ? FlushState::Flushed :
+                        current.canceled ? FlushState::Canceled : current.failure ? FlushState::Failed :
+                        current.stop || current.journal.Sealed() ? FlushState::Stopped :
+                        now >= result.begin + PreCompleteFlushMs ? FlushState::Deadline : FlushState::InProgress;
+                    if (result.state != FlushState::InProgress) {
+                        result.end = now;
+                        self->preComplete = result;
+                    }
+                }
+                if (result.state != FlushState::InProgress) break;
+                auto slice = (std::min)(result.begin + PreCompleteFlushMs - now, PreCompleteSliceMs);
+                co_await resume_on_signal(self->flushChanged.get(), std::chrono::milliseconds(slice));
+            }
+        } catch (...) {
+            auto hr = to_hresult();
+            Failure(L"journal pre-complete flush", hr);
+            try {
+                std::scoped_lock lock(self->mutex);
+                result.state = FlushState::Failed;
+                result.end = (std::max)(result.begin, GetTickCount64());
+                self->preComplete = result;
+            } catch (...) { Failure(L"journal pre-complete flush record", to_hresult()); }
+        }
     }
     void Add(Point point, hresult error = {}, std::wstring_view job = {}) noexcept {
         try {
@@ -601,6 +684,7 @@ public:
                     decision.observations.first = firstApplied;
                     decision.observations.minimum = minimumApplied;
                     if (operation) decision.observations.operation = operation->observed;
+                    decision.flush = preComplete;
                     jobId = knownJob.data();
                 }
             }

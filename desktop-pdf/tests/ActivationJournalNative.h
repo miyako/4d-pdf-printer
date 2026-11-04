@@ -241,9 +241,11 @@ inline void NativeJournalChecks(FreshTrialRoot const* suite = nullptr) {
             L"accepted_count", L"dequeued_count", L"rejected_before_seal", L"rejected_after_seal_at_decision",
             L"last_published_sequence", L"finish_sequence", L"admission_loss", L"sealed_tick_ms",
             L"decision_tick_ms", L"deadline_tick_ms", L"outstanding_io_at_decision", L"deferral_acquired",
-            L"deferral_release_planned", L"deferral_release_observed", L"inflight", L"first_failure", L"observations"});
+            L"deferral_release_planned", L"deferral_release_observed", L"inflight", L"first_failure", L"observations",
+            L"pre_complete_flush"});
         Require(r.GetNamedString(L"schema") == L"4d-pdf-printer.activation-journal-terminal" &&
-            Integer(r, L"version") == 3 && r.GetNamedString(L"job").empty() &&
+            Integer(r, L"version") == 4 && r.GetNamedString(L"job").empty() &&
+            r.GetNamedObject(L"pre_complete_flush").GetNamedString(L"state") == L"not-attempted" &&
             !r.GetNamedBoolean(L"deferral_release_observed"),
             "terminal schema and honest acknowledgement boundary");
         if (fault == Stage::None) {
@@ -377,6 +379,119 @@ inline void NativeJournalChecks(FreshTrialRoot const* suite = nullptr) {
             receipt.GetNamedString(L"finalize_reason") == (dataOwner ? L"normal" : L"activation-error") &&
             receipt.GetNamedString(L"drain_state") == L"drained",
             "actual finalizer can drain pre-job activation/Data failure without inventing a job binding");
+    }
+    for (auto fault : {Stage::None, Stage::Write}) {
+        TrialDirectory directory(suite);
+        auto io = std::make_shared<TrialIo>(directory.path.wstring());
+        io->fault = fault;
+        auto trace = std::make_shared<Trace>(io);
+        Require(trace->PreComplete().state == FlushState::NotAttempted, "flush not attempted before call");
+        trace->Add(Point::RunEnter);
+        trace->Add(Point::CompleteBefore);
+        AwaitTest(trace->FlushBeforeComplete());
+        auto flush = trace->PreComplete();
+        auto expected = fault == Stage::None ? FlushState::Flushed : FlushState::Failed;
+        Require(flush.state == expected && flush.target == 2 && flush.begin <= flush.end &&
+            (fault != Stage::None || flush.published == 2), "pre-complete flush drains every accepted event or stops on failure");
+        AwaitTest(trace->Finish(Reason::Normal, true));
+        auto r = Parse(io->receipt, 4096);
+        auto wire = r.GetNamedObject(L"pre_complete_flush");
+        Require(Integer(r, L"version") == 4 &&
+            wire.GetNamedString(L"state") == (fault == Stage::None ? L"flushed" : L"failed") &&
+            Integer(wire, L"target_count") == 2 && Integer(wire, L"published_count") == flush.published &&
+            Integer(wire, L"begin_tick_ms") == flush.begin && Integer(wire, L"end_tick_ms") == flush.end &&
+            r.GetNamedString(L"drain_state") == (fault == Stage::None ? L"drained" : L"failed"),
+            "terminal v4 records actual pre-complete flush outcome");
+    }
+    {
+        TrialDirectory directory(suite);
+        auto io = std::make_shared<TrialIo>(directory.path.wstring());
+        io->pauseWrite = true;
+        auto trace = std::make_shared<Trace>(io);
+        trace->Add(Point::CompleteBefore);
+        WaitTest(io->entered.get());
+        AwaitTest(trace->FlushBeforeComplete());
+        auto flush = trace->PreComplete();
+        Require(flush.state == FlushState::Deadline && flush.target == 1 && flush.published == 0 &&
+            flush.end - flush.begin >= PreCompleteFlushMs && flush.end - flush.begin < PreCompleteFlushMs + 1000,
+            "held journal I/O bounds the pre-complete flush at its budget");
+        SetEvent(io->release.get()); WaitTest(io->writeExited.get());
+        AwaitTest(trace->Finish(Reason::Normal, true));
+        auto r = Parse(io->receipt, 4096);
+        Require(r.GetNamedObject(L"pre_complete_flush").GetNamedString(L"state") == L"deadline" &&
+            Integer(r.GetNamedObject(L"pre_complete_flush"), L"published_count") == 0,
+            "terminal v4 keeps deadline flush outcome after late publication");
+    }
+    {
+        TrialDirectory directory(suite);
+        auto io = std::make_shared<TrialIo>(directory.path.wstring());
+        io->pauseWrite = true;
+        auto trace = std::make_shared<Trace>(io);
+        trace->Add(Point::CompleteBefore);
+        WaitTest(io->entered.get());
+        auto pending = trace->FlushBeforeComplete();
+        Require(trace->PreComplete().state == FlushState::InProgress, "flush waits on held I/O");
+        observation::Context cancellation;
+        cancellation.entry = ObservationStamp();
+        cancellation = trace->Observe().EnterCancel(cancellation);
+        trace->Cancel(GetTickCount64(), cancellation);
+        AwaitTest(pending);
+        auto flush = trace->PreComplete();
+        Require(flush.state == FlushState::Canceled && flush.published == 0 &&
+            flush.end - flush.begin < PreCompleteFlushMs, "cancellation ends the pre-complete flush early");
+        AwaitTest(trace->Finish(Reason::Canceled, false));
+        WaitTest(io->reportExited.get());
+        auto r = Parse(io->receipt, 4096);
+        Require(r.GetNamedString(L"drain_state") == L"canceled" &&
+            r.GetNamedObject(L"pre_complete_flush").GetNamedString(L"state") == L"canceled",
+            "terminal v4 records canceled pre-complete flush");
+        SetEvent(io->release.get()); WaitTest(io->writeExited.get());
+    }
+    for (bool entered : {false, true}) {
+        TrialDirectory directory(suite);
+        auto io = std::make_shared<TrialIo>(directory.path.wstring());
+        auto injected = std::make_shared<Trace>(io);
+        if (entered) Require(injected->Observe().CompleteEnter({ObservationStamp(), 0}), "CompleteJob entry recorded");
+        std::atomic<unsigned> calls{};
+        auto done = TestSignal(); APTTYPE apartment{};
+        auto task = make_self<::Task>(injected);
+        auto deferral = make<TestDeferral>(calls, done.get(), false, apartment).as<BackgroundTaskDeferral>();
+        auto instance = make_self<ReentrantInstance>(deferral);
+        task->Run(instance.as<IBackgroundTaskInstance>());
+        WaitTest(done.get());
+        WaitTest(io->reportExited.get());
+        auto r = Parse(io->receipt, 4096);
+        auto expected = entered ? Reason::PostCompleteTeardown : Reason::Canceled;
+        Require(calls == 1 && task->finalReason.load() == expected && Integer(r, L"version") == 4 &&
+            r.GetNamedString(L"finalize_reason") == (entered ? L"post-complete-teardown" : L"canceled") &&
+            r.GetNamedString(L"drain_state") == L"canceled" &&
+            r.GetNamedObject(L"pre_complete_flush").GetNamedString(L"state") == L"not-attempted",
+            "framework cancel after CompleteJob entry is post-complete teardown; before entry stays canceled");
+        auto snapshot = injected->Observe().Read();
+        Require(snapshot.reason.payload && snapshot.reason.payload->chosen == static_cast<std::uint8_t>(expected) &&
+            snapshot.attempts[3].payload && snapshot.attempts[3].payload->requested == static_cast<std::uint8_t>(expected),
+            "classified reason drives both reason setter and framework Finish");
+        task = nullptr;
+    }
+    {
+        TrialDirectory directory(suite);
+        auto io = std::make_shared<TrialIo>(directory.path.wstring());
+        std::atomic<unsigned> calls{};
+        auto done = TestSignal(); APTTYPE apartment{};
+        auto task = make_self<::Task>();
+        task->diagnostics = std::make_shared<Trace>(io);
+        task->deferral = make<TestDeferral>(calls, done.get(), false, apartment).as<BackgroundTaskDeferral>();
+        Require(task->diagnostics->Observe().CompleteEnter({ObservationStamp(), 0}), "CompleteJob entry recorded");
+        observation::Context host;
+        host.origin = 1; host.entry = ObservationStamp(); host.evaluated = 9; host.values = 9;
+        host = task->diagnostics->Observe().EnterCancel(host);
+        task->ObserveCancellation(host);
+        task->Finish(Reason::Canceled, false, 3);
+        WaitTest(done.get());
+        WaitTest(io->reportExited.get());
+        Require(task->finalReason.load() == Reason::Canceled &&
+            Parse(io->receipt, 4096).GetNamedString(L"finalize_reason") == L"canceled",
+            "host-origin cancellation after CompleteJob entry stays canceled");
     }
     {
         TrialDirectory directory(suite);

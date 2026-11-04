@@ -8,6 +8,13 @@ need = v1.need
 HOST = {(9, 1), (9, 9), (11, 2), (11, 10), (15, 4), (15, 8), (15, 12)}
 OBS_KEYS = {"v", "pid", "span", "c", "r", "a", "f", "w", "i", "x", "journal_status"}
 REQUESTS = (1, 3, 2, 4, 0)
+REASONS4 = tuple(v1.REASONS) + ("post-complete-teardown",)
+FLUSH_KEYS = ("state", "target_count", "published_count", "begin_tick_ms", "end_tick_ms")
+FLUSH_STATES = ("not-attempted", "in-progress", "flushed", "deadline", "canceled", "failed", "stopped")
+
+
+def reasons(version):
+    return REASONS4 if version == 4 else tuple(v1.REASONS)
 
 class ObservationShapeError(ValueError):
     pass
@@ -64,33 +71,37 @@ def cancel(value, origin):
         need(tuple(value[2:]) in HOST, "observed host short-circuit mask")
 
 
-def finish(value, caller):
+def finish(value, caller, teardown=False):
+    """teardown: terminal v4 framework Finish may request post-complete-teardown (5)."""
+    top = 5 if teardown else 4
     seq(value, 7)
     stamp(*value[:2])
-    number(value[2], 4)
+    number(value[2], top)
     boolean(value[3])
     number(value[4], 2)
     boolean(value[6])
-    need(value[2] == REQUESTS[caller] and value[3] == (caller == 4), "finish caller/request/owner")
+    need((value[2] == REQUESTS[caller] or (teardown and caller == 3 and value[2] == 5)) and
+         value[3] == (caller == 4), "finish caller/request/owner")
     if caller == 4:
         need(value[4] == 0 and value[5] is None, "DataTail no CAS")
     elif caller == 3:
         need(value[4] == 2, "framework Finish must lose preceding reason CAS")
-        number(value[5], 4, 1)
+        number(value[5], top, 1)
     else:
         need(value[4] in (1, 2), "nonNormal Finish must attempt CAS")
-        number(value[5], 4)
+        number(value[5], top)
         need(value[5] == 0 if value[4] == 1 else value[5] >= 1, "actual CAS expected")
 
 
-def reason(value):
+def reason(value, teardown=False):
     seq(value, 6)
     number(value[0], 4)
     boolean(value[1])
     stamp(value[2], value[3])
     number(value[4])
-    number(value[5], 4)
-    need(value[2] <= value[4] and value[5] == (4, 4, 1, 3, 2)[value[0]], "actual reason setter")
+    number(value[5], 5 if teardown else 4)
+    need(value[2] <= value[4] and (value[5] == (4, 4, 1, 3, 2)[value[0]] or
+         (teardown and value[0] == 0 and value[5] == 5)), "actual reason setter")
 
 
 def applied(value):
@@ -107,11 +118,11 @@ def applied(value):
     need(value[2] <= value[5], "applied cancellation tick")
 
 
-def winner(value):
+def winner(value, teardown=False):
     seq(value, 3)
     number(value[0], 4)
     boolean(value[1])
-    finish(value[2], value[0])
+    finish(value[2], value[0], teardown)
     need(value[2][6] is True, "actual gate winner")
 
 
@@ -179,9 +190,10 @@ def complete_shape(o):
 
 def observation_shape(terminal):
     o = terminal["observations"]
-    extended = terminal["version"] == 3
+    version = terminal["version"]
+    extended, teardown, names = version >= 3, version == 4, reasons(version)
     need(type(o) is dict and set(o) == OBS_KEYS | ({"j"} if extended else set()), "exact observation keys")
-    number(o["v"], 2 if extended else 1, 2 if extended else 1)
+    number(o["v"], version - 1, version - 1)
     number(o["pid"], 0xffffffff, 1)
     seq(o["span"], 2)
     for tick in o["span"]:
@@ -190,7 +202,7 @@ def observation_shape(terminal):
     seq(o["c"], 2)
     for origin in range(2):
         cell(o["c"][origin], lambda value, origin=origin: cancel(value, origin), True)
-    r = cell(o["r"], reason)
+    r = cell(o["r"], lambda value: reason(value, teardown))
     seq(o["a"], 2)
     need(all(value is not None for value in o["a"]) if terminal["drain_state"] == "canceled"
          else o["a"] == [None, None], "frozen applied cancellation presence")
@@ -205,20 +217,20 @@ def observation_shape(terminal):
         need(o["a"][1][5] <= o["a"][0][5], "minimum versus first applied tick")
     seq(o["f"], 5)
     for caller in range(5):
-        cell(o["f"][caller], lambda value, caller=caller: finish(value, caller), True)
+        cell(o["f"][caller], lambda value, caller=caller: finish(value, caller, teardown), True)
     if r is not None:
         source = ready(o["c"][r[0]]) if r[0] < 2 else ready(o["f"][r[0]-2])
         if r[1] and source is not None:
             need(source[:2] == r[2:4], "reason setter first-entry identity")
         if terminal["finalize_reason"] != "normal":
-            need(v1.REASONS[r[5]] == terminal["finalize_reason"], "reason setter/decision reason")
+            need(names[r[5]] == terminal["finalize_reason"], "reason setter/decision reason")
     seq(o["w"], 3)
-    head = cell(o["w"][0], winner)
+    head = cell(o["w"][0], lambda value: winner(value, teardown))
     began = cell(o["w"][1], lambda value: stamp(*seq(value, 2)))
     def passed(value):
         seq(value, 2)
         number(value[0])
-        number(value[1], 4)
+        number(value[1], 5 if teardown else 4)
     sampled = cell(o["w"][2], passed)
     need(began is None or head is not None, "began winner dependency")
     need(sampled is None or began is not None, "reason-load began dependency")
@@ -233,7 +245,7 @@ def observation_shape(terminal):
         need(head[2][0] <= began[0], "winner before actual began")
     if sampled is not None:
         need(began[0] <= sampled[0] <= terminal["sealed_tick_ms"] and
-             v1.REASONS[sampled[1]] == terminal["finalize_reason"], "actual finalizer reason load")
+             names[sampled[1]] == terminal["finalize_reason"], "actual finalizer reason load")
     if o["i"] is not None:
         seq(o["i"], 3)
         optional_number(o["i"][0], 65535, 1)
@@ -257,21 +269,48 @@ def observation_shape(terminal):
     return o
 
 
+def flush_shape(terminal):
+    value = terminal["pre_complete_flush"]
+    need(type(value) is dict and tuple(value) == FLUSH_KEYS and value["state"] in FLUSH_STATES,
+         "pre-complete flush shape")
+    attempted = value["state"] != "not-attempted"
+    ended = attempted and value["state"] != "in-progress"
+    if not attempted:
+        need(all(value[key] is None for key in FLUSH_KEYS[1:]), "unattempted flush fields")
+        return value
+    number(value["target_count"], 32)
+    number(value["begin_tick_ms"])
+    need(value["target_count"] <= terminal["accepted_count"] and
+         value["begin_tick_ms"] <= terminal["decision_tick_ms"], "flush target/begin before decision")
+    if not ended:
+        need(value["published_count"] is None and value["end_tick_ms"] is None, "in-progress flush fields")
+        return value
+    number(value["published_count"], 32)
+    number(value["end_tick_ms"])
+    published = terminal["last_published_sequence"]
+    need(value["begin_tick_ms"] <= value["end_tick_ms"] <= terminal["decision_tick_ms"],
+         "flush interval before decision")
+    need(value["published_count"] <= (0 if published is None else published + 1), "flush publication monotonic")
+    need(value["state"] != "flushed" or value["published_count"] >= value["target_count"], "flushed target")
+    return value
+
+
 def terminal_shape(raw, activation, expected_version, job=None):
-    need(type(expected_version) is int and expected_version in (1, 2, 3), "explicit expected source version")
+    need(type(expected_version) is int and expected_version in (1, 2, 3, 4), "explicit expected source version")
     need(v1.identifier(activation), "expected activation binding")
     value = v1.wire(raw, 4096)
     need(type(value.get("version")) is int and value["version"] == expected_version, "unexpected terminal version")
     if expected_version == 1:
         return v1.terminal_shape(raw, activation, job)
     need(job is None, "general shape is not expected-job admission")
-    need(set(value) == v1.TERMINAL_KEYS | {"observations"}, "exact23 terminal fields")
+    need(set(value) == v1.TERMINAL_KEYS | {"observations"} | ({"pre_complete_flush"} if expected_version == 4 else set()),
+         "exact23/24 terminal fields")
     need(value["schema"] == "4d-pdf-printer.activation-journal-terminal", "terminal schema")
     need(value["activation"] == activation and type(value["job"]) is str and
          (value["job"] == "" or v1.identifier(value["job"])), "activation/unbound job domain")
     need(json.dumps(value, separators=(",", ":"), ensure_ascii=True, allow_nan=False).encode("ascii") == raw,
          "compact ASCII integer wire encoding")
-    need(value["finalize_reason"] in v1.REASONS and value["drain_state"] in v1.STATES, "terminal enums")
+    need(value["finalize_reason"] in reasons(expected_version) and value["drain_state"] in v1.STATES, "terminal enums")
     for key in ("accepted_count", "dequeued_count"):
         number(value[key], 32)
     need(value["dequeued_count"] <= value["accepted_count"], "dequeued exceeds accepted")
@@ -305,6 +344,8 @@ def terminal_shape(raw, activation, expected_version, job=None):
         v1.optional_event(failure)
         need(failure["stage"] in v1.STAGES and failure["code_domain"] == "hresult", "first failure fields")
         number(failure["code_u32"], 0xffffffff)
+    if expected_version == 4:
+        flush_shape(value)
     try:
         observation_shape(value)
     except ValueError as error:
@@ -316,7 +357,7 @@ def sample_flags(terminal):
     o = terminal["observations"]
     phases = list(o["c"]) + [o["r"]] + list(o["f"]) + list(o["w"])
     phases += [phase for api in o["x"] for phase in api]
-    if terminal["version"] == 3:
+    if terminal["version"] >= 3:
         phases += o["j"][0] + [o["j"][1]]
         sampled = ready(o["j"][1])
         if sampled is not None:
@@ -357,7 +398,7 @@ def sample_flags(terminal):
             terminal["finalize_reason"] == "normal" and r is not None) or (
             terminal["drain_state"] != "canceled" and any(ready(c) is not None for c in o["c"])):
         flags |= 128
-    if terminal["version"] == 3:
+    if terminal["version"] >= 3:
         call, cancellation = o["j"]
         if (call[0][0] != 0 and call[1][0] != 2) or (o["c"][0][0] != 0 and cancellation[0] != 2):
             flags |= 256
@@ -436,6 +477,11 @@ def general_v3(raw, activation):
     return terminal_shape(raw, activation, 3)
 
 
+def general_v4(raw, activation):
+    """v3 plus pre-complete flush outcome and post-complete-teardown labeling."""
+    return terminal_shape(raw, activation, 4)
+
+
 def complete_assessment(o):
     def phase(call):
         if call[0][1]:
@@ -476,7 +522,7 @@ def assess(raw_terminal, activation, *, expected_version, job=None, raw_records=
     try:
         envelope = v1.wire(raw_terminal, 4096)
         version = envelope.get("version")
-        if type(version) is not int or version not in (1, 2, 3):
+        if type(version) is not int or version not in (1, 2, 3, 4):
             result["receipt_shape"] = "unsupported"
             raise ValueError("unsupported source terminal version")
         if type(expected_version) is not int or version != expected_version:
@@ -508,8 +554,10 @@ def assess(raw_terminal, activation, *, expected_version, job=None, raw_records=
     if version == 1:
         return result
     o = terminal["observations"]
-    if version == 3:
+    if version >= 3:
         result["complete_job"] = complete_assessment(o)
+    if version == 4:
+        result["pre_complete_flush"] = dict(terminal["pre_complete_flush"])
     flags = sample_flags(terminal)
     result.update(sample_flags=flags, sample_state="partial-sample" if flags else "ready-sample")
     head = ready(o["w"][0])
@@ -526,7 +574,7 @@ def assess(raw_terminal, activation, *, expected_version, job=None, raw_records=
                                   "first-min-host-recorded" if origins == {1} else "first-min-mixed-recorded")
         else:
             result["question"] = "bound-context-incomplete"
-    elif any(ready(c) is not None for c in o["c"]) or (r is not None and r[5] == 4):
+    elif any(ready(c) is not None for c in o["c"]) or (r is not None and r[5] in (4, 5)):
         result["question"] = "sampled-signal-unbound"
     else:
         result["question"] = "not-established"

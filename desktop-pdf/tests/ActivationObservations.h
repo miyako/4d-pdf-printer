@@ -49,6 +49,10 @@ inline std::string MaxObservationReceipt(std::uint8_t version = 2) {
     observation::Context c{0, false, {n, UINT32_MAX}, UINT32_MAX};
     d.observations.first = observation::Applied{c, n}; d.observations.minimum = *d.observations.first;
     d.observations.operation = observation::Operation{std::uint16_t{65535}, 5, {}};
+    if (version == 4) {
+        d.reason = Reason::PostCompleteTeardown;
+        d.flush = PreCompleteFlush{FlushState::Deadline, 32, 32, n, n};
+    }
     auto snapshot = MaxObservation();
     snapshot.complete.entry = {2, true, observation::CompleteEntry{{n, UINT32_MAX}, 2}};
     snapshot.complete.returned = {2, false, observation::Outcome{{n, UINT32_MAX}, UINT32_MAX}};
@@ -182,6 +186,54 @@ inline void ObservationChecks() {
         snapshot.api[1].returned.payload->observed.tick == 19, "natural outcome and API return are separate");
     Require(MaxObservationReceipt().size() == 2295, "producer field-envelope emission below2300");
     Require(MaxObservationReceipt(3).size() <= 3300, "CompleteJob envelope below3300/backend4096");
+    auto maximum4 = MaxObservationReceipt(4);
+    Require(maximum4.size() <= 3300 && maximum4.size() < 4096 &&
+        maximum4.find("\"finalize_reason\":\"post-complete-teardown\"") != std::string::npos &&
+        maximum4.find("\"pre_complete_flush\":{\"state\":\"deadline\",\"target_count\":32,") != std::string::npos,
+        "terminal v4 teardown/pre-complete flush envelope below3300/backend4096");
+    {
+        o::Context origin0{0, false, {12, 3}, 7}, origin1{1, false, {12, 3}, 0, 9, 1};
+        encoding(true, [&] { o::Put(o::Reason{origin0, 13, 5}, true); });
+        encoding(true, [&] { o::Put(o::Reason{origin0, 13, 4}, true); });
+        encoding(false, [&] { o::Put(o::Reason{origin0, 13, 5}); });
+        encoding(false, [&] { o::Put(o::Reason{origin1, 13, 5}, true); });
+        for (std::uint8_t caller = 0; caller != 5; ++caller)
+            for (std::uint8_t requested = 0; requested != 7; ++requested)
+                for (std::uint8_t expected = 1; expected != 7; ++expected) for (bool teardown : {false, true}) {
+                    o::Finish f{{12, 3}, caller, requested, 2, caller == 4, false, false, expected};
+                    if (caller == 4) { f.cas = 0; f.expected.reset(); }
+                    auto base = std::array<std::uint8_t, 5>{1, 3, 2, 4, 0}[caller];
+                    auto top = teardown ? 5 : 4;
+                    bool valid = (requested == base || (teardown && caller == 3 && requested == 5)) &&
+                        (caller == 4 || expected <= top);
+                    encoding(valid, [&] { o::Put(f, teardown); });
+                }
+        encoding(true, [&] { o::Put(o::PassedReason{12, 5}, true); });
+        encoding(false, [&] { o::Put(o::PassedReason{12, 5}); });
+        Decision d;
+        d.reason = Reason::PostCompleteTeardown; d.state = DrainState::Deadline;
+        auto receipt = [&](std::uint8_t version) {
+            return ReceiptWire(d, std::wstring(32, L'a'), L"", o::Snapshot{}, 100, 111, 112, version);
+        };
+        encoding(false, [&] { receipt(3); });
+        encoding(false, [&] { receipt(2); });
+        encoding(false, [&] { receipt(5); });
+        Require(receipt(4).find("\"pre_complete_flush\":{\"state\":\"not-attempted\",\"target_count\":null,"
+            "\"published_count\":null,\"begin_tick_ms\":null,\"end_tick_ms\":null}}") != std::string::npos,
+            "default terminal v4 unattempted flush");
+        d.reason = Reason::Canceled;
+        d.flush = PreCompleteFlush{FlushState::Flushed, 3, 2, 10, 11};
+        encoding(false, [&] { receipt(4); });
+        d.flush = PreCompleteFlush{FlushState::Deadline, 3, 2, 12, 11};
+        encoding(false, [&] { receipt(4); });
+        d.flush = PreCompleteFlush{FlushState::InProgress, 3, 0, 10, 0};
+        Require(receipt(4).find("\"state\":\"in-progress\",\"target_count\":3,\"published_count\":null,"
+            "\"begin_tick_ms\":10,\"end_tick_ms\":null") != std::string::npos, "in-progress flush has no end");
+        encoding(false, [&] { receipt(3); });
+        d.flush = PreCompleteFlush{FlushState::Flushed, 3, 3, 10, 11};
+        Require(receipt(4).find("\"state\":\"flushed\",\"target_count\":3,\"published_count\":3") !=
+            std::string::npos && receipt(4).size() < 4096, "flushed terminal v4");
+    }
     o::Observations complete;
     Require(complete.ReadComplete().entry.state == 0, "CompleteJob not attempted at read");
     auto owned = complete.CompleteEnter({{20, 7}, 0});
