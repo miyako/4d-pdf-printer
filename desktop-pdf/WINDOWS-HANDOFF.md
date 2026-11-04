@@ -1,5 +1,63 @@
 # Windows continuation checkpoint
 
+## 007 (0.1.0.7) native journal records: build, package, update, print series
+
+Source `4b51b4a9496af4bd5fb82a9d5d8ff7e47e167f51` (tree
+`28a7d5e87cc571fbe86be1fc449678901c544095`): native Win32 per-record journal
+writes, post-complete teardown keeps draining (bounded to teardown + 125 ms),
+terminal v5 `cancellation_drain`; see README 0.1.0.7. Root
+`C:\Users\miyako\Desktop\version007-build-01`, the whole cycle approved at
+once, each gate run once, stop-at-first-failure, no retry/kill. Same route and
+scripts as 006 (text-substituted commit/branch/root/versions/hashes).
+
+- **Build** (`RunBuild007.ps1` `3cec0d64...ecbe2`): `build007.json`
+  (`8a8f2608...7e143fc`) **`passed-scoped-build-only`**. Payload SHA256:
+  IntegrationApp.exe `6b620bbb...2a61`, IntegrationTask.dll `bf4460b2...c244`,
+  IntegrationHost.exe `c8a2c6b8...30af`, IntegrationClient.exe
+  `53b3bffa...cb05`.
+- **Package + SignCopy** (`RunPackage007.ps1` `f78e5636...7e71`):
+  `package007.json` (`dd02d357...c5`) **`packaged-and-signed-only`**.
+  Unsigned 620192 bytes `c4df50a161328be9ffb057cf74fbcb82b630b9e9fb34405706df52e8520f3e53`;
+  signed 623294 bytes
+  `3551759aaa3a31c3a97e98a556ce2b7f1817efa58b36c82504915e37a7c23a3d`,
+  signature Valid, thumbprint `0C2B96E9...37BB` (expires 2026-11-28).
+- **Update 006 -> 007** (`RunUpdate007.ps1` `d6db77fa...a10`, one
+  `Add-AppxPackage` 22:26:41Z-22:26:44Z): `Update/result.json`
+  (`3a3a6721...2ad6`) **`verified-update-only`**; 449/449 package data files
+  unchanged, queues unchanged, installed payload matches the build.
+- **Silent print series** (`RunSilentPrintRun007.ps1` `0559ee88...bcd4e`,
+  `RunSilentPrintSeries007.ps1` `3a6a826d...2de`; v5 `cancellation_drain` and
+  cancel-minus-entry columns added): `SilentPrintSeries/series.json`
+  (`30df37dd...8077`). All 6 `CAPTURED-FOR-REVIEW-NOT-PRODUCT-SUCCESS`,
+  completion `succeeded`, PDFs 17670 bytes SHA256 `45572825...16c1` (identical
+  to 005/006), queue empty after each run.
+
+  | run | drain | cancellation_drain | accepted | last pub | flush target/pub | flush ms | cancel-entry ms | cancel-to-seal ms |
+  |---|---|---|---|---|---|---|---|---|
+  | 01 | drained | continued | 21 | 20 | 18/18 | 16 | 15 | 79 |
+  | 02 | deadline | continued | 21 | 19 | 18/18 | 0 | 281 | 125 |
+  | 03 | deadline | continued | 21 | 19 | 18/18 | 15 | 47 | 125 |
+  | 04 | drained | continued | 21 | 20 | 18/18 | 16 | 16 | 62 |
+  | 05 | drained | continued | 21 | 20 | 18/18 | 16 | 0 | 78 |
+  | 06 | drained | continued | 21 | 20 | 18/18 | 15 | 16 | 62 |
+
+  All: `finalize_reason` `post-complete-teardown`, framework cancel reason 7,
+  flush state `flushed`, `CompleteJob(Succeeded)` returned without error.
+  Tick resolution is about 15.6 ms.
+
+  **Interpretation.** Native record writes work in the real background task,
+  including after the teardown cancel. The pre-CompleteJob flush now always
+  completes (18/18) in 0-16 ms instead of 312-625 ms, and the post-CompleteJob
+  `canceled` and `complete-job-returned` records are now published. 4/6 runs
+  are fully `drained`. In 2/6 runs only the final `finish` record (seq 20)
+  is missing: the data path writes `completion.json` (StorageFile) between
+  CompleteJob and `Finish`, which sealed the journal 62-125 ms after the
+  cancel; when the seal lands at cancel + 125 ms the teardown drain window
+  (anchored at the cancel tick) has already closed, so the decision freezes
+  at the seal tick as `deadline` with no I/O in flight. A follow-up would
+  anchor the teardown cut-off to the finalize deadline minus a receipt
+  reserve (for example cancel + 250 - 60 ms) instead of cancel + 125 ms.
+
 ## 006 (0.1.0.6) Windows-only build, package and sign
 
 Source `78b31901045ba5f8e6b5ec83f61e62beb4b4e359` (tree
