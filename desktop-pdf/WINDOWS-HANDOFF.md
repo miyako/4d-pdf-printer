@@ -1,5 +1,33 @@
 # Windows continuation checkpoint
 
+## 006 (0.1.0.6) Windows-only build, package and sign
+
+Source `78b31901045ba5f8e6b5ec83f61e62beb4b4e359` (tree
+`e50b81c6dcf58e7cc798deaad7f98b017fa314e3`): pre-CompleteJob journal flush
+and `post-complete-teardown` label, see README 0.1.0.6. Root
+`C:\Users\miyako\Desktop\version006-build-01`, each gate approved and run
+once, no retry. Route: Windows-only (no Mac-prepared handoff/bundle); fresh
+`git clone` of `miyako-desktop-pdf-006` from GitHub, detached at the commit,
+`GIT_*`/`PYTHON*`/`CMAKE_*`/MSBuild variables removed in the runner.
+
+- **Build** (`RunBuild006.ps1` `b6923978...8e3e`; `build.ps1 -Stage Build`
+  profile `isolated-journal-v3`): `build006.json` (`c60abc44...e680`) outcome
+  **`passed-scoped-build-only`**; contract and isolated-journal checks exit 0
+  with their success markers. Payload SHA256: IntegrationApp.exe
+  `32ba776a...9d68`, IntegrationTask.dll `99b69a01...4b9a`,
+  IntegrationHost.exe `1ffb7a47...f93d`, IntegrationClient.exe
+  `6cd79b56...cb9f`.
+- **Package + SignCopy** (`RunPackage006.ps1` `4aae3d14...fa9a`):
+  `package006.json` (`beecf2b4...7bc3`) outcome
+  **`packaged-and-signed-only`**. Unsigned `Package/DesktopPdfIntegration.msix`
+  625020 bytes `642ce865a4902aef44e621260ad40693cc5878c60d3b060b94fbbbc24378422a`;
+  signed `SignCopy/DesktopPdfIntegration-signed.msix` 628115 bytes
+  `659a5d87d90f5e26468ae8685f6460c9c0698243a92004b8c721154c25511a46`,
+  signature Valid, thumbprint `0C2B96E9...37BB` (expires 2026-11-28), no
+  timestamp.
+- Not yet: update 005 -> 006, silent print series. 006 behavior is unproven
+  on device until those run.
+
 ## Windows04 package, update and first 005 silent print
 
 All run from an ordinary user PowerShell 7.6.9 window under root
