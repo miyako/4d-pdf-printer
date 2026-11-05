@@ -1,5 +1,30 @@
 # Windows continuation checkpoint
 
+## 008 (0.1.0.8) receipt reserve: first build gate failed (test timing)
+
+Source `c687aabe6c7b06a418758cf73ade438fa6362865`: post-complete teardown
+drains until cancel + 190 ms (`TeardownDrainMs = CancelMs - ReceiptReserveMs`,
+reserve 60 ms) so the 007 runs 02/03 late seal (cancel + 62..125 ms) still
+publishes `finish`. Root `C:\Users\miyako\Desktop\version008-build-01`
+(retained, not reused).
+
+- **Build** (`RunBuild008.ps1` `495cc0a7...`): `build008.json` (`c6242bc2...`)
+  **`failed`**, `build.ps1` exit 1. Contract passed; the isolated-journal-v3
+  Native check failed `late-sealed teardown still writes the terminal receipt`
+  (stderr ends `journal terminal unavailable/deadline`, `journal drain
+  incomplete`). Stopped: nothing packaged, signed or installed; 0.1.0.7 stays
+  installed.
+- **Cause:** the new fixture used a real `Sleep(150)` after the cancel. On the
+  machine right after the build the sleep overshot past the whole cancel
+  budget, so neither `finish` nor the receipt could be issued. A test timing
+  defect, not device evidence. (A first backdated rewrite also failed: it
+  backdated only the applied tick, violating `entry.tick <= applied tick`.)
+- **Fix:** the fixture now backdates both the cancel entry stamp and the applied
+  tick by 130 ms, then seals immediately: deterministic seal past the old
+  125 ms window with the 120 ms receipt budget intact. Engine unchanged. Dev
+  validation: Native 5/5 consecutive passes, contract all modes, Python Source,
+  Journal, CompleteJob OK. The retry uses a fresh root.
+
 ## 007 (0.1.0.7) native journal records: build, package, update, print series
 
 Source `4b51b4a9496af4bd5fb82a9d5d8ff7e47e167f51` (tree

@@ -20,8 +20,11 @@ old `TeardownDrainMs = 125` bound and froze as `deadline` with no I/O in flight.
   other budgets are unchanged.
 - Tests:
   - A state test checks that a finish sealed 125 ms after teardown can still issue.
-  - A native fixture seals `Finish` 150 ms after a teardown cancel. It requires `drained`
-    with the `finish` record published.
+  - A native fixture publishes the queued records, applies a teardown cancel backdated by
+    130 ms, then seals `Finish`. It requires `drained` with the `finish` record published.
+    An earlier draft (`c687aab`) used a real 150 ms `Sleep`; it failed the official build
+    gate (`version008-build-01`) when background work stalled on the freshly built
+    machine.
 
 ## 0.1.0.7 (draft: native journal record writes and post-complete teardown drain)
 

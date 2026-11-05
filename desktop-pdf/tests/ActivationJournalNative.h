@@ -559,12 +559,16 @@ inline void NativeJournalChecks(FreshTrialRoot const* suite = nullptr) {
         trace->Add(Point::CompleteBefore);
         trace->Add(Point::CompleteReturned);
         trace->Add(Point::Canceled);
+        AwaitTest(trace->FlushBeforeComplete());
+        Require(trace->PreComplete().state == FlushState::Flushed, "late-seal fixture starts with an empty queue");
+        // Backdated cancel (entry and applied tick) instead of Sleep: the seal deterministically
+        // lands past the old 125 ms window while the receipt keeps its 120 ms budget.
         observation::Context cancellation;
         cancellation.entry = ObservationStamp();
+        cancellation.entry.tick -= 130;
         cancellation = trace->Observe().EnterCancel(cancellation);
-        auto tick = GetTickCount64();
+        auto tick = cancellation.entry.tick;
         trace->Cancel(tick, cancellation, true);
-        Sleep(150);
         AwaitTest(trace->Finish(Reason::PostCompleteTeardown, false));
         Require(io->reported, "late-sealed teardown still writes the terminal receipt");
         auto r = Parse(io->receipt, 4096);
