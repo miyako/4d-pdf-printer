@@ -34,14 +34,19 @@
   - No product acceptance criteria are defined. The runs are labelled
     `CAPTURED-FOR-REVIEW-NOT-PRODUCT-SUCCESS` by design.
   - The 008 work is merged into `miyako-desktop-pdf-integration` via PR #9
-    (merge commit `40e726d`). CI on `f8fc53a`: both own-code jobs (arm64, x64)
-    passed: source checks, compile, CTests and unsigned package. Both renderer
-    jobs fail at "Check portable Visual Studio selection".
-    `renderer/tests/Check-BuildSupport.ps1` expects an inline
-    `matrix.arch == 'arm64' && '2026' || '2022'` expression, but the workflow
-    uses `matrix.visualStudio`. That mismatch dates from `3fd6677`. The renderer
-    jobs had never run on integration before, because every integration run was
-    an own-code dispatch. It is unrelated to 006–008 and still to be fixed.
+    (merge commit `40e726d`).
+  - **CI is fully green.** PR #10 (`794dd9e`, merged as `a11594f`) passed
+    run `41977283630`: own-code x64/arm64 and renderer native x64/arm64,
+    including the renderer Prepare/Build/Test stages. This was the renderer's
+    first complete run on integration.
+    - Before the fix, the renderer jobs failed at "Check portable Visual
+      Studio selection". The pinned `renderer/tests/Check-BuildSupport.ps1`
+      (byte-exact to `8b34e56`) requires the inline
+      `matrix.arch == 'arm64' && '2026' || '2022'`, but the workflow passed
+      `matrix.visualStudio`.
+    - The fix changes that one workflow line; the values are unchanged.
+      `Source.py` pins the replacement against the integration baseline.
+      `renderer/` is untouched.
   - Signing for distribution: the test certificate expires 2026-11-28.
 - Sections from "Windows04 package, update and first 005 silent print"
   downward are the historical 004/005 record. Their "installed 004",
