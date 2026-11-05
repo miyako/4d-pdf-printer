@@ -37,6 +37,40 @@ def renamed(raw):
     return raw
 
 
+# The only sanctioned drift in the pinned worker sources: the Store release bundles the
+# renderer under <InstalledPath>\Runtime, used when no developer runtime.json override exists.
+BUNDLED_RUNTIME = {
+    "desktop-pdf/WorkerProcess.cpp": (
+        ("#include <winrt/Windows.Security.Cryptography.Core.h>\n",
+         "#include <winrt/Windows.Security.Cryptography.Core.h>\n#include <winrt/Windows.ApplicationModel.h>\n"),
+        ("Runtime InspectRuntime(fs::path const& root) {\n",
+         "Runtime InspectRuntime(fs::path const& root, bool bundled) {\n"),
+        ("    runtime.locks = SafeParents(root / L\"runtime-imports.json\", true);\n",
+         "    if (!bundled) runtime.locks = SafeParents(root / L\"runtime-imports.json\", true);\n"),
+        ("Runtime ConfiguredRuntime(StorageFolder const& root) {\n",
+         "Runtime BundledRuntime() {\n"
+         "    // The package install folder is OS-owned and read-only, so the profile-only SafeParents rule does not apply.\n"
+         "    return InspectRuntime(fs::path(std::wstring(Windows::ApplicationModel::Package::Current().InstalledPath()))"
+         " / L\"Runtime\", true);\n"
+         "}\n"
+         "Runtime ConfiguredRuntime(StorageFolder const& root) {\n"
+         "    if (!Exists(root, L\"runtime.json\").get()) return BundledRuntime();\n"),
+    ),
+    "desktop-pdf/WorkerProcess.h": (
+        ("Runtime InspectRuntime(fs::path const& root);\n",
+         "Runtime InspectRuntime(fs::path const& root, bool bundled = false);\nRuntime BundledRuntime();\n"),
+    ),
+}
+
+
+def bundled(path, raw):
+    for old, new in BUNDLED_RUNTIME.get(path, ()):
+        old, new = old.encode(), new.encode()
+        assert raw.count(old) == 1, (path, old)
+        raw = raw.replace(old, new, 1)
+    return raw
+
+
 class Source(unittest.TestCase):
     def test_scoped_build_profile_is_not_full_suite(self):
         helper = (ROOT / "desktop-pdf/build.ps1").read_text()
@@ -168,7 +202,7 @@ public:
                      "desktop-pdf/WorkerProcess.cpp", "desktop-pdf/WorkerProcess.h", "desktop-pdf/Job.h",
                      "printer/package/DiagnosticPdc.xml", "desktop-pdf/package/Strings/en-US/Resources.resw"):
             with self.subTest(path=path):
-                self.assertEqual((ROOT / path).read_bytes(), renamed(original(INTEGRATION_BASELINE, path)))
+                self.assertEqual((ROOT / path).read_bytes(), bundled(path, renamed(original(INTEGRATION_BASELINE, path))))
         helper = (ROOT / "desktop-pdf/HostArguments.h").read_text()
         self.assertIn('L"/InvokerPRAID: SaveAs --mode Silent --job "', helper)
         self.assertIn("return ParseActivation(raw.substr(owner.size()));", helper)

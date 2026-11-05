@@ -1,9 +1,37 @@
-# Desktop PDF integration: local source-review checkpoint
+# Desktop PDF integration: Generic Print to PDF
+
+A Windows 11 Print Support App that installs two virtual printers, **Generic Print to PDF**
+(Save As dialog) and **Generic Print to PDF (Silent)** (pre-registered destination, for
+automation such as 4D).
+
+- Users: [INSTALL.md](INSTALL.md) (Microsoft Store or sideload kit, `generic-pdf` command).
+- Maintainers: [STORE.md](STORE.md) (`release.ps1`: bundled renderer runtime, Store identity,
+  `.msixbundle`/`.msixupload`, signed sideload kit).
+- Device evidence and current state: [WINDOWS-HANDOFF.md](WINDOWS-HANDOFF.md).
+
+The sections below are the engineering record, newest first. 0.1.0.8 has since been built,
+signed, installed and verified on an ARM64 device (see the handoff); "draft" wording describes
+each version as it was at review time.
+
+## Release packaging (0.2.0.0 draft)
+
+- `release.ps1` repackages the unsigned `build.ps1` package for release; see STORE.md.
+  It does not rebuild any binary.
+- `WorkerProcess.cpp`: `ConfiguredRuntime` falls back to `BundledRuntime()`
+  (`<InstalledPath>\Runtime`) when LocalCache has no `runtime.json`. The bundled root is
+  checked with the same inventory, hash, receipt and architecture rules, except the
+  profile-only `SafeParents` rule (the install folder is OS-owned and read-only).
+  `runtime.json` remains a developer override. Source.py allows exactly this delta.
+- The release manifest adds the `Microsoft.VCLibs.140.00.UWPDesktop` dependency (renderer
+  DLLs need `vcruntime140`/`msvcp140`) and the `generic-pdf.exe` alias for the Client.
+- `tools/Install-Sideload.ps1`, `Install.cmd`, `Uninstall.ps1`: end-user sideload kit.
+- Not yet verified on a device: bundled-runtime prints without `runtime.json`, the alias,
+  VCLibs resolution in the worker process, and a 0.1.0.8 → 0.2.0.0 upgrade.
 
 ## 0.1.0.8 (draft: native completion.json publish so Finish seals right after CompleteJob)
 
-**0.1.0.8 is an unbuilt-for-release, unsigned, uninstalled source draft**, under the same
-gates as 0.1.0.7 below. The only behaviour change is how `completion.json` is written.
+**0.1.0.8 was, at review time, an unbuilt-for-release, unsigned, uninstalled source draft**,
+under the same gates as 0.1.0.7 below. The only behaviour change is how `completion.json` is written.
 
 Evidence basis: the 0.1.0.7 Windows silent print series (`WINDOWS-HANDOFF.md`). Native
 record writes worked on the device. The pre-CompleteJob flush completed 18/18 in 0–16 ms,
@@ -546,16 +574,20 @@ broader PrintTicket/layout/copies semantics are not claimed verified by this sli
 package without changing anything: package status `Ok`; exactly one queue per
 `desktop-pdf:silent` / `desktop-pdf:save-as` port; `V4_PDC_ChangeID` present in
 the queue's `PrinterDriverData` (the app PDC was applied); queue capabilities and
-default ticket equal the installed `Config\IntegrationPdc.xml`; and `runtime.json`
-exists with an existing root. It prints JSON and exits 0 (pass), 1 (a check
+default ticket equal the installed `Config\IntegrationPdc.xml`; and a renderer runtime
+exists: either a `runtime.json` override with an existing root, or the bundled
+`<InstallLocation>\Runtime` (`runtime-imports.json` and `pdf-render-worker.exe`). It prints
+JSON and exits 0 (pass), 1 (a check
 failed) or 2 (could not run). Run it after every install: Windows has been
 observed to create the Save As queue without applying the app PDC, leaving the
 class driver's stock capabilities (84 media sizes, 600 dpi). A remove and re-add of
 the package fixed that queue.
 
-A package remove/re-add also wipes `LocalCache`, including `runtime.json`; run
-`IntegrationClient.exe configure-runtime <root>` again before printing, or jobs
-fail at stage `runtime` with `0x80070002`.
+A package remove/re-add also wipes `LocalCache`, including `runtime.json`. Engineering
+packages (no bundled runtime) then need `IntegrationClient.exe configure-runtime <root>`
+again before printing, or jobs fail at stage `runtime` with `0x80070002`. Release packages
+fall back to the bundled runtime; `generic-pdf configure-runtime <root>` still installs an
+override.
 
 ## Source provenance and review evidence
 

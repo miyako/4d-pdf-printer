@@ -70,11 +70,15 @@ try {
     }
 
     $runtimePath = Join-Path $env:LOCALAPPDATA "Packages\$($package.PackageFamilyName)\LocalCache\DesktopPdf\runtime.json"
+    $bundledRoot = Join-Path $package.InstallLocation 'Runtime'
     if (Test-Path -LiteralPath $runtimePath) {
         $root = (Get-Content -LiteralPath $runtimePath -Raw | ConvertFrom-Json).root
-        Check 'runtime configured' ([bool]$root -and (Test-Path -LiteralPath $root)) "runtime.json root $root"
+        Check 'runtime configured' ([bool]$root -and (Test-Path -LiteralPath $root)) "runtime.json override root $root"
+    } elseif (Test-Path -LiteralPath (Join-Path $bundledRoot 'runtime-imports.json')) {
+        $worker = Test-Path -LiteralPath (Join-Path $bundledRoot 'pdf-render-worker.exe')
+        Check 'runtime configured' $worker "bundled runtime $bundledRoot"
     } else {
-        Check 'runtime configured' $false 'runtime.json absent; run IntegrationClient configure-runtime <root>'
+        Check 'runtime configured' $false 'no bundled Runtime folder and no runtime.json; run generic-pdf configure-runtime <root>'
     }
 } catch {
     [ordered]@{ ok = $false; error = $_.Exception.Message; checks = $checks } | ConvertTo-Json -Depth 4
