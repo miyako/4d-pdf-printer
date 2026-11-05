@@ -24,6 +24,19 @@ def original(ref, path):
     return subprocess.check_output(["git", "show", f"{ref}:{path}"], cwd=ROOT)
 
 
+# The only sanctioned drift from the pinned baselines' queue labels (post-0.1.0.8 rename).
+QUEUE_RENAMES = (("4D PDF Integration (Save As)", "Generic Print to PDF"),
+                 ("4D PDF Integration (Silent)", "Generic Print to PDF (Silent)"))
+
+
+def renamed(raw):
+    for old, new in QUEUE_RENAMES:
+        if isinstance(raw, bytes):
+            old, new = old.encode(), new.encode()
+        raw = raw.replace(old, new)
+    return raw
+
+
 class Source(unittest.TestCase):
     def test_scoped_build_profile_is_not_full_suite(self):
         helper = (ROOT / "desktop-pdf/build.ps1").read_text()
@@ -155,7 +168,7 @@ public:
                      "desktop-pdf/WorkerProcess.cpp", "desktop-pdf/WorkerProcess.h", "desktop-pdf/Job.h",
                      "printer/package/DiagnosticPdc.xml", "desktop-pdf/package/Strings/en-US/Resources.resw"):
             with self.subTest(path=path):
-                self.assertEqual((ROOT / path).read_bytes(), original(INTEGRATION_BASELINE, path))
+                self.assertEqual((ROOT / path).read_bytes(), renamed(original(INTEGRATION_BASELINE, path)))
         helper = (ROOT / "desktop-pdf/HostArguments.h").read_text()
         self.assertIn('L"/InvokerPRAID: SaveAs --mode Silent --job "', helper)
         self.assertIn("return ParseActivation(raw.substr(owner.size()));", helper)
@@ -175,7 +188,7 @@ public:
         prefix = prefix.replace(". (Join-Path $root 'BuildValidation.ps1')\n", "", 1)
         self.assertEqual(prefix, baseline_build.split("function Manifest(", 1)[0])
         self.assertEqual(build.split("function PackageEvidence(", 1)[1].split("\nFresh $OutputRoot", 1)[0],
-                         baseline_build.split("function PackageEvidence(", 1)[1].split("\nFresh $OutputRoot", 1)[0])
+                         renamed(baseline_build.split("function PackageEvidence(", 1)[1].split("\nFresh $OutputRoot", 1)[0]))
         self.assertIn("$receipt.app_ids = @('SaveAs', 'Client')", build)
         workflow = (ROOT / ".github/workflows/renderer-windows.yml").read_text()
         baseline_workflow = original(INTEGRATION_BASELINE, ".github/workflows/renderer-windows.yml").decode()
@@ -447,7 +460,7 @@ public:
         manifest_bytes = (ROOT / "desktop-pdf/package/AppxManifest.xml").read_bytes()
         self.assertEqual(manifest_bytes.count(b'Version="0.1.0.8"'), 1)
         self.assertEqual(manifest_bytes.replace(b'Version="0.1.0.8"', b'Version="0.1.0.2"', 1),
-                         original(JOURNAL_BASELINE, "desktop-pdf/package/AppxManifest.xml"))
+                         renamed(original(JOURNAL_BASELINE, "desktop-pdf/package/AppxManifest.xml")))
         helper_bytes = (ROOT / "desktop-pdf/build.ps1").read_bytes()
         self.assertEqual(helper_bytes.count(b"'0.1.0.8'"), 1)
         def manifest_guard(raw):
@@ -494,8 +507,8 @@ public:
     def test_labels_and_pdc_stage_wiring(self):
         resw = ET.parse(ROOT / "desktop-pdf/package/Strings/en-US/Resources.resw").getroot()
         self.assertEqual({item.attrib["name"]: item.findtext("value") for item in resw}, {
-            "SaveAsQueue": "4D PDF Integration (Save As)",
-            "SilentQueue": "4D PDF Integration (Silent)",
+            "SaveAsQueue": "Generic Print to PDF",
+            "SilentQueue": "Generic Print to PDF (Silent)",
         })
         cmake = (ROOT / "desktop-pdf/CMakeLists.txt").read_text()
         self.assertIn("DiagnosticPdc.xml", cmake)

@@ -292,8 +292,9 @@ services/session 0 or pre-login. No promise of smaller PDFs or fixes to upstream
 Windows/driver/app bugs.
 
 The separate candidate manifest defines `Miyako.DesktopPdfIntegration` 0.1.0.4, publisher
-`CN=DesktopPdfPrototypeDev`, and **4D PDF Integration (Save As)** /
-**4D PDF Integration (Silent)**. These are source definitions, not authorization
+`CN=DesktopPdfPrototypeDev`, and **Generic Print to PDF** (Save As) /
+**Generic Print to PDF (Silent)** (renamed from "4D PDF Integration (Save As)" /
+"4D PDF Integration (Silent)" after 0.1.0.8). These are source definitions, not authorization
 to register identity, trust a certificate, create queues or install anything.
 DesktopPdfPrototype0.2.1, diagnosticPsaFeasibility0.1.2, smoke0.1.2, the signed
 but uninstalled 0.2.2, all old worktrees and existing print artifacts stay frozen.

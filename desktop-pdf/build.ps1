@@ -113,7 +113,7 @@ function PackageEvidence([string]$Package, [string]$GeneratedPri) {
     Checked $makepri @('dump', '/if', $packagedPri, '/of', $dump)
     [xml]$resources = Get-Content -LiteralPath $dump -Raw
     if ($resources.PriInfo.ResourceMap.name -cne 'Miyako.DesktopPdfIntegration') { throw 'Wrong PRI identity.' }
-    foreach ($pair in @{ SaveAsQueue = '4D PDF Integration (Save As)'; SilentQueue = '4D PDF Integration (Silent)' }.GetEnumerator()) {
+    foreach ($pair in @{ SaveAsQueue = 'Generic Print to PDF'; SilentQueue = 'Generic Print to PDF (Silent)' }.GetEnumerator()) {
         $values = @($resources.SelectNodes("/PriInfo/ResourceMap/ResourceMapSubtree[@name='Resources']/NamedResource[@name='$($pair.Key)']/Candidate[@type='String']/Value"))
         if ($values.Count -ne 1 -or $values[0].InnerText -cne $pair.Value) { throw 'Wrong/ambiguous packaged queue label.' }
     }
