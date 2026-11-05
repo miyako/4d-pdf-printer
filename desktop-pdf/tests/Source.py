@@ -63,16 +63,16 @@ public:
             "diagnosticOverride ? diagnosticOverride : std::make_shared<activation::Trace>()",
             "std::make_shared<activation::Trace>()", 1)
         self.assertEqual(hashlib.sha256(old.encode()).hexdigest(),
-                         "7bd2d57610b90521234fd9ed8b2fba090a0364ebccf82052c2307f5da9d3f280")
+                         "82affff73b14e79f1a9d9e3c9f40be0ba25919b1de07ded72226c062af7a2d19")
         run = task.split("void Run(", 1)[1]
         self.assertLess(run.index("diagnostics = diagnosticOverride ?"), run.index("Point::RunEnter"))
         self.assertLess(run.index("Point::RunEnter"), run.index("task.GetDeferral()"))
         self.assertLess(run.index("task.GetDeferral()"), run.index("task.Canceled("))
         for path, digest in {
-            "ActivationDiagnostics.h": "be3f8d5b6232ac997b8b685d723b97fd600946a5952659612e73b39db97ab9b8",
+            "ActivationDiagnostics.h": "991cbd412b9e5c41bf4510c1133f9642edf5f1cdc93db48817591294c843f8c4",
             "ActivationObservations.h": "16c76b4c965387ba4ce9c73b2485dc2d1d35f6bcac68eab2a88589e143fb65b2",
-            "ObservationWire.h": "a74f2289d53bfab53400648a7d6fe500844b31a0ea8fe4f27dd3559dab9e1971",
-            "tools/journal.py": "5be357157707bc3e1795884b2aeef0d82f7ed9145a75d6843861647b0a403c0b",
+            "ObservationWire.h": "23b4daaa921de9ffe581c3d8f9cd2cf795c464aa457e93f9ea325b01172a67f5",
+            "tools/journal.py": "0348fc6c6acfe644d1d7854193f22bb2a1fe8daed9f3811f3bdcf17b9e4deb68",
         }.items():
             self.assertEqual(hashlib.sha256((ROOT / "desktop-pdf" / path).read_bytes()).hexdigest(), digest)
 
@@ -110,7 +110,9 @@ public:
         self.assertIn("task->diagnostics == injected", reentry)
         self.assertLess(reentry.index("task->diagnostics.reset()"), reentry.index("!weak.expired()"))
         self.assertLess(reentry.index("task = nullptr;"), reentry.index("ReleasedTest(weak)"))
-        self.assertIn("StorageFolder Cache() override { return root; }", journal)
+        self.assertEqual(journal.count("std::wstring Cache() override { return path; }"), 2)
+        for forbidden in ("StorageFolder", "StorageFile", "FileIO::", "IAsyncInfo"):
+            self.assertNotIn(forbidden, journal)
         report = journal.split("activation::ReportResult Report(", 1)[1].split("struct TestDeferral", 1)[0]
         self.assertIn("activation::NativeReportBackend backend(path, id);", report)
         self.assertNotIn("JournalIo::Report", report)
@@ -131,12 +133,22 @@ public:
         self.assertIn('stem == L"CON"', root)
         self.assertIn("TrialPathChecks()", root)
         journal = (ROOT / "desktop-pdf/tests/ActivationJournalNative.h").read_text()
-        self.assertEqual(journal.count("Confined(parent);"), 2)
-        self.assertEqual(journal.count("ConfinedFile(file);"), 2)
-        self.assertIn('Id(leaf.substr(8))', journal)
+        self.assertEqual(journal.count("= Confined(target);"), 2)
+        self.assertEqual(journal.count("= Confined(from);"), 1)
+        self.assertEqual(journal.count("= Confined(to);"), 1)
+        self.assertIn("Id(std::wstring_view(leaf).substr(8))", journal)
+        self.assertNotIn("std::wstring_view(Confined(", journal)
         self.assertIn('leaf.ends_with(L".json")', journal)
         self.assertIn("FreshTrialRoot existing(suite->path.wstring());", journal)
-        self.assertIn("io->Confined(StorageFolder::GetFolderFromPathAsync(suite->path.wstring()).get())", journal)
+        self.assertIn('io->Confined(suite->path.wstring() + L"\\\\DesktopPdf")', journal)
+        self.assertIn("parent.find(L\"\\\\..\") == std::wstring::npos", journal)
+        # 007: holding blocks the single native writer thread on a test-controlled event.
+        write = journal.split("void Write(handle file, std::string_view bytes) override {", 1)[1].split("void Rename(", 1)[0]
+        self.assertLess(write.index("SetEvent(entered.get());"), write.index("WaitTest(release.get(), 30000);"))
+        self.assertLess(write.index("WaitTest(release.get(), 30000);"), write.index("JournalIo::Write(std::move(file), bytes);"))
+        self.assertIn("SetEvent(writeExited.get())", write)
+        self.assertIn("Native journal timing: %u records published in %.3f ms (%.3f ms/record)", journal)
+        self.assertIn("fwprintf(stderr,", journal)
 
     def test_journal_preserves_routing_job_and_worker_sources(self):
         for path in ("printer/psa/App.cpp", "desktop-pdf/Client.cpp", "desktop-pdf/Contract.h",
@@ -170,10 +182,10 @@ public:
         fetch = f"git fetch --no-tags --depth=1 origin {DEPENDENCY} {PROOF} ae53b92a5e1f3fa442f41246079cde7e2f4afd47"
         self.assertEqual(baseline_workflow.count(fetch), 1)
         self.assertEqual(workflow, baseline_workflow.replace(
-            fetch, fetch + " " + INTEGRATION_BASELINE + " " + JOURNAL_BASELINE, 1))
+            fetch, fetch + " " + INTEGRATION_BASELINE + " " + JOURNAL_BASELINE + " " + OBSERVATION_BASELINE, 1))
         refs = re.search(r"git fetch --no-tags --depth=1 origin ([^\n]+)", workflow).group(1).split()
         self.assertEqual(refs, [DEPENDENCY, PROOF, "ae53b92a5e1f3fa442f41246079cde7e2f4afd47",
-                                INTEGRATION_BASELINE, JOURNAL_BASELINE])
+                                INTEGRATION_BASELINE, JOURNAL_BASELINE, OBSERVATION_BASELINE])
 
     def test_activation_diagnostics_are_separate_and_bounded(self):
         trace = (ROOT / "desktop-pdf/ActivationDiagnostics.h").read_text()
@@ -201,7 +213,8 @@ public:
         self.assertIn("Require(type == APTTYPE_MTA", trace)
         writer = trace.split("static fire_and_forget Drain(", 1)[1].split("\npublic:\n", 1)[0]
         self.assertLess(writer.index("co_await resume_background()"), writer.index("Apartment apartment"))
-        self.assertLess(writer.index("co_await resume_background()"), writer.index("co_await Initialize(self)"))
+        self.assertLess(writer.index("co_await resume_background()"), writer.index("if (self->folder.empty()) Initialize(self);"))
+        self.assertEqual(writer.split("static fire_and_forget WriteReceipt(", 1)[0].count("co_await"), 1)
         self.assertIn("if (self->state.stop || !self->state.journal.Pop(event))", writer)
         self.assertIn("self->state.Fail(static_cast<std::uint32_t>(hr.value))", writer)
         enqueue_failure = trace.split('Failure(L"activation diagnostics enqueue"', 1)[1]
@@ -271,6 +284,8 @@ public:
             "            if (diagnostics) diagnostics->Observe().CompleteReturn(completeOwned, {activation::ObservationStamp(), {}});\n",
             "            if (diagnostics) diagnostics->Observe().CompleteReturn(\n"
             "                completeOwned, {activation::ObservationStamp(), static_cast<std::uint32_t>(primary.value)});\n",
+            "            try { if (diagnostics) co_await diagnostics->FlushBeforeComplete(); }\n"
+            "            catch (...) { Failure(L\"journal pre-complete flush\", to_hresult()); }\n",
         ):
             self.assertEqual(observed_tail.count(addition), 1)
             observed_tail = observed_tail.replace(addition, "", 1)
@@ -278,9 +293,42 @@ public:
                                               "primary = to_hresult(); Trace(", 1)
         self.assertEqual(observed_tail,
                          baseline.split(tail, 1)[1].split("struct Factory", 1)[0].replace(
-                             "Finish(activation::Reason::Normal, true);", "Finish(activation::Reason::Normal, true, 4);", 1))
+                             "Finish(activation::Reason::Normal, true);", "Finish(activation::Reason::Normal, true, 4);", 1).replace(
+                             'co_await Publish(job, L"completion.json", completion);',
+                             'PublishNative(std::wstring(job.Path()), L"completion.json", completion);', 1))
+        # 008: completion.json is written synchronously (Win32) so Finish seals right after CompleteJob.
+        self.assertEqual(task.count("PublishNative("), 2)
+        self.assertNotIn('Publish(job, L"completion.json"', task)
+        native = task.split("inline void PublishNative(", 1)[1].split("\n}\n", 1)[0]
+        self.assertNotIn("co_await", native)
+        self.assertIn('io.Write(io.Create(pending), "\\xEF\\xBB\\xBF" + text);', native)
+        self.assertIn('io.Rename(pending, path + L"\\\\" + std::wstring(name));', native)
         self.assertIn("primary = to_hresult(); Trace(activation::Point::CompleteFailure, primary);", observed_tail)
         self.assertIn("Failure(stage.c_str(), primary);", task)
+        # 006: bounded journal flush strictly between CompleteBefore and CompleteJob entry.
+        data_tail = task.split(tail, 1)[1].split("struct Factory", 1)[0]
+        self.assertEqual(task.count("FlushBeforeComplete()"), 1)
+        self.assertLess(data_tail.index("Trace(activation::Point::CompleteBefore);"),
+                        data_tail.index("co_await diagnostics->FlushBeforeComplete();"))
+        self.assertLess(data_tail.index("co_await diagnostics->FlushBeforeComplete();"),
+                        data_tail.index("CompleteEnter("))
+        self.assertLess(data_tail.index("CompleteEnter("), data_tail.index("args.CompleteJob(status);"))
+        # 006: framework cancellation is post-complete teardown only after published CompleteJob entry.
+        canceled = task.split("auto token = task.Canceled(", 1)[1].split("bool installed;", 1)[0]
+        self.assertIn("teardown = context.origin == 0 && complete.entry.state == 2;", canceled)
+        self.assertLess(canceled.index("auto complete = observations.ReadComplete();"),
+                        canceled.index("teardown = context.origin == 0"))
+        self.assertLess(canceled.index("context = observations.EnterCancel(context);"),
+                        canceled.index("teardown = context.origin == 0"))
+        self.assertIn("auto chosen = teardown ? activation::Reason::PostCompleteTeardown : activation::Reason::Canceled;",
+                      canceled)
+        self.assertIn("self->ObserveCancellation(context, chosen);", canceled)
+        self.assertIn("self->Finish(chosen, false, 3);", canceled)
+        self.assertEqual(task.count("PostCompleteTeardown"), 2)
+        # 007: only post-complete teardown asks the journal to keep draining within the cancel budget.
+        self.assertEqual(task.count(
+            "diagnostics->Cancel(GetTickCount64(), context, reason == activation::Reason::PostCompleteTeardown);"), 1)
+        self.assertEqual(task.count("ObserveCancellation(context);"), 1)
         # The SDK COM header declares this export without noexcept; body/factory stay exact.
         unload = 'extern "C" HRESULT __stdcall DllCanUnloadNow()'
         baseline_factory = baseline.split("struct Factory", 1)[1]
@@ -292,20 +340,66 @@ public:
         backend = (ROOT / "desktop-pdf/ActivationJournalReport.h").read_text()
         self.assertIn("DrainMs = 1500, FinalizeMs = 2000, ReportMs = 500, CancelMs = 250", trace)
         self.assertIn("published = event.sequence", trace)
-        publish = trace.split("static IAsyncAction PublishEvent(", 1)[1].split("static fire_and_forget Drain(", 1)[0]
+        publish = trace.split("static void PublishEvent(", 1)[1].split("static fire_and_forget Drain(", 1)[0]
+        self.assertLess(publish.index("self->io->Create(staging)"), publish.index("self->io->Write(std::move(file), bytes)"))
+        self.assertLess(publish.index("self->io->Write(std::move(file), bytes)"), publish.index("self->io->Rename("))
         self.assertLess(publish.index("self->io->Rename("), publish.index("self->state.Published(event)"))
+        self.assertIn('auto bytes = "\\xEF\\xBB\\xBF" + to_string(record.Stringify());', publish)
+        self.assertIn('self->folder + L"\\\\" + std::to_wstring(event.sequence) + L".json"', publish)
+        self.assertIn("self->io->Folder(folder, false);", publish)
+        self.assertEqual(publish.count("self->io->Folder(root, true);"), 1)
+        self.assertEqual(publish.count("self->io->Folder(parent, true);"), 1)
+        # 007: per-record writes are synchronous native Win32 on the background writer; no WinRT storage.
+        io = trace.split("struct JournalIo {", 1)[1].split("\n};\n", 1)[0]
+        self.assertIn("CreateDirectoryFromAppW(path.c_str(), nullptr)", io)
+        self.assertIn("if (!openIfExists || error != ERROR_ALREADY_EXISTS)", io)
+        self.assertIn("CreateFile2FromAppW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, CREATE_NEW, &options)", io)
+        self.assertIn("FILE_FLAG_OPEN_REPARSE_POINT", io)
+        self.assertIn("WriteFile(file.get(), bytes.data()", io)
+        self.assertIn("if (count != bytes.size())", io)
+        self.assertIn("MoveFileFromAppW(from.c_str(), to.c_str())", io)
+        self.assertIn("return TerminalCachePath();", io)
+        for forbidden in ("FlushFileBuffers(", "MoveFileEx", "REPLACE_EXISTING", "DeleteFile", "co_await", "IAsync"):
+            self.assertNotIn(forbidden, io)
+        for forbidden in ("StorageFolder", "StorageFile", "FileIO::", "CreateFolderAsync", "CreateFileAsync",
+                          "RenameAsync", "WriteTextAsync", "IAsyncInfo", "IAsyncOperation", "CancelOperation",
+                          "CancelCurrent", "TrackedOperation", "Track(", "ApiEntry(", "cancelRequested"):
+            self.assertNotIn(forbidden, trace)
+        self.assertIn("inline constexpr std::uint64_t TeardownDrainMs = 125;", trace)
         self.assertIn("if (!failure) failure =", trace)
         self.assertIn("Require(!decision", trace)
         self.assertIn('{"deferral_release_observed", "false"}', trace)
-        self.assertIn('{"version", Number(version, 3)}', trace)
+        self.assertIn('{"version", Number(version, 5)}', trace)
+        self.assertIn('{"cancel_requested", "false"}', trace)
+        self.assertIn('if (version == 5) wire += std::string(",\\"cancellation_drain\\":")', trace)
+        self.assertIn("PreCompleteFlushMs = 500, PreCompleteSliceMs = 25;", trace)
+        self.assertIn("std::uint8_t version = 5) {", trace)
         self.assertIn("version == 2 ? 2300u : 3300u", trace)
         baseline = original(OBSERVATION_BASELINE, "desktop-pdf/ActivationDiagnostics.h").decode()
         state = trace.split("class PublicationState {", 1)[1].split("\ninline std::string ReceiptWire", 1)[0]
-        old_state = baseline.split("class PublicationState {", 1)[1].split("\n}\n\n#ifdef _WIN32", 1)[0]
-        self.assertEqual(state.replace("cancelRequested, deferral, {}", "cancelRequested, deferral"), old_state)
+        cancel = state.split("void Cancel(std::uint64_t tick, bool postComplete = false) noexcept {", 1)[1].split("\n    }\n", 1)[0]
+        self.assertIn("auto& cutoff = postComplete ? teardown : canceled;", cancel)
+        self.assertNotIn("stop", cancel)
+        self.assertIn("if (finalizing && (canceled || now >= DrainEnd(*finalizing))) stop = true;", state)
+        self.assertIn("return teardown ? (std::min)(end, *teardown + TeardownDrainMs) : end;", state)
+        self.assertIn("auto state = canceled ? DrainState::Canceled :", state)
+        self.assertIn("!canceled && teardown.has_value(), deferral", state)
         finish = trace.split("IAsyncAction Finish(", 1)[1]
         old_finish = baseline.split("IAsyncAction Finish(", 1)[1]
-        self.assertEqual(finish.split("CancelOperation();", 1)[1], old_finish.split("CancelOperation();", 1)[1])
+        for old, new in (
+            ("end = (std::min)(began + DrainMs, FinalizeDeadline(began, state.canceled));", "end = state.DrainEnd(began);"),
+            ("FinalizeDeadline(began, state.canceled), deferral);",
+             "FinalizeDeadline(began, state.Cutoff()), deferral);\n"
+             "                    decision.observations.first = firstApplied;\n"
+             "                    decision.observations.minimum = minimumApplied;\n"
+             "                    decision.flush = preComplete;"),
+            ("        CancelOperation();\n", ""),
+            ("(std::min)(reportEnd, FinalizeDeadline(began, state.canceled));",
+             "(std::min)(reportEnd, FinalizeDeadline(began, state.Cutoff()));"),
+        ):
+            self.assertEqual(old_finish.count(old), 1, old)
+            old_finish = old_finish.replace(old, new, 1)
+        self.assertEqual(finish, old_finish)
         self.assertIn("co_await resume_on_signal", trace)
         self.assertNotRegex(trace, r"\b(?:action|operation|launch)\.get\(")
         self.assertIn("CREATE_NEW", backend)
@@ -344,20 +438,20 @@ public:
 
     def test_distinct_identity_and_endpoints(self):
         manifest_bytes = (ROOT / "desktop-pdf/package/AppxManifest.xml").read_bytes()
-        self.assertEqual(manifest_bytes.count(b'Version="0.1.0.5"'), 1)
-        self.assertEqual(manifest_bytes.replace(b'Version="0.1.0.5"', b'Version="0.1.0.2"', 1),
+        self.assertEqual(manifest_bytes.count(b'Version="0.1.0.8"'), 1)
+        self.assertEqual(manifest_bytes.replace(b'Version="0.1.0.8"', b'Version="0.1.0.2"', 1),
                          original(JOURNAL_BASELINE, "desktop-pdf/package/AppxManifest.xml"))
         helper_bytes = (ROOT / "desktop-pdf/build.ps1").read_bytes()
-        self.assertEqual(helper_bytes.count(b"'0.1.0.5'"), 1)
+        self.assertEqual(helper_bytes.count(b"'0.1.0.8'"), 1)
         def manifest_guard(raw):
             return raw.split(b"function Manifest(", 1)[1].split(b"function PackageEvidence(", 1)[0]
-        self.assertEqual(manifest_guard(helper_bytes).replace(b"'0.1.0.5'", b"'0.1.0.2'", 1),
+        self.assertEqual(manifest_guard(helper_bytes).replace(b"'0.1.0.8'", b"'0.1.0.2'", 1),
                          manifest_guard(original(JOURNAL_BASELINE, "desktop-pdf/build.ps1")))
         package = ET.parse(ROOT / "desktop-pdf/package/AppxManifest.xml").getroot()
         identity = package.find("m:Identity", NS)
         self.assertEqual(identity.attrib["Name"], "Miyako.DesktopPdfIntegration")
         self.assertEqual(identity.attrib["Publisher"], "CN=DesktopPdfPrototypeDev")
-        self.assertEqual(identity.attrib["Version"], "0.1.0.5")
+        self.assertEqual(identity.attrib["Version"], "0.1.0.8")
         apps = {app.attrib["Id"]: app for app in package.findall("m:Applications/m:Application", NS)}
         self.assertEqual(len(package.findall("m:Applications/m:Application", NS)), 2)
         self.assertEqual(set(apps), {"SaveAs", "Client"})
@@ -453,7 +547,7 @@ public:
         host = (ROOT / "desktop-pdf/Host.cpp").read_text()
         self.assertLess(host.index("ConfiguredRuntime(root)"), host.index("Render(runtime,"))
         helper = (ROOT / "desktop-pdf/build.ps1").read_text()
-        self.assertIn("$identity.Version -cne '0.1.0.5'", helper)
+        self.assertIn("$identity.Version -cne '0.1.0.8'", helper)
         self.assertIn("'Build', 'Package', 'SignCopy'", helper)
         self.assertIn("No automatic fetch/install.", helper)
         for ref in (DEPENDENCY, PROOF):

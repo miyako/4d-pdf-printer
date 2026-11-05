@@ -1,6 +1,339 @@
 # Windows continuation checkpoint
 
+## Current state (read first)
+
+- **Installed:** `Miyako.DesktopPdfIntegration` 0.1.0.8 (source `dfc6d9e`,
+  branch `miyako-desktop-pdf-008`). It is signed with the test certificate
+  `0C2B96E9...37BB`, which **expires 2026-11-28**.
+- **Silent mode on the device:** 26/26 prints across the 008 series (6 + 20)
+  completed `succeeded`, each producing the identical 17670-byte PDF
+  `45572825...16c1`. The activation journal ended `drained` with `finish`
+  published every time. Under the 007 loss rate (2/6) the chance of 0/26
+  would be about 3e-5.
+- **Framework cancel reason 7 (SystemPolicy)** is the post-completion teardown.
+  It arrives during or after `CompleteJob(Succeeded)` and never interrupted
+  a print in 007/008. This answers the open 004 "cancellation/SystemPolicy
+  cause" question as observed, not as a documented contract.
+- **Save As mode on the device:** 1/1 print completed `succeeded`, with the
+  full ready/publish/result chain, the hash verified on the user-chosen target,
+  and the journal `drained`. See "Save As: first device lifecycle test". The
+  Save As queue defaults to 600 dpi and the silent queue to 300 dpi, so the
+  probe PDFs differ in geometry.
+- **Still open:**
+  - Save As has a single run only. Cancel-in-dialog and replace-existing
+    paths are untested.
+  - No product acceptance criteria are defined. The runs are labelled
+    `CAPTURED-FOR-REVIEW-NOT-PRODUCT-SUCCESS` by design.
+  - The 008 branch is not merged into `miyako-desktop-pdf-integration`.
+  - Signing for distribution: the test certificate expires 2026-11-28.
+- Sections from "Windows04 package, update and first 005 silent print"
+  downward are the historical 004/005 record. Their "installed 004",
+  "no accepted 005 result" and "next step" statements are superseded.
+
+## 008 (0.1.0.8): native completion.json, 6/6 prints drained
+
+After two failed build gates (attempts 1 and 2 below), attempt 3 at
+`dfc6d9e` passed build, package+sign, update 0.1.0.7 -> 0.1.0.8 and the
+6-print silent series. All six journals are `drained` with `finish` published.
+
+### Attempt 1: receipt reserve, `c687aab`
+
+Source `c687aabe6c7b06a418758cf73ade438fa6362865`: post-complete teardown
+drains until cancel + 190 ms (`TeardownDrainMs = CancelMs - ReceiptReserveMs`,
+reserve 60 ms) so the 007 runs 02/03 late seal (cancel + 62..125 ms) still
+publishes `finish`. Root `C:\Users\miyako\Desktop\version008-build-01`
+(retained, not reused).
+
+- **Build** (`RunBuild008.ps1` `495cc0a7...`): `build008.json` (`c6242bc2...`)
+  **`failed`**, `build.ps1` exit 1. Contract passed; the isolated-journal-v3
+  Native check failed `late-sealed teardown still writes the terminal receipt`
+  (stderr ends `journal terminal unavailable/deadline`, `journal drain
+  incomplete`). Stopped: nothing packaged, signed or installed; 0.1.0.7 stays
+  installed.
+- **Cause:** the new fixture used a real `Sleep(150)` after the cancel. On the
+  machine right after the build the sleep overshot past the whole cancel
+  budget, so neither `finish` nor the receipt could be issued. A test timing
+  defect, not device evidence. (A first backdated rewrite also failed: it
+  backdated only the applied tick, violating `entry.tick <= applied tick`.)
+- **Fix:** the fixture now backdates both the cancel entry stamp and the applied
+  tick by 130 ms, then seals immediately: deterministic seal past the old
+  125 ms window with the 120 ms receipt budget intact. Engine unchanged. Dev
+  validation: Native 5/5 consecutive passes, contract all modes, Python Source,
+  Journal, CompleteJob OK.
+
+### Attempt 2: deterministic fixture, `283f84d`
+
+Source `283f84dc53087090cb7e3780843337546daf103f` (tree `c6b88446...`), root
+`C:\Users\miyako\Desktop\version008-build-02` (retained, not reused); the
+cycle was approved as a whole, stop-at-first-failure.
+
+- **Build** (`RunBuild008.ps1`, only the commit substituted): `build008.json`
+  **`failed`**. The late-seal fixture passed. The 007 held-teardown fixture
+  failed: `held teardown drain still leaves budget for the terminal receipt`
+  (stderr `journal terminal unavailable/deadline`). Records took
+  10.3 ms each, twice the dev rate. With the writer held, the drain ran to
+  cancel + 190 ms and the receipt did not finish in the remaining 60 ms; no
+  terminal file exists in the retained case. Stopped: nothing packaged,
+  signed or installed; 0.1.0.7 stays installed.
+- **Conclusion:** the 250 ms cancel budget cannot cover a 62–125 ms seal
+  delay plus the `finish` write plus the receipt under load. Moving the split
+  point only moves the loss. The user chose the root-cause fix: remove the
+  seal delay.
+
+### Attempt 3: native completion.json, `dfc6d9e`
+
+- `completion.json` is written synchronously by `PublishNative` (`Task.cpp`)
+  through the journal's Win32 `JournalIo` Create/Write/Rename, with the same
+  bytes (BOM + compact JSON, checked equal to the StorageFile output in dev),
+  pending-then-rename and fail-if-exists. `Finish` now seals about 1 ms after
+  CompleteJob returns, instead of after the 62–125 ms StorageFile publish.
+- `ActivationDiagnostics.h` and `tests/ActivationJournal.h` are restored
+  byte-identical to 007 (125/125 split); the attempt 1/2 tests are removed.
+  A new native fixture covers the `completion.json` bytes, read-back and
+  collision.
+- Dev measurement (isolated test root): native publish 0.6–1.8 ms; StorageFile
+  publish 105–502 ms. Dev validation: Native 8/8 consecutive passes, contract
+  all modes, Python Source 14, Journal 15, CompleteJob 8 OK.
+
+Source `dfc6d9eed7071b5bc24acb0d2ac47eab547dd776` (tree
+`566da32b3cfa801f31c36e9ee233cc3bad04567c`), root
+`C:\Users\miyako\Desktop\version008-build-03`. The whole cycle was approved at
+once; each gate ran once, stop-at-first-failure, no retry or kill. Scripts are
+the build-02 / 007 scripts with commit, root, versions and hashes substituted.
+
+- **Build** (`RunBuild008.ps1` `0ca263ce...e6ae`): `build008.json`
+  (`cfa5b0a1...f6b7`) **`passed-scoped-build-only`**, including the
+  isolated-journal-v3 Native check. Payload SHA256:
+  IntegrationApp.exe `2a6e3408...c47f`, IntegrationTask.dll `c72fdbdc...388c`,
+  IntegrationHost.exe `b6eabe0c...1df4`, IntegrationClient.exe
+  `969a6ac6...8c2f`.
+- **Package + SignCopy** (`RunPackage008.ps1` `5511d40f...d469`):
+  `package008.json` (`6a585e75...cb3a`) **`packaged-and-signed-only`**.
+  Unsigned 621455 bytes
+  `d5bbfacc02a40aeb3249afd7104a1c0e467761423b5d2586ebf06ea6586aece0`; signed
+  624553 bytes
+  `4b75a845ea21e8b7e8ce9df95cf393a8fc7cfdcdfc8fbbf74976e242a2d601bb`,
+  signature Valid, thumbprint `0C2B96E9...37BB` (expires 2026-11-28).
+- **Update 007 -> 008** (`RunUpdate008.ps1` `737087ec...fb13`, one
+  `Add-AppxPackage` 01:10:04Z-01:10:07Z): `Update/result.json`
+  (`bbd5cedf...856b`) **`verified-update-only`**. 633/633 package data files
+  unchanged, queues unchanged, installed payload matches the build.
+- **Silent print series** (`RunSilentPrintRun008.ps1` `69c161a5...5b99`,
+  `RunSilentPrintSeries008.ps1` `d51a2c84...2eca`):
+  `SilentPrintSeries/series.json` (`1e5c5dfb...67a5`). All 6
+  `CAPTURED-FOR-REVIEW-NOT-PRODUCT-SUCCESS`, completion `succeeded`, PDFs
+  17670 bytes SHA256 `45572825...16c1` (identical to 005/006/007). Queues
+  empty.
+
+  | run | finalize_reason | drain | cancellation_drain | accepted | last pub = finish | rejected after seal | flush ms | return-to-seal ms | seal minus cancel ms |
+  |---|---|---|---|---|---|---|---|---|---|
+  | 01 | post-complete-teardown | drained | continued | 21 | 20 | 0 | 16 | 47 | 0 |
+  | 02 | post-complete-teardown | drained | continued | 21 | 20 | 0 | 0 | 32 | 32 |
+  | 03 | normal | drained | continued | 20 | 19 | 1 | 16 | 15 | 0 |
+  | 04 | normal | drained | continued | 20 | 19 | 1 | 16 | 16 | 0 |
+  | 05 | normal | drained | none | 20 | 19 | 0 | 16 | 0 | (no cancel) |
+  | 06 | normal | drained | continued | 20 | 19 | 1 | 16 | 16 | -15 |
+
+  All: flush 18/18 `flushed`, `CompleteJob(Succeeded)` returned without
+  error, framework cancel reason 7 where present, terminal receipt v5
+  present with no in-flight I/O and no failure. Every
+  `completion.json` is BOM + compact JSON with `outcome` `succeeded`, and the
+  client read it (the series completion column). Tick resolution is about
+  15.6 ms.
+
+  **Interpretation.** Publishing `completion.json` natively removes the
+  62–125 ms StorageFile delay between CompleteJob and `Finish`. The seal now
+  lands 0–47 ms after CompleteJob returns, at or before the teardown cancel
+  (007: 62–125 ms after it). In 4/6 runs the seal won the race against the
+  cancel (`normal`). The late cancel is rejected after seal (03/04/06) or
+  never arrives (05), so `finish` is seq 19 there. In 2/6 the cancel came
+  first and the teardown drain published every record, including `finish`
+  (seq 20). There are no `deadline` outcomes and no lost records, against 2/6
+  in 007. 0.1.0.8 is installed.
+
+### Confirmation series: 20 more prints on installed 0.1.0.8
+
+Root `C:\Users\miyako\Desktop\version008-series-20`. The runner and series
+scripts are the build-03 copies with only the root and the run list
+(01..20) changed: `RunSilentPrintRun008.ps1` `1c2dc9b9...36b2`,
+`RunSilentPrintSeries008.ps1` `53a0269b...7410`. Runs took
+01:41:37Z-01:47:12Z; there was no stop, retry or kill.
+`SilentPrintSeries/series.json` is `63310620...178f`.
+
+- 20/20 `CAPTURED-FOR-REVIEW-NOT-PRODUCT-SUCCESS`, completion `succeeded`,
+  PDFs 17670 bytes, all `45572825...16c1`, queues empty.
+- 20/20 journals `drained`. In each, the last record is `finish` and
+  `finish_sequence = last_published_sequence = record count - 1`, with no
+  `first_failure`, no in-flight I/O and no admission loss. Flush was 18/18
+  `flushed` every time.
+- Finalize reason: 13 `post-complete-teardown` (21 records) and 7 `normal`
+  (20 records).
+- Ordering: 11 cancel after CompleteJob returned, 7 cancel during
+  CompleteJob, 2 no framework cancel. The cancel reason was always 7.
+- CompleteJob return to seal: 0–47 ms. Seal minus cancel: −31 to +63 ms. That
+  is inside the 125 ms teardown window in every case.
+
+### Save As: first device lifecycle test on installed 0.1.0.8
+
+Root `C:\Users\miyako\Desktop\version008-saveas-01`. The runner is
+`RunSaveAsPrint008.ps1` `0086655d...6f71`, derived from the silent runner.
+It sends one PrintProbe `--interactive` job (no `--output`) to
+`4D PDF Integration (Save As)`, finds the single new job folder, and waits for
+its `completion.json`. A person answered the Windows Save dialog. The run took
+02:51:24Z-02:51:53Z, with no stop, retry or kill.
+`SaveAsPrint01/result.json` is `6e6c377b...0094`.
+
+- The Save dialog blocked inside `StartDoc` for about 17.7 s. After that
+  `StartDoc` returned spooler job 73.
+- The chosen target was `C:\Users\miyako\Desktop\test\test-pdf-1105-1.pdf`,
+  not the suggested path. `request.json` records it as `destination`.
+- The job folder shows the full chain: `request` -> `worker` `validated`
+  (exit 0) -> `ready` -> `publish-intent` -> `publication` -> `result`
+  `published`/`complete` -> `completion` `succeeded` (`interactive
+  transaction`, hresult 0). These four records all carry 17647 bytes and
+  `c08cea3e...334d`: `ready`, `publish-intent`, `publication` and `result`.
+  The file on disk matches.
+- Completion was first seen 20.6 s after start; the human dialog time is
+  included. Host process lifetime was about 1.5 s. The queue was empty and no
+  package process was left afterwards.
+- The journal `8857cf4c...ed33` is `drained` with finalize reason `normal` and
+  `finish_sequence = last_published_sequence = 16` (17 records). It has no
+  `first_failure` and no admission loss. Flush was 15/15 `flushed`.
+- **The PDF differs from the silent PDF by design of the queue, not by
+  product.** Decompressed, the text, producer and fixed dates are identical.
+  Only the geometry differs. The probe draws in device units: `TextOut` at
+  120,120 and `Rectangle` at 120,220-1000,1000. The silent queue's default
+  ticket is `PageResolution=Dpi300`, giving a 28.8 pt margin and MediaBox
+  595.2. The Save As queue's default is `ResOption1`, which is 600 dpi on this
+  evidence: 14.4 pt margin, half-size box, and MediaBox 595.32 (4961 px).
+  Whether the two queues should share a default resolution is a configuration
+  question.
+- The transcript shows `Get-WinEvent` "no matching events" errors. The runner
+  caught them (`errors: []`), and they did not affect the job.
+
+## 007 (0.1.0.7) native journal records: build, package, update, print series
+
+Source `4b51b4a9496af4bd5fb82a9d5d8ff7e47e167f51` (tree
+`28a7d5e87cc571fbe86be1fc449678901c544095`): native Win32 per-record journal
+writes, post-complete teardown keeps draining (bounded to teardown + 125 ms),
+terminal v5 `cancellation_drain`; see README 0.1.0.7. Root
+`C:\Users\miyako\Desktop\version007-build-01`, the whole cycle approved at
+once, each gate run once, stop-at-first-failure, no retry/kill. Same route and
+scripts as 006 (text-substituted commit/branch/root/versions/hashes).
+
+- **Build** (`RunBuild007.ps1` `3cec0d64...ecbe2`): `build007.json`
+  (`8a8f2608...7e143fc`) **`passed-scoped-build-only`**. Payload SHA256:
+  IntegrationApp.exe `6b620bbb...2a61`, IntegrationTask.dll `bf4460b2...c244`,
+  IntegrationHost.exe `c8a2c6b8...30af`, IntegrationClient.exe
+  `53b3bffa...cb05`.
+- **Package + SignCopy** (`RunPackage007.ps1` `f78e5636...7e71`):
+  `package007.json` (`dd02d357...c5`) **`packaged-and-signed-only`**.
+  Unsigned 620192 bytes `c4df50a161328be9ffb057cf74fbcb82b630b9e9fb34405706df52e8520f3e53`;
+  signed 623294 bytes
+  `3551759aaa3a31c3a97e98a556ce2b7f1817efa58b36c82504915e37a7c23a3d`,
+  signature Valid, thumbprint `0C2B96E9...37BB` (expires 2026-11-28).
+- **Update 006 -> 007** (`RunUpdate007.ps1` `d6db77fa...a10`, one
+  `Add-AppxPackage` 22:26:41Z-22:26:44Z): `Update/result.json`
+  (`3a3a6721...2ad6`) **`verified-update-only`**; 449/449 package data files
+  unchanged, queues unchanged, installed payload matches the build.
+- **Silent print series** (`RunSilentPrintRun007.ps1` `0559ee88...bcd4e`,
+  `RunSilentPrintSeries007.ps1` `3a6a826d...2de`; v5 `cancellation_drain` and
+  cancel-minus-entry columns added): `SilentPrintSeries/series.json`
+  (`30df37dd...8077`). All 6 `CAPTURED-FOR-REVIEW-NOT-PRODUCT-SUCCESS`,
+  completion `succeeded`, PDFs 17670 bytes SHA256 `45572825...16c1` (identical
+  to 005/006), queue empty after each run.
+
+  | run | drain | cancellation_drain | accepted | last pub | flush target/pub | flush ms | cancel-entry ms | cancel-to-seal ms |
+  |---|---|---|---|---|---|---|---|---|
+  | 01 | drained | continued | 21 | 20 | 18/18 | 16 | 15 | 79 |
+  | 02 | deadline | continued | 21 | 19 | 18/18 | 0 | 281 | 125 |
+  | 03 | deadline | continued | 21 | 19 | 18/18 | 15 | 47 | 125 |
+  | 04 | drained | continued | 21 | 20 | 18/18 | 16 | 16 | 62 |
+  | 05 | drained | continued | 21 | 20 | 18/18 | 16 | 0 | 78 |
+  | 06 | drained | continued | 21 | 20 | 18/18 | 15 | 16 | 62 |
+
+  All: `finalize_reason` `post-complete-teardown`, framework cancel reason 7,
+  flush state `flushed`, `CompleteJob(Succeeded)` returned without error.
+  Tick resolution is about 15.6 ms.
+
+  **Interpretation.** Native record writes work in the real background task,
+  including after the teardown cancel. The pre-CompleteJob flush now always
+  completes (18/18) in 0-16 ms instead of 312-625 ms, and the post-CompleteJob
+  `canceled` and `complete-job-returned` records are now published. 4/6 runs
+  are fully `drained`. In 2/6 runs only the final `finish` record (seq 20)
+  is missing: the data path writes `completion.json` (StorageFile) between
+  CompleteJob and `Finish`, which sealed the journal 62-125 ms after the
+  cancel; when the seal lands at cancel + 125 ms the teardown drain window
+  (anchored at the cancel tick) has already closed, so the decision freezes
+  at the seal tick as `deadline` with no I/O in flight. A follow-up would
+  anchor the teardown cut-off to the finalize deadline minus a receipt
+  reserve (for example cancel + 250 - 60 ms) instead of cancel + 125 ms.
+
+## 006 (0.1.0.6) Windows-only build, package and sign
+
+Source `78b31901045ba5f8e6b5ec83f61e62beb4b4e359` (tree
+`e50b81c6dcf58e7cc798deaad7f98b017fa314e3`): pre-CompleteJob journal flush
+and `post-complete-teardown` label, see README 0.1.0.6. Root
+`C:\Users\miyako\Desktop\version006-build-01`, each gate approved and run
+once, no retry. Route: Windows-only (no Mac-prepared handoff/bundle); fresh
+`git clone` of `miyako-desktop-pdf-006` from GitHub, detached at the commit,
+`GIT_*`/`PYTHON*`/`CMAKE_*`/MSBuild variables removed in the runner.
+
+- **Build** (`RunBuild006.ps1` `b6923978...8e3e`; `build.ps1 -Stage Build`
+  profile `isolated-journal-v3`): `build006.json` (`c60abc44...e680`) outcome
+  **`passed-scoped-build-only`**; contract and isolated-journal checks exit 0
+  with their success markers. Payload SHA256: IntegrationApp.exe
+  `32ba776a...9d68`, IntegrationTask.dll `99b69a01...4b9a`,
+  IntegrationHost.exe `1ffb7a47...f93d`, IntegrationClient.exe
+  `6cd79b56...cb9f`.
+- **Package + SignCopy** (`RunPackage006.ps1` `4aae3d14...fa9a`):
+  `package006.json` (`beecf2b4...7bc3`) outcome
+  **`packaged-and-signed-only`**. Unsigned `Package/DesktopPdfIntegration.msix`
+  625020 bytes `642ce865a4902aef44e621260ad40693cc5878c60d3b060b94fbbbc24378422a`;
+  signed `SignCopy/DesktopPdfIntegration-signed.msix` 628115 bytes
+  `659a5d87d90f5e26468ae8685f6460c9c0698243a92004b8c721154c25511a46`,
+  signature Valid, thumbprint `0C2B96E9...37BB` (expires 2026-11-28), no
+  timestamp.
+- **Update 005 -> 006** (`RunUpdate006.ps1`, 005 `RunUpdate.ps1` with
+  versions/root/hashes substituted; one `Add-AppxPackage`,
+  21:15:53Z-21:15:58Z): `Update/result.json` outcome
+  **`verified-update-only`**; 284/284 package data files unchanged (no
+  removed/added/changed), queues unchanged, 0 jobs, 0 package processes,
+  installed payload matches the 006 build hashes above.
+- **Silent print series** (`RunSilentPrintRun006.ps1` `00401807...773c`,
+  `RunSilentPrintSeries006.ps1` `af9a4d33...08a1`; 005 scripts with
+  root/version/payload substituted and v4 flush columns added; runs 01-06
+  sequential, passive observation, no retry/kill): `SilentPrintSeries/series.json`
+  (`17cc06cd...3c11`). All 6 `CAPTURED-FOR-REVIEW-NOT-PRODUCT-SUCCESS`,
+  completion `succeeded`, PDFs 17670 bytes, all SHA256 `45572825...16c1`
+  (identical to 005), queue empty after each run.
+
+  | run | finalize_reason | drain | accepted | last pub | flush | target/pub | flush ms | cancel-CompleteJob entry ms |
+  |---|---|---|---|---|---|---|---|---|
+  | 01 | post-complete-teardown | canceled | 21 | 14 | deadline | 18/14 | 515 | 32 |
+  | 02 | post-complete-teardown | canceled | 21 | 13 | deadline | 18/13 | 625 | 47 |
+  | 03 | post-complete-teardown | canceled | 21 | 16 | deadline | 18/16 | 515 | 31 |
+  | 04 | post-complete-teardown | canceled | 21 | 17 | flushed | 18/18 | 312 | 32 |
+  | 05 | post-complete-teardown | canceled | 21 | 15 | deadline | 18/16 | 500 | 0 |
+  | 06 | post-complete-teardown | canceled | 21 | 18 | flushed | 18/18 | 407 | 0 |
+
+  All: framework cancel reason 7 (SystemPolicy), `CompleteJob(Succeeded)`
+  returned without error, ordering `cancel-after-CompleteJob-returned`.
+
+  **Interpretation.** Fix B is confirmed on device: every post-CompleteJob
+  SystemPolicy cancel is now labelled `post-complete-teardown`, never
+  `canceled`. Fix A is only partial: the journal writer publishes too slowly
+  (about 30 ms per record via StorageFile create/write/rename), so the
+  pre-CompleteJob backlog of 18 records reached the 500 ms budget in 4/6 runs
+  and the flush delayed CompleteJob by 312-625 ms (625 > budget: wait-slice and
+  scheduling overshoot). Records after CompleteJob are still always lost
+  because the teardown cancel follows within 0-47 ms. Print output is
+  unaffected. A future change would need cheaper journal writes (fewer files /
+  batching) rather than a longer pre-CompleteJob wait.
+
 ## Windows04 package, update and first 005 silent print
+
+> Historical (004/005 era). Superseded by "Current state" at the top.
 
 All run from an ordinary user PowerShell 7.6.9 window under root
 `C:\Users\miyako\Desktop\version005-native-scoped-build-04`, each gate
@@ -234,6 +567,10 @@ Historical returned Windows evidence is archived under
 `/Users/miyako/Documents/4d-pdf-printer-archive/2026-11-04-desktop-cleanup/`,
 including `CompileOnlyResults`, `ContractRunResults`, `IsolatedNativeResults02`;
 `archive-manifest.json` maps former Desktop paths. Do not repair/rerun old scripts.
+
+The paragraph below is as written before Windows04 and is superseded by
+"Current state" at the top: 0.1.0.8 is installed, and 005–008 have accepted
+build, package, update and Silent print evidence. Save As remains untested.
 
 Installed 004 is unchanged. Its cancellation/SystemPolicy cause remains unknown.
 V3 observations are race-honest/non-atomic boundary samples, not causal proof;

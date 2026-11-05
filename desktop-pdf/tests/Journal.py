@@ -62,7 +62,145 @@ def canceled():
     return t
 
 
+def teardown():
+    """Terminal v4: framework cancel sampled after CompleteJob entry, after a pre-complete flush."""
+    t = canceled()
+    f = [77, 9, 5, False, 2, 5, True]
+    t.update(version=4, finalize_reason="post-complete-teardown")
+    o = t["observations"]
+    o.update(v=3, r=[2, [0, True, 70, 9, 75, 5]], w=[[2, [3, True, f]], [2, [80, 9]], [2, [90, 5]]])
+    o["f"][3] = [2, False, f]
+    entry = [2, False, [65, 9, 0]]
+    o["j"] = [[entry, [0, None]], [2, [[70, 9], [71, 9], [entry, [0, None]]]]]
+    t["pre_complete_flush"] = dict(state="flushed", target_count=18, published_count=18,
+                                   begin_tick_ms=60, end_tick_ms=64)
+    return t
+
+
+def teardown_v5(drain="drained"):
+    """Terminal v5: post-complete teardown applied, but the native writer kept draining."""
+    t = teardown()
+    t.update(version=5, drain_state=drain, cancellation_drain="continued")
+    t["observations"]["v"] = 4
+    return t
+
+
+def unattempted():
+    return dict(state="not-attempted", target_count=None, published_count=None, begin_tick_ms=None, end_tick_ms=None)
+
+
 class Consumer(unittest.TestCase):
+    def test_v4_post_complete_teardown_and_pre_complete_flush(self):
+        t = teardown()
+        self.assertEqual(journal.general_v4(wire(t), A)["finalize_reason"], "post-complete-teardown")
+        result = journal.assess(wire(t), A, expected_version=4)
+        self.assertEqual(result["receipt_shape"], "valid-v4")
+        self.assertEqual(result["question"], "first-min-framework-recorded")
+        self.assertEqual(result["pre_complete_flush"]["state"], "flushed")
+        self.assertEqual(result["complete_job"]["snapshot_phase"], "entry-recorded-return-unobserved")
+        self.assertEqual(journal.assess(wire(t), A, expected_version=3)["receipt_shape"], "unexpected-version")
+        c = canceled()
+        c["version"] = 4
+        c["observations"]["v"] = 3
+        c["observations"]["j"] = [[[0, False, None], [0, None]], [2, [[70, 9], [70, 9], [[0, False, None], [0, None]]]]]
+        c["pre_complete_flush"] = dict(state="not-attempted", target_count=None, published_count=None,
+                                       begin_tick_ms=None, end_tick_ms=None)
+        self.assertEqual(journal.general_v4(wire(c), A)["finalize_reason"], "canceled")
+        progress = teardown()
+        progress["pre_complete_flush"].update(state="in-progress", published_count=None, end_tick_ms=None)
+        journal.general_v4(wire(progress), A)
+        legacy = teardown()
+        legacy.update(version=3)
+        legacy["observations"]["v"] = 2
+        del legacy["pre_complete_flush"]
+        with self.assertRaises(ValueError):
+            journal.general_v3(wire(legacy), A)
+        mutations = (
+            lambda v: v.pop("pre_complete_flush"),
+            lambda v: v["pre_complete_flush"].update(published_count=17),
+            lambda v: v["pre_complete_flush"].update(end_tick_ms=111),
+            lambda v: v["pre_complete_flush"].update(begin_tick_ms=65),
+            lambda v: v["pre_complete_flush"].update(target_count=21),
+            lambda v: v["pre_complete_flush"].update(published_count=21),
+            lambda v: v["pre_complete_flush"].update(state="unknown"),
+            lambda v: v["pre_complete_flush"].update(state="not-attempted"),
+            lambda v: v["pre_complete_flush"].update(state="in-progress"),
+            lambda v: v.update(pre_complete_flush=dict(reversed(list(v["pre_complete_flush"].items())))),
+            lambda v: v["observations"].update(v=2),
+            lambda v: v["observations"]["r"][1].__setitem__(0, 1),
+            lambda v: v["observations"]["f"].__setitem__(2, [2, False, [77, 9, 5, False, 2, 5, False]]),
+            lambda v: v["observations"]["w"][2].__setitem__(1, [90, 6]),
+            lambda v: v.update(finalize_reason="canceled"),
+        )
+        for index, mutate in enumerate(mutations):
+            v = teardown()
+            mutate(v)
+            with self.subTest(index=index), self.assertRaises(ValueError):
+                journal.general_v4(wire(v), A)
+
+    def test_v5_cancellation_drain(self):
+        t = teardown_v5()
+        self.assertEqual(journal.general_v5(wire(t), A)["drain_state"], "drained")
+        result = journal.assess(wire(t), A, expected_version=5)
+        self.assertEqual(result["receipt_shape"], "valid-v5")
+        self.assertEqual(result["cancellation_drain"], "continued")
+        self.assertEqual(result["question"], "first-min-framework-recorded")
+        self.assertEqual(result["pre_complete_flush"]["state"], "flushed")
+        self.assertEqual(result["sample_flags"], 256)  # CompleteJob entry sampled without its return, as in v4.
+        self.assertEqual(journal.assess(wire(t), A, expected_version=4)["receipt_shape"], "unexpected-version")
+        for drain in ("deadline", "failed"):
+            journal.general_v5(wire(teardown_v5(drain)), A)
+        held = teardown_v5("deadline")
+        held.update(outstanding_io_at_decision=True, inflight=dict(
+            sequence=19, checkpoint="complete-job-returned", stage="write-pending", temporary_leaf="pending-"+"c"*32, cancel_requested=False))
+        journal.general_v5(wire(held), A)
+        held["inflight"]["cancel_requested"] = True
+        with self.assertRaises(ValueError):
+            journal.general_v5(wire(held), A)
+        stopped = canceled()
+        stopped.update(version=5, pre_complete_flush=unattempted(), cancellation_drain="stopped")
+        stopped["observations"]["v"] = 4
+        stopped["observations"]["j"] = [[[0, False, None], [0, None]],
+                                        [2, [[70, 9], [70, 9], [[0, False, None], [0, None]]]]]
+        result = journal.assess(wire(stopped), A, expected_version=5)
+        self.assertEqual((result["receipt_shape"], result["cancellation_drain"], result["question"]),
+                         ("valid-v5", "stopped", "first-min-framework-recorded"))
+        normal = terminal()
+        normal.update(version=5, pre_complete_flush=unattempted(), cancellation_drain="none")
+        normal["observations"].update(v=4, j=[[[0, False, None], [0, None]], [0, None]])
+        self.assertTrue(journal.journal_admission(records(), wire(normal), A, J, (),
+                                                  expected_version=5)["published_through_finish"])
+        self.assertEqual(journal.assess(wire(normal), A, expected_version=5, job=J)["decision_admission"],
+                         "not-evaluable")
+        self.assertEqual(journal.assess(wire(normal), A, expected_version=5, job=J,
+                                        raw_records=records())["decision_admission"], "pass")
+        legacy = teardown()
+        legacy["cancellation_drain"] = "continued"
+        with self.assertRaises(ValueError):
+            journal.general_v4(wire(legacy), A)
+        mutations = (
+            lambda v: v.pop("cancellation_drain"),
+            lambda v: v.update(cancellation_drain="stopped"),
+            lambda v: v.update(cancellation_drain="none"),
+            lambda v: v.update(cancellation_drain="unknown"),
+            lambda v: v.update(drain_state="canceled"),
+            lambda v: v.update(drain_state="unavailable"),
+            lambda v: v["observations"].update(v=3),
+            lambda v: v["observations"].update(a=[None, None]),
+            lambda v: v["observations"].update(i=[1, 8, None]),
+            lambda v: v["observations"]["x"][1].__setitem__(1, [2, [70, 9, 0, None]]),
+            lambda v: v["observations"]["x"][0].__setitem__(0, [2, False, [70, 9, 1, 8, None, None]]),
+            lambda v: v.update(pre_complete_flush=dict(reversed(list(v["pre_complete_flush"].items())))),
+        )
+        for index, mutate in enumerate(mutations):
+            v = teardown_v5()
+            mutate(v)
+            with self.subTest(index=index), self.assertRaises(ValueError):
+                journal.general_v5(wire(v), A)
+        normal["cancellation_drain"] = "continued"
+        with self.assertRaises(ValueError):
+            journal.general_v5(wire(normal), A)
+
     def test_normal_bound_and_immutable_v1_predicate(self):
         t = terminal()
         answer = journal.journal_admission(records(), wire(t), A, J, (), expected_version=2)
@@ -220,7 +358,7 @@ class Consumer(unittest.TestCase):
         t = canceled()
         t["observations"]["r"] = [1, None]
         self.assertEqual(journal.assess(wire(t), A, expected_version=2)["question"], "bound-context-incomplete")
-        for version, expected, label in ((4, 2, "unsupported"), (2, 1, "unexpected-version")):
+        for version, expected, label in ((6, 2, "unsupported"), (2, 1, "unexpected-version")):
             t = terminal()
             t["version"] = version
             result = journal.assess(wire(t), A, expected_version=expected)

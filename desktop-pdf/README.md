@@ -1,5 +1,138 @@
 # Desktop PDF integration: local source-review checkpoint
 
+## 0.1.0.8 (draft: native completion.json publish so Finish seals right after CompleteJob)
+
+**0.1.0.8 is an unbuilt-for-release, unsigned, uninstalled source draft**, under the same
+gates as 0.1.0.7 below. The only behaviour change is how `completion.json` is written.
+
+Evidence basis: the 0.1.0.7 Windows silent print series (`WINDOWS-HANDOFF.md`). Native
+record writes worked on the device. The pre-CompleteJob flush completed 18/18 in 0–16 ms,
+and 4/6 runs drained fully. In runs 02/03 only `finish` (seq 20) was lost. The data path
+publishes `completion.json` (StorageFile) between CompleteJob and `Finish`. That sealed
+the journal 62–125 ms after the teardown cancel. Seals at cancel + 125 ms landed on the
+`TeardownDrainMs = 125` bound and froze as `deadline` with no I/O in flight.
+
+- `completion.json` is now written synchronously by `PublishNative` in `Task.cpp`, through
+  the journal's Win32 `JournalIo` Create/Write/Rename path. The bytes are the same FileIO
+  UTF-8 text (BOM + compact JSON), with the same `pending-<id>` then rename protocol, and
+  an existing name fails the rename as `FailIfExists` did. Dev measurement in the isolated
+  test root: about 1 ms native versus 105–502 ms for the StorageFile publish.
+- The journal engine (`ActivationDiagnostics.h`) is byte-identical to 0.1.0.7; the 125/125
+  split of the cancel budget between drain and receipt is unchanged. All other records,
+  CompleteJob ordering, schemas and budgets are unchanged.
+- Tests: a native fixture checks the `completion.json` bytes, read-back and the collision
+  failure; Source.py allows exactly this substitution in the data-path tail.
+- Rejected earlier drafts (`c687aab`, `283f84d`) moved the drain bound to cancel + 190 ms
+  (60 ms receipt reserve). Their official build gates (`version008-build-01`, `-02`)
+  failed: the held-teardown receipt could not finish within 60 ms on the loaded machine.
+
+## 0.1.0.7 (draft: native journal record writes and post-complete teardown drain)
+
+**0.1.0.7 is an unbuilt-for-release, unsigned, uninstalled source draft.** It stays a
+draft until the official build/package/sign/update and print gates run on its exact
+source. Dev builds and isolated native/Contract/Python checks are not install evidence.
+
+Evidence basis: the 006 Windows silent print series (table in `WINDOWS-HANDOFF.md`).
+All six installed 0.1.0.6 prints succeeded and all six terminals reported
+`post-complete-teardown` (raw reason 7, 0–47 ms after CompleteJob entry), so B works.
+A was weak:
+- Each record took about 30 ms to publish through WinRT storage
+  (`CreateFileAsync`, `WriteTextAsync`, `RenameAsync`).
+- The pre-CompleteJob flush hit its 500 ms deadline in 4/6 runs, delaying CompleteJob
+  by 312–625 ms.
+- Every record after CompleteJob was lost (accepted 21, last published 13–18),
+  because the cancel stopped the writer at once.
+
+The native terminal receipt (`CreateFile2FromAppW`/`WriteFile`/`MoveFileFromAppW` to
+LocalCache) succeeded in 12/12 device runs (005+006), even after the cancel.
+
+- **Native record writes.** The single background MTA writer now publishes each
+  record with synchronous Win32 I/O instead of WinRT storage. The layout and record
+  bytes are unchanged:
+  - `LocalCache\DesktopPdf\ActivationDiagnostics\<activation>\` is created with
+    `CreateDirectoryFromAppW`: create-if-missing for the root and parent,
+    fail-if-exists for the activation folder.
+  - Each record is written to `pending-<random>` with
+    `CreateFile2FromAppW(CREATE_NEW)`, then full-byte `WriteFile`, then close. It is
+    then moved to `<sequence>.json` with `MoveFileFromAppW` (no replace).
+  - The bytes are a UTF-8 BOM plus compact JSON, as in 0.1.0.6.
+  - There is no per-record `FlushFileBuffers`; the terminal receipt keeps it.
+  - `Add` and the `Canceled` handler never perform journal I/O.
+  - There is no async operation left to cancel, so the tracked-operation machinery
+    is removed: `Track`, `CancelCurrent`, `ApiEntry` routes 0/1 and the operation outcome.
+- **Post-complete teardown drain.**
+  - On `Reason::PostCompleteTeardown`, `Trace::Cancel(..., true)` records a teardown
+    cutoff and does not stop the writer. The queue, including the `canceled`
+    checkpoint and `finish`, keeps draining until it has fully drained or until
+    teardown + `TeardownDrainMs = 125`. The terminal deadline stays at cancel +
+    `CancelMs = 250`. The remaining 125 ms is reserved for the terminal receipt;
+    without it, a held write would exhaust the budget and no receipt could start.
+  - A real cancel (before CompleteJob entry, or host origin 1) still stops and
+    freezes at once.
+  - `DrainMs/FinalizeMs/ReportMs/CancelMs` and the 500 ms `FlushBeforeComplete`
+    budget are unchanged, as are CompleteJob status, `completion.json` and the
+    duplicate-data path.
+- **Terminal v5** (the production default):
+  - It appends `cancellation_drain` as the last key: `none`, `stopped` (a real
+    cancel, with `drain_state` `canceled`) or `continued` (post-complete teardown,
+    with `drain_state` `drained`, `deadline` or `failed`).
+  - Cancellation provenance (`observations.a`) is present exactly when
+    `drain_state` is `canceled` or `cancellation_drain` is `continued`.
+  - `inflight.cancel_requested` is always `false`.
+  - The observations object has `"v":4`. `i` (the frozen tracked operation) is
+    `null`, and the `x` routes 0/1 (the journal `IAsyncInfo::Cancel` calls) are
+    absent/never; route 2 (launch) is unchanged.
+  - The v2–v4 encoders and decoders are unchanged. `tools/journal.py` decodes v5 with
+    `general_v5`, and `assess` reports `cancellation_drain`.
+- **Isolated measurement (dev machine, not device evidence).**
+  `IntegrationNative --isolated-journal` publishes 20 records through the real native
+  backend in its test root and prints the time to stderr. Four passing dev runs measured
+  6.4–9.6 ms/record, against about 30 ms/record on the device in 006.
+
+## 0.1.0.6 (draft: pre-CompleteJob flush and post-complete teardown label)
+
+**0.1.0.6 is an unbuilt-for-release, unsigned, uninstalled source draft.** It stays
+a draft until the official build/package/sign/update and print gates run on its exact
+source. Dev builds and isolated native/Contract/Python checks are not install evidence.
+
+Evidence basis: in the 005 Windows04 silent print series, all six installed 0.1.0.5
+prints succeeded: the PDF was published and `completion.json` reported `succeeded`.
+Every activation journal terminal (v3) nevertheless ended with `finalize_reason: canceled`
+and `drain_state: canceled`, with framework raw reason 7 (SystemPolicy). In each case
+`CompleteJob(Succeeded)` had been entered and returned without an exception. The cancellation
+arrived 0–78 ms after CompleteJob entry, never before it. The journal tail was truncated:
+the last published sequence was 9–16, against 11–18 accepted events. The SystemPolicy
+cancellation is therefore platform teardown in response to CompleteJob: the print is fine,
+but the diagnostics were cut short and mislabeled.
+
+- **A: pre-CompleteJob flush.** After `Point::CompleteBefore`, the data path awaits
+  `Trace::FlushBeforeComplete()` before `CompleteEnter`/`args.CompleteJob(status)`:
+  - The flush waits until every event accepted at that point is published, or until
+    failure, stop, or cancellation, or until `PreCompleteFlushMs = 500` elapses.
+  - It polls in slices of at most 25 ms on a dedicated event, so it never consumes
+    Finish's wake-up.
+  - It never throws, and CompleteJob is still called exactly once. Status,
+    `completion.json`, the duplicate-data path and data-path cancellation are unchanged.
+  - Normally the flush is immediate. It adds latency before CompleteJob only when
+    journal I/O lags, and then at most 500 ms.
+- **B: post-complete teardown label.** A framework (origin 0) `Canceled` callback
+  whose `ReadComplete()` sample shows CompleteJob entry published (state 2) records
+  the reason `post-complete-teardown` instead of `canceled`:
+  - It applies to both the reason CAS/setter and `Finish(..., false, 3)`.
+  - A framework cancel before CompleteJob entry is still `canceled`, and so is any
+    host/data-path cancel (origin 1).
+  - The journal drain still stops immediately with `drain_state: canceled`; only the
+    label changes.
+- **Terminal v4** (the production default):
+  - It adds `pre_complete_flush` as the last key: `state` (`not-attempted`,
+    `in-progress`, `flushed`, `deadline`, `canceled`, `failed` or `stopped`),
+    `target_count`, `published_count`, `begin_tick_ms` and `end_tick_ms`.
+  - It allows the reason `post-complete-teardown`, and its observations object has `"v":3`.
+  - The v2 and v3 encoders and decoders are unchanged. The bounded v4 maximum
+    receipt is 2697 bytes, within the existing 3300-byte bound and the 4096-byte
+    backend limit.
+  - `tools/journal.py` decodes v4 with `general_v4`.
+
 **0.1.0.5 is an uncommitted offline diagnostic revision, not a built or installed
 package.** The installed 004 and every historical result remain unchanged.
 `build.ps1` defaults to the original `full-suite` build/CTest behavior.
@@ -408,9 +541,11 @@ its test trust/completion protocol is not promoted. Only corrected
 `PhysicalMapping.h` is extracted verbatim from PR6
 **12cc27915d08fcf29c5b1f00c422e0a16cc23e1b**; none of its RPC/admission platform.
 
-Source guards also require exact Git objects `ae53b92a5e1f3fa442f41246079cde7e2f4afd47`
-and frozen integration baseline `245373012067c928781e5c85b7aafddd191b800d`, alongside
-the dependency and geometry refs above. CI explicitly fetches all four comparison
+Source guards also require exact Git objects `ae53b92a5e1f3fa442f41246079cde7e2f4afd47`,
+frozen integration baseline `245373012067c928781e5c85b7aafddd191b800d`, journal
+baseline `66740903d715cbd9a6572486eefb83c4fe7b9375` and observation baseline
+`5f2382888fe8b892a83b07c832654818f7ec2fdd`, alongside the dependency and geometry
+refs above. CI explicitly fetches all six comparison
 objects; a local native checkout must contain them before validation/build, not
 rely on incidental checkout depth. No local fetch or operator is authorized here.
 

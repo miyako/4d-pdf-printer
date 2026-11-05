@@ -82,6 +82,26 @@ inline void JournalChecks() {
     canceledDuringDrain.finalizing = 100;
     canceledDuringDrain.Cancel(120);
     Require(!canceledDuringDrain.MayIssue(121), "cancellation stops new stage reservations");
+    PublicationState teardown;
+    teardown.finalizing = 100;
+    teardown.Cancel(120, true); teardown.Cancel(130, true);
+    Require(!teardown.canceled && teardown.teardown == 120ull && teardown.Cutoff() == 120ull &&
+        teardown.DrainEnd(100) == 120 + TeardownDrainMs && FinalizeDeadline(100, teardown.Cutoff()) == 120 + CancelMs &&
+        teardown.MayIssue(121) && teardown.MayIssue(120 + TeardownDrainMs - 1) && !teardown.stop,
+        "post-complete teardown keeps issuing inside its share of the cancel budget");
+    Require(!teardown.MayIssue(120 + TeardownDrainMs) && teardown.stop && !teardown.failure,
+        "post-complete teardown drain stops at its budget without inventing I/O error");
+    PublicationState continued;
+    continued.Cancel(50, true);
+    continued.journal.Seal(finish);
+    Require(continued.journal.Pop(event), "teardown finish dequeued");
+    continued.Published(event);
+    auto drained = continued.Freeze(Reason::PostCompleteTeardown, 60, 61, 300, false);
+    Require(drained.state == DrainState::Drained && drained.continued, "drained post-complete teardown is continued, not canceled");
+    PublicationState both;
+    both.Cancel(80, true); both.Cancel(90);
+    Require(both.Cutoff() == 80ull && both.Freeze(Reason::Canceled, 100, 100, 330, false).state == DrainState::Canceled &&
+        !both.decision->continued, "real cancellation always stops, even after teardown");
     for (bool dataOwner : {false, true}) {
         TaskGate gate;
         if (dataOwner) Require(gate.ClaimData() && !gate.ClaimFinish(false), "active Data retains ownership");
