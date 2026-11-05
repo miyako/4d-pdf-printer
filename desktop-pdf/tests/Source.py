@@ -181,8 +181,15 @@ public:
         baseline_workflow = original(INTEGRATION_BASELINE, ".github/workflows/renderer-windows.yml").decode()
         fetch = f"git fetch --no-tags --depth=1 origin {DEPENDENCY} {PROOF} ae53b92a5e1f3fa442f41246079cde7e2f4afd47"
         self.assertEqual(baseline_workflow.count(fetch), 1)
+        # The renderer Prepare step uses the inline VS expression that the pinned
+        # renderer/tests/Check-BuildSupport.ps1 requires; the matrix maps to the same values.
+        vs_matrix = "            -VisualStudioVersion '${{ matrix.visualStudio }}'"
+        vs_inline = "            -VisualStudioVersion '${{ matrix.arch == 'arm64' && '2026' || '2022' }}'"
+        self.assertEqual(baseline_workflow.count(vs_matrix), 1)
+        self.assertEqual(workflow.count(vs_inline), 1)
         self.assertEqual(workflow, baseline_workflow.replace(
-            fetch, fetch + " " + INTEGRATION_BASELINE + " " + JOURNAL_BASELINE + " " + OBSERVATION_BASELINE, 1))
+            fetch, fetch + " " + INTEGRATION_BASELINE + " " + JOURNAL_BASELINE + " " + OBSERVATION_BASELINE, 1
+        ).replace(vs_matrix, vs_inline, 1))
         refs = re.search(r"git fetch --no-tags --depth=1 origin ([^\n]+)", workflow).group(1).split()
         self.assertEqual(refs, [DEPENDENCY, PROOF, "ae53b92a5e1f3fa442f41246079cde7e2f4afd47",
                                 INTEGRATION_BASELINE, JOURNAL_BASELINE, OBSERVATION_BASELINE])
