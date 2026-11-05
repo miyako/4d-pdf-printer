@@ -24,8 +24,11 @@
     job is spooled, and there is no Task activation or LocalCache change.
   - Those runs used a Save As queue whose app PDC had not been applied at
     install, so it fell back to 600 dpi. A reinstall of the same 0.1.0.8
-    package fixed it; both queues are now 300 dpi. See "Save As 600 dpi:
-    queue install fault".
+    package fixed it; both queues are now 300 dpi. After `configure-runtime`
+    was re-run, Save As run 05 produced the PDF byte-identical to the silent
+    one (`45572825...16c1`). See "Save As 600 dpi: queue install fault".
+  - A package reinstall removes `runtime.json`. `configure-runtime` must be
+    run again before printing.
 - **Still open:**
   - Save As runs are single-shot per scenario, with no repeat series.
   - No product acceptance criteria are defined. The runs are labelled
@@ -308,8 +311,46 @@ color.
    the cycle (`5741f544...`). Verdict PASS.
 
 Removal discarded the previous LocalState/LocalCache, including earlier
-journals and job folders. `AppDataBefore` is the only copy. A Save As print
-against the corrected queue has not been run yet.
+journals and job folders. `AppDataBefore` is the only copy.
+
+**Run 04, Save As new file after the reinstall** (`version008-saveas-04`,
+runner `b88baa5b...038e`, `result.json` `b5314bbb...8f34`): **failed,
+operator setup**.
+- The preflight saw the Save As default ticket as `Dpi300`.
+- Job `8ee45936...`: completion `failed`, stage `runtime`, HRESULT
+  `0x80070002`, about 1.5 s after `job-created`.
+- Cause: the reinstall also deleted `LocalCache\DesktopPdf\runtime.json`.
+  `IntegrationClient configure-runtime` had written it on 2026-10-31, and the
+  host's `ConfiguredRuntime` reads it. This is a gap in my reinstall cycle,
+  not a product defect. The product failed closed as designed.
+- The OS dialog had already created a 0-byte target
+  (`SaveAsPrint04\saveas-008-04.pdf`), as the README's "OS Save As may
+  precreate" limit says.
+- The journal `55214601...dadc5` is `drained` (finalize `normal`). The queue
+  was empty and no package process was left.
+
+**configure-runtime** (`version008-saveas-05\configure-runtime.txt`):
+`IntegrationClient.exe configure-runtime
+...\renderer\build-runtime-arm64` exited 0. Root, inventory, receipt and
+provenance are identical to the 2026-10-31 `runtime.json` in
+`AppDataBefore`.
+
+**Run 05, Save As new file at 300 dpi** (`version008-saveas-05`, runner
+`c8394a0a...b723`, `result.json` `6aaa2a56...245e`): **succeeded, identical
+to silent**.
+- Completion `succeeded` / `interactive transaction`. The full
+  ready/publish-intent/publication/result chain is present.
+- The output is 17670 bytes, `45572825...16c1`. That is byte-identical to
+  the silent queue's PDF, so with matching resolution both modes produce the
+  same document.
+- The journal `5cdf80cb...94a0` is `drained`: `post-complete-teardown`,
+  `finish_sequence = last_published_sequence = 17`, no admission loss, flush
+  15/15. The queue was empty and no package process was left.
+- Deviation: the operator saved over run 04's 0-byte file in
+  `version008-saveas-04\SaveAsPrint04\` instead of the suggested
+  `version008-saveas-05` path. So run 04's leftover file is now the run-05
+  output (creation 04:56:33Z, last write 05:40:40Z). Run 04's `result.json`
+  still records the 0-byte state.
 
 ## 007 (0.1.0.7) native journal records: build, package, update, print series
 
