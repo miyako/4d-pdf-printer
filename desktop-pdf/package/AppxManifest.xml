@@ -20,7 +20,7 @@
  <Applications>
   <Application Id="SaveAs" Executable="IntegrationApp.exe" EntryPoint="DesktopPdfIntegration.App"
    uap10:SupportsMultipleInstances="true">
-   <uap:VisualElements DisplayName="4D PDF Integration (Save As)" Description="Development PDF printer"
+   <uap:VisualElements DisplayName="Generic Print to PDF" Description="Development PDF printer"
     BackgroundColor="#203040" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png">
     <uap:SplashScreen Image="Assets\SplashScreen.png"/>
    </uap:VisualElements>
