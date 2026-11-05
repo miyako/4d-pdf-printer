@@ -30,7 +30,8 @@
   - A package reinstall removes `runtime.json`. `configure-runtime` must be
     run again before printing.
   - After any install, run `desktop-pdf\tools\VerifyInstall.ps1` (read-only).
-    It passes 22/22 on the current install.
+    It passes 22/22 on the current install. Merged via PR #11 (merge
+    `faa98fd`); CI run `41998971127` green on all 4 jobs.
 - **Still open:**
   - Save As runs are single-shot per scenario, with no repeat series.
   - No product acceptance criteria are defined. The runs are labelled
