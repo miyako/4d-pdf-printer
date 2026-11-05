@@ -214,6 +214,15 @@ lifecycle predicate. The separate exact17-key assessment is always review-only:
 shape, sampled readiness and first/minimum cancellation provenance are distinct.
 No historical false result or primary PDF/job outcome is promoted.
 
+`tools/journal_pending.py` reads an activation folder that has no terminal receipt
+(`python journal_pending.py <...\DesktopPdf\ActivationDiagnostics\<activation>>`, on an
+evidence copy after the Task process is gone). It refuses when the terminal exists (use
+`journal.assess`), and requires published records `0..n-1` without gaps and at most one
+`pending-<id>`. The pending record is reported as `written-not-renamed` (next sequence),
+`created-not-written` (empty), `unreadable` or `unexpected-sequence`. It is never promoted
+to a published record or admitted. The result is review-only. `journal.py` is unchanged
+and still digest-pinned by `Source.py`.
+
 The current source emits terminal **v3 / observations v2** for independent,
 in-memory `CompleteJob` boundary observations. Explicit expected-v1 and expected-v2
 decoders retain their original contracts; v2 never accepts the additional `j`

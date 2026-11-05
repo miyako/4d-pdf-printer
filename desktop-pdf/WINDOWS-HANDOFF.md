@@ -37,7 +37,9 @@
     file). Series 02 gave 5/5 correct new PDFs, but run 05 lost its
     activation journal: cancel during CompleteJob, then the process ended
     before `finish`. This is the first 008 journal loss. See "Save As repeat
-    series 02".
+    series 02". The cause was a ~415 ms stall of one record write, past the
+    250 ms teardown budget. It is accepted as a known limit, with no product
+    change. `tools/journal_pending.py` now reports such journals (review-only).
   - No product acceptance criteria are defined. The runs are labelled
     `CAPTURED-FOR-REVIEW-NOT-PRODUCT-SUCCESS` by design.
   - The 008 work is merged into `miyako-desktop-pdf-integration` via PR #9
@@ -444,6 +446,42 @@ The series stopped at run 05 (job `c1dfe11e...`, activation `cb7498c7...`).
   captured copy is intact (BOM plus valid JSON). The native writer closes
   its handle without flushing, so the cause is unknown; another reader is
   possible.
+
+#### Run 05 journal loss: source analysis (accepted as a known limit)
+
+- **Who finalized:** while the data path is inside CompleteJob, the cancel
+  handler's `Finish(PostCompleteTeardown, false)` does not win
+  `gate.ClaimFinish`. The data path's `Finish(Normal, true)` after
+  `completion.json` (~cancel + 36 ms) is the finalizer. The cancel had
+  already set the teardown cutoff, so the budgets were drain until
+  cancel + 125 ms and receipt until cancel + 250 ms (`TeardownDrainMs`,
+  `CancelMs`).
+- **The stall:** the pending file for seq 16 (434 bytes) was created at
+  47.389 s (~cancel + 40 ms), but its single `WriteFile`/close finished
+  only at 47.805 s (~cancel + 455 ms). The writer then correctly stopped
+  before Rename (`MayIssue` past the drain end), which left the pending
+  file.
+- **No receipt:** `Finish` froze at the drain end (~cancel + 125 ms) and
+  started `WriteReceipt` with ~125 ms left. No receipt file and no receipt
+  pending file exist. Most likely the receipt I/O was stalled the same way
+  when the deferral was released at cancel + 250 ms and the process ended.
+- No Defender, System or BackgroundTaskInfrastructure events fall in the
+  stall. The chosen PDF was already final at 46.928 s. The cause of the
+  ~415 ms I/O stall is unknown.
+- The 250 ms budget is this project's own constant, not an OS limit.
+  Raising it would need a new build and the full gates, and would still
+  lose any longer stall. **Decision: accepted as a known limit (1 in
+  about 36 008 activations); no product change.**
+- **Tools:** `tools/journal_pending.py` (review-only) reports such a
+  folder. On this run: published 0-15 (last `canceled`), pending seq 16
+  `complete-job-returned` tick 744571609 = `written-not-renamed`.
+  Synthetic regressions are in `tests/Journal.py` class `Pending`.
+- **Runner fix for future series** (evidence scripts unchanged): the run
+  script records `completion_read_error` instead of swallowing it, and the
+  series `Decode` falls back to the captured
+  `LocalCache-delta\DesktopPdf\Jobs\<job>\completion.json`
+  (`completion_source = captured-copy`). Dry run on series 02: run 05 now
+  shows `succeeded` from the copy, and run 04 is unchanged.
 
 ## 007 (0.1.0.7) native journal records: build, package, update, print series
 
