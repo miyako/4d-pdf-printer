@@ -182,10 +182,10 @@ public:
         fetch = f"git fetch --no-tags --depth=1 origin {DEPENDENCY} {PROOF} ae53b92a5e1f3fa442f41246079cde7e2f4afd47"
         self.assertEqual(baseline_workflow.count(fetch), 1)
         self.assertEqual(workflow, baseline_workflow.replace(
-            fetch, fetch + " " + INTEGRATION_BASELINE + " " + JOURNAL_BASELINE, 1))
+            fetch, fetch + " " + INTEGRATION_BASELINE + " " + JOURNAL_BASELINE + " " + OBSERVATION_BASELINE, 1))
         refs = re.search(r"git fetch --no-tags --depth=1 origin ([^\n]+)", workflow).group(1).split()
         self.assertEqual(refs, [DEPENDENCY, PROOF, "ae53b92a5e1f3fa442f41246079cde7e2f4afd47",
-                                INTEGRATION_BASELINE, JOURNAL_BASELINE])
+                                INTEGRATION_BASELINE, JOURNAL_BASELINE, OBSERVATION_BASELINE])
 
     def test_activation_diagnostics_are_separate_and_bounded(self):
         trace = (ROOT / "desktop-pdf/ActivationDiagnostics.h").read_text()

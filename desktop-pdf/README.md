@@ -541,9 +541,11 @@ its test trust/completion protocol is not promoted. Only corrected
 `PhysicalMapping.h` is extracted verbatim from PR6
 **12cc27915d08fcf29c5b1f00c422e0a16cc23e1b**; none of its RPC/admission platform.
 
-Source guards also require exact Git objects `ae53b92a5e1f3fa442f41246079cde7e2f4afd47`
-and frozen integration baseline `245373012067c928781e5c85b7aafddd191b800d`, alongside
-the dependency and geometry refs above. CI explicitly fetches all four comparison
+Source guards also require exact Git objects `ae53b92a5e1f3fa442f41246079cde7e2f4afd47`,
+frozen integration baseline `245373012067c928781e5c85b7aafddd191b800d`, journal
+baseline `66740903d715cbd9a6572486eefb83c4fe7b9375` and observation baseline
+`5f2382888fe8b892a83b07c832654818f7ec2fdd`, alongside the dependency and geometry
+refs above. CI explicitly fetches all six comparison
 objects; a local native checkout must contain them before validation/build, not
 rely on incidental checkout depth. No local fetch or operator is authorized here.
 
