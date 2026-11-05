@@ -29,6 +29,8 @@
     one (`45572825...16c1`). See "Save As 600 dpi: queue install fault".
   - A package reinstall removes `runtime.json`. `configure-runtime` must be
     run again before printing.
+  - After any install, run `desktop-pdf\tools\VerifyInstall.ps1` (read-only).
+    It passes 22/22 on the current install.
 - **Still open:**
   - Save As runs are single-shot per scenario, with no repeat series.
   - No product acceptance criteria are defined. The runs are labelled
@@ -356,6 +358,16 @@ to silent**.
   `version008-saveas-05` path. So run 04's leftover file is now the run-05
   output (creation 04:56:33Z, last write 05:40:40Z). Run 04's `result.json`
   still records the 0-byte state.
+
+**Read-only install check.** `desktop-pdf/tools/VerifyInstall.ps1` (see README
+"Install verification") turns the checks from this section into one command.
+On the reinstalled 0.1.0.8 (2026-11-05) it reported 22/22 checks and exit 0:
+package `Ok`, one queue per port, `V4_PDC_ChangeID=1664389292` on both, and
+capabilities and default ticket equal to the PDC (ISOA4, Portrait, Dpi300,
+Color), with `runtime.json` present. Its comparison logic, run against the
+pre-reinstall snapshot in `version008-reinstall-01`, finds the old Save As fault:
+84 media sizes, Landscape+Portrait, `ResOption1` instead of `Dpi300`, and no
+`V4_PDC_ChangeID`. `Source.py` pins the script to read-only cmdlets.
 
 ## 007 (0.1.0.7) native journal records: build, package, update, print series
 
