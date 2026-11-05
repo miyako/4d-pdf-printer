@@ -14,8 +14,14 @@
   It arrives during or after `CompleteJob(Succeeded)` and never interrupted
   a print in 007/008. This answers the open 004 "cancellation/SystemPolicy
   cause" question as observed, not as a documented contract.
+- **Save As mode on the device:** 1/1 print completed `succeeded`, with the
+  full ready/publish/result chain, the hash verified on the user-chosen target,
+  and the journal `drained`. See "Save As: first device lifecycle test". The
+  Save As queue defaults to 600 dpi and the silent queue to 300 dpi, so the
+  probe PDFs differ in geometry.
 - **Still open:**
-  - Save As mode has no device lifecycle test in 006–008.
+  - Save As has a single run only. Cancel-in-dialog and replace-existing
+    paths are untested.
   - No product acceptance criteria are defined. The runs are labelled
     `CAPTURED-FOR-REVIEW-NOT-PRODUCT-SUCCESS` by design.
   - The 008 branch is not merged into `miyako-desktop-pdf-integration`.
@@ -166,6 +172,44 @@ scripts are the build-03 copies with only the root and the run list
   CompleteJob, 2 no framework cancel. The cancel reason was always 7.
 - CompleteJob return to seal: 0–47 ms. Seal minus cancel: −31 to +63 ms. That
   is inside the 125 ms teardown window in every case.
+
+### Save As: first device lifecycle test on installed 0.1.0.8
+
+Root `C:\Users\miyako\Desktop\version008-saveas-01`. The runner is
+`RunSaveAsPrint008.ps1` `0086655d...6f71`, derived from the silent runner.
+It sends one PrintProbe `--interactive` job (no `--output`) to
+`4D PDF Integration (Save As)`, finds the single new job folder, and waits for
+its `completion.json`. A person answered the Windows Save dialog. The run took
+02:51:24Z-02:51:53Z, with no stop, retry or kill.
+`SaveAsPrint01/result.json` is `6e6c377b...0094`.
+
+- The Save dialog blocked inside `StartDoc` for about 17.7 s. After that
+  `StartDoc` returned spooler job 73.
+- The chosen target was `C:\Users\miyako\Desktop\test\test-pdf-1105-1.pdf`,
+  not the suggested path. `request.json` records it as `destination`.
+- The job folder shows the full chain: `request` -> `worker` `validated`
+  (exit 0) -> `ready` -> `publish-intent` -> `publication` -> `result`
+  `published`/`complete` -> `completion` `succeeded` (`interactive
+  transaction`, hresult 0). These four records all carry 17647 bytes and
+  `c08cea3e...334d`: `ready`, `publish-intent`, `publication` and `result`.
+  The file on disk matches.
+- Completion was first seen 20.6 s after start; the human dialog time is
+  included. Host process lifetime was about 1.5 s. The queue was empty and no
+  package process was left afterwards.
+- The journal `8857cf4c...ed33` is `drained` with finalize reason `normal` and
+  `finish_sequence = last_published_sequence = 16` (17 records). It has no
+  `first_failure` and no admission loss. Flush was 15/15 `flushed`.
+- **The PDF differs from the silent PDF by design of the queue, not by
+  product.** Decompressed, the text, producer and fixed dates are identical.
+  Only the geometry differs. The probe draws in device units: `TextOut` at
+  120,120 and `Rectangle` at 120,220-1000,1000. The silent queue's default
+  ticket is `PageResolution=Dpi300`, giving a 28.8 pt margin and MediaBox
+  595.2. The Save As queue's default is `ResOption1`, which is 600 dpi on this
+  evidence: 14.4 pt margin, half-size box, and MediaBox 595.32 (4961 px).
+  Whether the two queues should share a default resolution is a configuration
+  question.
+- The transcript shows `Get-WinEvent` "no matching events" errors. The runner
+  caught them (`errors: []`), and they did not affect the job.
 
 ## 007 (0.1.0.7) native journal records: build, package, update, print series
 
