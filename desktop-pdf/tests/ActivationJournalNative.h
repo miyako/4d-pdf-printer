@@ -552,33 +552,29 @@ inline void NativeJournalChecks(FreshTrialRoot const* suite = nullptr) {
             L"CreateFile2FromAppW/WriteFile/MoveFileFromAppW in the isolated test root.\n", timed, elapsed, elapsed / timed);
     }
     {
-        // 0.1.0.7 device runs 02/03: completion.json delayed Finish until cancel + 125 ms (seal after the old window).
+        // 0.1.0.8: completion.json via PublishNative keeps the FileIO UTF-8 bytes (BOM + compact JSON) that
+        // the 0.1.0.7 Publish wrote, publishes by rename, and a name collision fails like FailIfExists.
         TrialDirectory directory(suite);
-        auto io = std::make_shared<TrialIo>(directory.path.wstring());
-        auto trace = std::make_shared<Trace>(io);
-        trace->Add(Point::CompleteBefore);
-        trace->Add(Point::CompleteReturned);
-        trace->Add(Point::Canceled);
-        AwaitTest(trace->FlushBeforeComplete());
-        Require(trace->PreComplete().state == FlushState::Flushed, "late-seal fixture starts with an empty queue");
-        // Backdated cancel (entry and applied tick) instead of Sleep: the seal deterministically
-        // lands past the old 125 ms window while the receipt keeps its 120 ms budget.
-        observation::Context cancellation;
-        cancellation.entry = ObservationStamp();
-        cancellation.entry.tick -= 130;
-        cancellation = trace->Observe().EnterCancel(cancellation);
-        auto tick = cancellation.entry.tick;
-        trace->Cancel(tick, cancellation, true);
-        AwaitTest(trace->Finish(Reason::PostCompleteTeardown, false));
-        Require(io->reported, "late-sealed teardown still writes the terminal receipt");
-        auto r = Parse(io->receipt, 4096);
-        Require(r.GetNamedString(L"drain_state") == L"drained" && r.GetNamedString(L"cancellation_drain") == L"continued" &&
-            Integer(r, L"accepted_count") == 4 && Integer(r, L"last_published_sequence") == 3 &&
-            Integer(r, L"sealed_tick_ms") >= tick + 125,
-            "finish sealed after the old 125 ms teardown window is still drained");
-        auto folder = directory.path / L"DesktopPdf" / L"ActivationDiagnostics" / std::wstring(r.GetNamedString(L"activation"));
-        Require(ReadRecord(folder / L"3.json").GetNamedString(L"checkpoint") == L"finish",
-            "late-sealed finish record published");
+        auto id = RandomId();
+        auto completion = Record(id, Mode::Silent, L"completion");
+        Text(completion, L"outcome", L"saved"); Text(completion, L"stage", L"complete"); Number(completion, L"hresult", 0);
+        LARGE_INTEGER frequency{}, begin{}, end{};
+        QueryPerformanceFrequency(&frequency);
+        QueryPerformanceCounter(&begin);
+        PublishNative(directory.path.wstring(), L"completion.json", completion);
+        QueryPerformanceCounter(&end);
+        auto file = directory.path / L"completion.json";
+        Require(ReadBytes(file) == "\xEF\xBB\xBF" + to_string(completion.Stringify()),
+            "native completion bytes equal the FileIO UTF-8 text");
+        auto read = ReadRecord(file);
+        Validate(read, id, Mode::Silent, L"completion");
+        Require(read.GetNamedString(L"outcome") == L"saved" && Integer(read, L"hresult") == 0, "native completion record content");
+        bool collided = false;
+        try { PublishNative(directory.path.wstring(), L"completion.json", completion); } catch (hresult_error const&) { collided = true; }
+        Require(collided && ReadBytes(file) == "\xEF\xBB\xBF" + to_string(completion.Stringify()),
+            "native completion publish fails if the record exists and keeps the original");
+        fwprintf(stderr, L"Native completion publish: %.3f ms in the isolated test root.\n",
+            static_cast<double>(end.QuadPart - begin.QuadPart) * 1000.0 / static_cast<double>(frequency.QuadPart));
     }
     {
         TrialDirectory directory(suite);

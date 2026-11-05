@@ -63,13 +63,13 @@ public:
             "diagnosticOverride ? diagnosticOverride : std::make_shared<activation::Trace>()",
             "std::make_shared<activation::Trace>()", 1)
         self.assertEqual(hashlib.sha256(old.encode()).hexdigest(),
-                         "a75aeba6013b05d131916497093d8cf4cf9e36688fc0540319267215ad7ed7a8")
+                         "82affff73b14e79f1a9d9e3c9f40be0ba25919b1de07ded72226c062af7a2d19")
         run = task.split("void Run(", 1)[1]
         self.assertLess(run.index("diagnostics = diagnosticOverride ?"), run.index("Point::RunEnter"))
         self.assertLess(run.index("Point::RunEnter"), run.index("task.GetDeferral()"))
         self.assertLess(run.index("task.GetDeferral()"), run.index("task.Canceled("))
         for path, digest in {
-            "ActivationDiagnostics.h": "7579d032bbe14edbabbd8865d7b277f32c4faa27abca957a23c38850f572f34c",
+            "ActivationDiagnostics.h": "991cbd412b9e5c41bf4510c1133f9642edf5f1cdc93db48817591294c843f8c4",
             "ActivationObservations.h": "16c76b4c965387ba4ce9c73b2485dc2d1d35f6bcac68eab2a88589e143fb65b2",
             "ObservationWire.h": "23b4daaa921de9ffe581c3d8f9cd2cf795c464aa457e93f9ea325b01172a67f5",
             "tools/journal.py": "0348fc6c6acfe644d1d7854193f22bb2a1fe8daed9f3811f3bdcf17b9e4deb68",
@@ -293,7 +293,16 @@ public:
                                               "primary = to_hresult(); Trace(", 1)
         self.assertEqual(observed_tail,
                          baseline.split(tail, 1)[1].split("struct Factory", 1)[0].replace(
-                             "Finish(activation::Reason::Normal, true);", "Finish(activation::Reason::Normal, true, 4);", 1))
+                             "Finish(activation::Reason::Normal, true);", "Finish(activation::Reason::Normal, true, 4);", 1).replace(
+                             'co_await Publish(job, L"completion.json", completion);',
+                             'PublishNative(std::wstring(job.Path()), L"completion.json", completion);', 1))
+        # 008: completion.json is written synchronously (Win32) so Finish seals right after CompleteJob.
+        self.assertEqual(task.count("PublishNative("), 2)
+        self.assertNotIn('Publish(job, L"completion.json"', task)
+        native = task.split("inline void PublishNative(", 1)[1].split("\n}\n", 1)[0]
+        self.assertNotIn("co_await", native)
+        self.assertIn('io.Write(io.Create(pending), "\\xEF\\xBB\\xBF" + text);', native)
+        self.assertIn('io.Rename(pending, path + L"\\\\" + std::wstring(name));', native)
         self.assertIn("primary = to_hresult(); Trace(activation::Point::CompleteFailure, primary);", observed_tail)
         self.assertIn("Failure(stage.c_str(), primary);", task)
         # 006: bounded journal flush strictly between CompleteBefore and CompleteJob entry.
@@ -356,7 +365,7 @@ public:
                           "RenameAsync", "WriteTextAsync", "IAsyncInfo", "IAsyncOperation", "CancelOperation",
                           "CancelCurrent", "TrackedOperation", "Track(", "ApiEntry(", "cancelRequested"):
             self.assertNotIn(forbidden, trace)
-        self.assertIn("inline constexpr std::uint64_t ReceiptReserveMs = 60, TeardownDrainMs = CancelMs - ReceiptReserveMs;", trace)
+        self.assertIn("inline constexpr std::uint64_t TeardownDrainMs = 125;", trace)
         self.assertIn("if (!failure) failure =", trace)
         self.assertIn("Require(!decision", trace)
         self.assertIn('{"deferral_release_observed", "false"}', trace)

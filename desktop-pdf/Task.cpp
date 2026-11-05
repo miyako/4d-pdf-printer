@@ -11,6 +11,18 @@ using namespace Windows::ApplicationModel;
 using namespace Windows::ApplicationModel::Background;
 using namespace Windows::Graphics::Printing::Workflow;
 
+// Same bytes (UTF-8 BOM + compact JSON) and pending-then-rename protocol as Publish, written
+// synchronously through the journal's Win32 path: the StorageFile round trip after CompleteJob
+// delayed the journal seal 62-125 ms past the teardown cancel (0.1.0.7 device series).
+inline void PublishNative(std::wstring const& path, std::wstring_view name, JsonObject const& record) {
+    auto text = to_string(record.Stringify());
+    JsonWire(text).Check();
+    activation::JournalIo io;
+    auto pending = path + L"\\pending-" + RandomId();
+    io.Write(io.Create(pending), "\xEF\xBB\xBF" + text);
+    io.Rename(pending, path + L"\\" + std::wstring(name));
+}
+
 struct Task : implements<Task, IBackgroundTask> {
 private:
     std::shared_ptr<activation::Trace> const diagnosticOverride;
@@ -417,7 +429,7 @@ public:
                 auto completion = Record(id, mode, L"completion");
                 Text(completion, L"outcome", outcome); Text(completion, L"stage", stage);
                 Number(completion, L"hresult", static_cast<std::uint32_t>(primary.value));
-                co_await Publish(job, L"completion.json", completion);
+                PublishNative(std::wstring(job.Path()), L"completion.json", completion);
             } catch (...) { Failure(L"completion record", to_hresult()); }
         }
         Finish(activation::Reason::Normal, true, 4);

@@ -1,30 +1,30 @@
 # Desktop PDF integration: local source-review checkpoint
 
-## 0.1.0.8 (draft: teardown drain anchored to the receipt reserve)
+## 0.1.0.8 (draft: native completion.json publish so Finish seals right after CompleteJob)
 
 **0.1.0.8 is an unbuilt-for-release, unsigned, uninstalled source draft**, under the same
-gates as 0.1.0.7 below. The only behaviour change is the post-complete teardown drain bound.
+gates as 0.1.0.7 below. The only behaviour change is how `completion.json` is written.
 
 Evidence basis: the 0.1.0.7 Windows silent print series (`WINDOWS-HANDOFF.md`). Native
 record writes worked on the device. The pre-CompleteJob flush completed 18/18 in 0–16 ms,
 and 4/6 runs drained fully. In runs 02/03 only `finish` (seq 20) was lost. The data path
 publishes `completion.json` (StorageFile) between CompleteJob and `Finish`. That sealed
 the journal 62–125 ms after the teardown cancel. Seals at cancel + 125 ms landed on the
-old `TeardownDrainMs = 125` bound and froze as `deadline` with no I/O in flight.
+`TeardownDrainMs = 125` bound and froze as `deadline` with no I/O in flight.
 
-- `TeardownDrainMs` is now `CancelMs - ReceiptReserveMs` = 250 − 60 = 190 ms after the
-  teardown cancel. 60 ms stays reserved before the unchanged cancel + 250 ms terminal
-  deadline for the native receipt, which takes a few ms. The bound is still computed in
-  `PublicationState::DrainEnd`. A real cancel still stops at once.
-- Terminal schema (v5), record layout, CompleteJob ordering, `completion.json` and all
-  other budgets are unchanged.
-- Tests:
-  - A state test checks that a finish sealed 125 ms after teardown can still issue.
-  - A native fixture publishes the queued records, applies a teardown cancel backdated by
-    130 ms, then seals `Finish`. It requires `drained` with the `finish` record published.
-    An earlier draft (`c687aab`) used a real 150 ms `Sleep`; it failed the official build
-    gate (`version008-build-01`) when background work stalled on the freshly built
-    machine.
+- `completion.json` is now written synchronously by `PublishNative` in `Task.cpp`, through
+  the journal's Win32 `JournalIo` Create/Write/Rename path. The bytes are the same FileIO
+  UTF-8 text (BOM + compact JSON), with the same `pending-<id>` then rename protocol, and
+  an existing name fails the rename as `FailIfExists` did. Dev measurement in the isolated
+  test root: about 1 ms native versus 105–502 ms for the StorageFile publish.
+- The journal engine (`ActivationDiagnostics.h`) is byte-identical to 0.1.0.7; the 125/125
+  split of the cancel budget between drain and receipt is unchanged. All other records,
+  CompleteJob ordering, schemas and budgets are unchanged.
+- Tests: a native fixture checks the `completion.json` bytes, read-back and the collision
+  failure; Source.py allows exactly this substitution in the data-path tail.
+- Rejected earlier drafts (`c687aab`, `283f84d`) moved the drain bound to cancel + 190 ms
+  (60 ms receipt reserve). Their official build gates (`version008-build-01`, `-02`)
+  failed: the held-teardown receipt could not finish within 60 ms on the loaded machine.
 
 ## 0.1.0.7 (draft: native journal record writes and post-complete teardown drain)
 

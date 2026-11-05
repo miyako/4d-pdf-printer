@@ -117,10 +117,8 @@ public:
 };
 inline constexpr std::uint64_t DrainMs = 1500, FinalizeMs = 2000, ReportMs = 500, CancelMs = 250;
 inline constexpr std::uint64_t PreCompleteFlushMs = 500, PreCompleteSliceMs = 25;
-// Post-complete teardown drains until ReceiptReserveMs before the cancel deadline; the reserve is
-// kept for the terminal receipt. Finish can seal late (completion.json is published first), so the
-// drain must not end early in the cancel budget.
-inline constexpr std::uint64_t ReceiptReserveMs = 60, TeardownDrainMs = CancelMs - ReceiptReserveMs;
+// Post-complete teardown drains for this share of CancelMs; the rest stays reserved for the terminal receipt.
+inline constexpr std::uint64_t TeardownDrainMs = 125;
 inline std::uint64_t FinalizeDeadline(std::uint64_t started, std::optional<std::uint64_t> cancel) {
     auto normal = started + FinalizeMs;
     return cancel ? (std::min)(normal, *cancel + CancelMs) : normal;

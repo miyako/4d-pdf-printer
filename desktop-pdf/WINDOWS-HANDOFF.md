@@ -1,6 +1,8 @@
 # Windows continuation checkpoint
 
-## 008 (0.1.0.8) receipt reserve: first build gate failed (test timing)
+## 008 (0.1.0.8): two failed build gates, redesigned to a native completion.json
+
+### Attempt 1: receipt reserve, `c687aab`
 
 Source `c687aabe6c7b06a418758cf73ade438fa6362865`: post-complete teardown
 drains until cancel + 190 ms (`TeardownDrainMs = CancelMs - ReceiptReserveMs`,
@@ -23,7 +25,41 @@ publishes `finish`. Root `C:\Users\miyako\Desktop\version008-build-01`
   tick by 130 ms, then seals immediately: deterministic seal past the old
   125 ms window with the 120 ms receipt budget intact. Engine unchanged. Dev
   validation: Native 5/5 consecutive passes, contract all modes, Python Source,
-  Journal, CompleteJob OK. The retry uses a fresh root.
+  Journal, CompleteJob OK.
+
+### Attempt 2: deterministic fixture, `283f84d`
+
+Source `283f84dc53087090cb7e3780843337546daf103f` (tree `c6b88446...`), root
+`C:\Users\miyako\Desktop\version008-build-02` (retained, not reused); the
+cycle was approved as a whole, stop-at-first-failure.
+
+- **Build** (`RunBuild008.ps1`, only the commit substituted): `build008.json`
+  **`failed`**. The late-seal fixture passed. The 007 held-teardown fixture
+  failed: `held teardown drain still leaves budget for the terminal receipt`
+  (stderr `journal terminal unavailable/deadline`). Records took
+  10.3 ms each, twice the dev rate. With the writer held, the drain ran to
+  cancel + 190 ms and the receipt did not finish in the remaining 60 ms; no
+  terminal file exists in the retained case. Stopped: nothing packaged,
+  signed or installed; 0.1.0.7 stays installed.
+- **Conclusion:** the 250 ms cancel budget cannot cover a 62–125 ms seal
+  delay plus the `finish` write plus the receipt under load. Moving the split
+  point only moves the loss. The user chose the root-cause fix: remove the
+  seal delay.
+
+### Attempt 3: native completion.json (current draft)
+
+- `completion.json` is written synchronously by `PublishNative` (`Task.cpp`)
+  through the journal's Win32 `JournalIo` Create/Write/Rename, with the same
+  bytes (BOM + compact JSON, checked equal to the StorageFile output in dev),
+  pending-then-rename and fail-if-exists. `Finish` now seals about 1 ms after
+  CompleteJob returns, instead of after the 62–125 ms StorageFile publish.
+- `ActivationDiagnostics.h` and `tests/ActivationJournal.h` are restored
+  byte-identical to 007 (125/125 split); the attempt 1/2 tests are removed.
+  A new native fixture covers the `completion.json` bytes, read-back and
+  collision.
+- Dev measurement (isolated test root): native publish 0.6–1.8 ms; StorageFile
+  publish 105–502 ms. Dev validation: Native 5/5 consecutive passes, contract
+  all modes, Python Source 14, Journal 15, CompleteJob 8 OK.
 
 ## 007 (0.1.0.7) native journal records: build, package, update, print series
 
