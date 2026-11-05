@@ -14,14 +14,18 @@
   It arrives during or after `CompleteJob(Succeeded)` and never interrupted
   a print in 007/008. This answers the open 004 "cancellation/SystemPolicy
   cause" question as observed, not as a documented contract.
-- **Save As mode on the device:** 1/1 print completed `succeeded`, with the
-  full ready/publish/result chain, the hash verified on the user-chosen target,
-  and the journal `drained`. See "Save As: first device lifecycle test". The
-  Save As queue defaults to 600 dpi and the silent queue to 300 dpi, so the
-  probe PDFs differ in geometry.
+- **Save As mode on the device:** 3 scenarios, see "Save As: first device
+  lifecycle test" and "Save As: cancel and replace".
+  - New file: `succeeded`, with the full ready/publish/result chain, the hash
+    verified on the user-chosen target, and the journal `drained`.
+  - Replace existing: `succeeded`. The seed was replaced in place, with its
+    creation time kept.
+  - Cancel in dialog: never reaches the product. `StartDoc` fails 1223, no
+    job is spooled, and there is no Task activation or LocalCache change.
+  - The Save As queue defaults to 600 dpi and the silent queue to 300 dpi, so
+    the probe PDFs differ in geometry.
 - **Still open:**
-  - Save As has a single run only. Cancel-in-dialog and replace-existing
-    paths are untested.
+  - Save As runs are single-shot per scenario, with no repeat series.
   - No product acceptance criteria are defined. The runs are labelled
     `CAPTURED-FOR-REVIEW-NOT-PRODUCT-SUCCESS` by design.
   - The 008 work is merged into `miyako-desktop-pdf-integration` via PR #9
@@ -218,6 +222,53 @@ its `completion.json`. A person answered the Windows Save dialog. The run took
   question.
 - The transcript shows `Get-WinEvent` "no matching events" errors. The runner
   caught them (`errors: []`), and they did not affect the job.
+
+### Save As: cancel and replace
+
+The runners are copies of the run-01 runner with these changes:
+- root and run number;
+- a `scenario` field;
+- the operator prompt;
+- `chosen_output`, which hashes whatever `request.json` names;
+- a line-break fix after the completion wait loop;
+- for replace only, a seed step.
+
+No stop, retry or kill in either run.
+
+**Run 02, cancel in dialog** (`version008-saveas-02`, runner
+`187a7b3f...cdcb`, `result.json` `2640e852...1257`, 04:07:06Z-04:13:50Z):
+
+- PrintProbe logged `startdoc-failed`: return -1, last error 1223
+  (`ERROR_CANCELLED`), 4.4 s after `startdoc-enter`. The probe exited 1, and
+  no spooler job was created.
+- LocalCache had zero new or changed files: no activation diagnostics, no job
+  folder and no journal. The queue was empty and no package process ran.
+- The system Save dialog therefore runs in the printing application during
+  `StartDoc`, before spooling. `GetTargetFileAsync` only returns the target
+  already chosen. A user cancel never activates the Task, so the product has
+  nothing to clean up. The Task's null-target branch (`local PDF target
+  required`) was not reached.
+- The runner waited the full 360 s for a job folder that could not appear.
+  That cost time only; `events.json` and `localcache-delta.json` are absent
+  because both were empty.
+
+**Run 03, replace existing** (`version008-saveas-03`, runner
+`e10c0e55...4d8b`, `result.json` `1200e7cf...43ff`, 04:20:41Z-04:21:13Z):
+
+- The runner seeded `saveas-008-03.pdf` with the silent PDF (17670 bytes,
+  `45572825...16c1`). The operator selected it and confirmed the OS replace
+  prompt. `StartDoc` blocked for 18.0 s, then returned job 74.
+- Job `a45fbdd2...`: the chain is the same as run 01, ending in completion
+  `succeeded` / `interactive transaction`.
+- The target is now 17647 bytes, `c08cea3e...334d`. That is byte-identical to
+  run 01, so Save As output is deterministic across runs. The creation time
+  was kept (04:20:47Z) and the last write is 04:21:08Z, so the transacted
+  write replaced the file in place. No temporary files were left in the
+  folder.
+- The journal `2e4c08cd...8f0b` is `drained` with finalize reason
+  `post-complete-teardown` and `finish_sequence = last_published_sequence =
+  17` (18 records). No failure or admission loss; flush 15/15. The queue was
+  empty and no package process was left.
 
 ## 007 (0.1.0.7) native journal records: build, package, update, print series
 
