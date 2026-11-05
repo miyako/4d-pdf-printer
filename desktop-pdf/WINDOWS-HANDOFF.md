@@ -33,7 +33,9 @@
     It passes 22/22 on the current install. Merged via PR #11 (merge
     `faa98fd`); CI run `41998971127` green on all 4 jobs.
 - **Still open:**
-  - Save As runs are single-shot per scenario, with no repeat series.
+  - Save As runs are single-shot per scenario. Repeat series 01 stopped
+    after run 01 (product OK, but saved over an old file rather than a new
+    one); see "Save As repeat series 01".
   - No product acceptance criteria are defined. The runs are labelled
     `CAPTURED-FOR-REVIEW-NOT-PRODUCT-SUCCESS` by design.
   - The 008 work is merged into `miyako-desktop-pdf-integration` via PR #9
@@ -369,6 +371,36 @@ Color), with `runtime.json` present. Its comparison logic, run against the
 pre-reinstall snapshot in `version008-reinstall-01`, finds the old Save As fault:
 84 media sizes, Landscape+Portrait, `ResOption1` instead of `Dpi300`, and no
 `V4_PDC_ChangeID`. `Source.py` pins the script to read-only cmdlets.
+
+### Save As repeat series 01: stopped at run 01 on target choice
+
+Folder `version008-saveas-series-01`:
+- Driver `RunSaveAsSeries008.ps1` (`cdbf0216...`).
+- Per-run runner `RunSaveAsPrintRun008.ps1` (`8fe50aaf...`). It is run 05's
+  runner with only the run number and paths changed.
+- Copy of `VerifyInstall.ps1` (`2d4a9db0...`).
+
+Plan: 5 "new file" runs. Stop at the first anomaly, now including "the chosen
+target is not a new file" (creation time before the probe start).
+
+- Preflight `VerifyInstall.ps1`: exit 0, 22/22.
+- **Run 01** (job `d7e6ffb5...`): the product behaved correctly.
+  - Probe exit 0. Completion `succeeded` in 92 s, including the time in the
+    dialog.
+  - 17670 bytes, identical to the silent PDF (`45572825...16c1`).
+  - Journal `drained` (`post-complete-teardown`, flush 15/15, cancel reason 7
+    during CompleteJob). The queue was empty and no package process was left.
+- **The series stopped as designed:** the target was not a new file. The
+  Windows Save dialog reopened at the last-used location, and the operator
+  saved over `version008-saveas-04\SaveAsPrint04\saveas-008-04.pdf`.
+  - That is the third write to that file: run 04 left it at 0 bytes, then
+    run 05 and series run 01 each wrote the same PDF.
+  - Content is unchanged (same 17670 bytes, same hash). Only the last-write
+    time moved, to 13:28:47Z.
+  - So run 01 is in effect a second "replace existing" pass, not a new-file
+    pass. Runs 02-05 were not started.
+- Lesson: the Save dialog remembers its last folder and file name. The
+  operator must navigate to the suggested path each time.
 
 ## 007 (0.1.0.7) native journal records: build, package, update, print series
 
