@@ -33,9 +33,11 @@
     It passes 22/22 on the current install. Merged via PR #11 (merge
     `faa98fd`); CI run `41998971127` green on all 4 jobs.
 - **Still open:**
-  - Save As runs are single-shot per scenario. Repeat series 01 stopped
-    after run 01 (product OK, but saved over an old file rather than a new
-    one); see "Save As repeat series 01".
+  - Save As repeat series: series 01 stopped after run 01 (saved over an old
+    file). Series 02 gave 5/5 correct new PDFs, but run 05 lost its
+    activation journal: cancel during CompleteJob, then the process ended
+    before `finish`. This is the first 008 journal loss. See "Save As repeat
+    series 02".
   - No product acceptance criteria are defined. The runs are labelled
     `CAPTURED-FOR-REVIEW-NOT-PRODUCT-SUCCESS` by design.
   - The 008 work is merged into `miyako-desktop-pdf-integration` via PR #9
@@ -401,6 +403,47 @@ target is not a new file" (creation time before the probe start).
     pass. Runs 02-05 were not started.
 - Lesson: the Save dialog remembers its last folder and file name. The
   operator must navigate to the suggested path each time.
+
+### Save As repeat series 02: 5/5 correct PDFs, first 008 journal loss in run 05
+
+Folder `version008-saveas-series-02`. The scripts are series-01's with only
+the folder path changed: driver `579e29b9...`, runner `7c6ac17c...`,
+verifier `2d4a9db0...`. Preflight `VerifyInstall.ps1`: exit 0.
+
+| run | completion | PDF | = silent | new file | finalize | journal |
+|---|---|---|---|---|---|---|
+| 01 | succeeded | 17670 | yes | yes | normal | drained, flush 15/15 |
+| 02 | succeeded | 17670 | yes | yes | post-complete-teardown | drained, flush 15/15 |
+| 03 | succeeded | 17670 | yes | yes | normal | drained, flush 15/15 |
+| 04 | succeeded | 17670 | yes | yes | post-complete-teardown | drained, flush 15/15 |
+| 05 | succeeded (file) | 17670 | yes | yes | — | **lost** (no terminal journal) |
+
+The series stopped at run 05 (job `c1dfe11e...`, activation `cb7498c7...`).
+- **Product output was correct.** Job `completion.json` = `succeeded` /
+  `interactive transaction`, and `result.json` = `published` with
+  `45572825...16c1`. The queue was empty and no package process was left.
+- Operator deviation: saved as a new file
+  `version008-saveas-04\SaveAsPrint04\round-5.pdf`, in the old run-04
+  evidence folder, not the suggested path. Nothing was overwritten.
+- **Journal lost.**
+  - Records 0-15 were published. The framework cancel (seq 15, reason
+    teardown) came *during* CompleteJob, 32 ms after `complete-job-before`.
+  - Seq 16 `complete-job-returned` (tick +31 ms after the cancel) was left
+    as `pending-09801d49...`, written but never renamed. There is no
+    `finish` and no `DesktopPdfJournal-cb7498c7...json`, still absent at
+    review.
+  - File times: `completion.json` 47.384 s, the pending write 47.805 s,
+    then the process ended. That is a ~420 ms gap with no writes; ticks
+    say the record was created only ~31 ms after the cancel.
+  - Event logs show only the normal container start/stop and no error.
+  - First journal loss on 0.1.0.8, after about 35 drained activations (26
+    silent plus the Save As runs). The 7/26 silent "cancel during
+    CompleteJob" runs had all drained.
+- **Runner flaw:** the runner saw `completion.json` (at 47.66 s) but its
+  single read failed silently, so `result.json` lacks `completion`. The
+  captured copy is intact (BOM plus valid JSON). The native writer closes
+  its handle without flushing, so the cause is unknown; another reader is
+  possible.
 
 ## 007 (0.1.0.7) native journal records: build, package, update, print series
 
