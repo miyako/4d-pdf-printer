@@ -59,6 +59,20 @@
       `Source.py` pins the replacement against the integration baseline.
       `renderer/` is untouched.
   - Signing for distribution: the test certificate expires 2026-11-28.
+  - Queue rename (source only, not yet built or installed): PR #15 (merge
+    `e6c8807`) renames Save As to **Generic Print to PDF** and Silent to
+    **Generic Print to PDF (Silent)**. `Source.py` admits the rename through
+    one `QUEUE_RENAMES` table. Own-code CI passed on run `42112764709`; the
+    renderer jobs were still running at merge time (the rename touches no
+    renderer files). The installed 0.1.0.8 still shows the old names.
+  - 2026-11-06 device cleanup: uninstalled the test packages
+    `Miyako.PsaActivationSmoke` 0.1.2.0, `Miyako.DesktopPdfPrototype` 0.2.1.0,
+    `Miyako.PsaFeasibility` 0.1.2.0 and `Miyako.PsaReferenceControl` 1.1.14.0,
+    removing their six test queues. Their app data folders (92 files) were
+    copied first to the session store (`files\package-data-backup\<PFN>`);
+    file counts and byte totals matched. Dev certificates were left trusted.
+    Only `Miyako.DesktopPdfIntegration` 0.1.0.8 remains, and `VerifyInstall.ps1`
+    still returns `ok: true`.
 - Sections from "Windows04 package, update and first 005 silent print"
   downward are the historical 004/005 record. Their "installed 004",
   "no accepted 005 result" and "next step" statements are superseded.
