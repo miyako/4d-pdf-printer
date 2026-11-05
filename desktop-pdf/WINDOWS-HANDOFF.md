@@ -1,5 +1,29 @@
 # Windows continuation checkpoint
 
+## Current state (read first)
+
+- **Installed:** `Miyako.DesktopPdfIntegration` 0.1.0.8 (source `dfc6d9e`,
+  branch `miyako-desktop-pdf-008`). It is signed with the test certificate
+  `0C2B96E9...37BB`, which **expires 2026-11-28**.
+- **Silent mode on the device:** 26/26 prints across the 008 series (6 + 20)
+  completed `succeeded`, each producing the identical 17670-byte PDF
+  `45572825...16c1`. The activation journal ended `drained` with `finish`
+  published every time. Under the 007 loss rate (2/6) the chance of 0/26
+  would be about 3e-5.
+- **Framework cancel reason 7 (SystemPolicy)** is the post-completion teardown.
+  It arrives during or after `CompleteJob(Succeeded)` and never interrupted
+  a print in 007/008. This answers the open 004 "cancellation/SystemPolicy
+  cause" question as observed, not as a documented contract.
+- **Still open:**
+  - Save As mode has no device lifecycle test in 006–008.
+  - No product acceptance criteria are defined. The runs are labelled
+    `CAPTURED-FOR-REVIEW-NOT-PRODUCT-SUCCESS` by design.
+  - The 008 branch is not merged into `miyako-desktop-pdf-integration`.
+  - Signing for distribution: the test certificate expires 2026-11-28.
+- Sections from "Windows04 package, update and first 005 silent print"
+  downward are the historical 004/005 record. Their "installed 004",
+  "no accepted 005 result" and "next step" statements are superseded.
+
 ## 008 (0.1.0.8): native completion.json, 6/6 prints drained
 
 After two failed build gates (attempts 1 and 2 below), attempt 3 at
@@ -120,6 +144,28 @@ the build-02 / 007 scripts with commit, root, versions and hashes substituted.
   first and the teardown drain published every record, including `finish`
   (seq 20). There are no `deadline` outcomes and no lost records, against 2/6
   in 007. 0.1.0.8 is installed.
+
+### Confirmation series: 20 more prints on installed 0.1.0.8
+
+Root `C:\Users\miyako\Desktop\version008-series-20`. The runner and series
+scripts are the build-03 copies with only the root and the run list
+(01..20) changed: `RunSilentPrintRun008.ps1` `1c2dc9b9...36b2`,
+`RunSilentPrintSeries008.ps1` `53a0269b...7410`. Runs took
+01:41:37Z-01:47:12Z; there was no stop, retry or kill.
+`SilentPrintSeries/series.json` is `63310620...178f`.
+
+- 20/20 `CAPTURED-FOR-REVIEW-NOT-PRODUCT-SUCCESS`, completion `succeeded`,
+  PDFs 17670 bytes, all `45572825...16c1`, queues empty.
+- 20/20 journals `drained`. In each, the last record is `finish` and
+  `finish_sequence = last_published_sequence = record count - 1`, with no
+  `first_failure`, no in-flight I/O and no admission loss. Flush was 18/18
+  `flushed` every time.
+- Finalize reason: 13 `post-complete-teardown` (21 records) and 7 `normal`
+  (20 records).
+- Ordering: 11 cancel after CompleteJob returned, 7 cancel during
+  CompleteJob, 2 no framework cancel. The cancel reason was always 7.
+- CompleteJob return to seal: 0–47 ms. Seal minus cancel: −31 to +63 ms. That
+  is inside the 125 ms teardown window in every case.
 
 ## 007 (0.1.0.7) native journal records: build, package, update, print series
 
@@ -242,6 +288,8 @@ once, no retry. Route: Windows-only (no Mac-prepared handoff/bundle); fresh
   batching) rather than a longer pre-CompleteJob wait.
 
 ## Windows04 package, update and first 005 silent print
+
+> Historical (004/005 era). Superseded by "Current state" at the top.
 
 All run from an ordinary user PowerShell 7.6.9 window under root
 `C:\Users\miyako\Desktop\version005-native-scoped-build-04`, each gate
@@ -475,6 +523,10 @@ Historical returned Windows evidence is archived under
 `/Users/miyako/Documents/4d-pdf-printer-archive/2026-11-04-desktop-cleanup/`,
 including `CompileOnlyResults`, `ContractRunResults`, `IsolatedNativeResults02`;
 `archive-manifest.json` maps former Desktop paths. Do not repair/rerun old scripts.
+
+The paragraph below is as written before Windows04 and is superseded by
+"Current state" at the top: 0.1.0.8 is installed, and 005–008 have accepted
+build, package, update and Silent print evidence. Save As remains untested.
 
 Installed 004 is unchanged. Its cancellation/SystemPolicy cause remains unknown.
 V3 observations are race-honest/non-atomic boundary samples, not causal proof;
