@@ -530,6 +530,23 @@ proof that an external observer witnessed exit. No watchdog/runner/RPC platform.
 The inherited diagnostic PDC currently advertises A4/portrait/300dpi/color only;
 broader PrintTicket/layout/copies semantics are not claimed verified by this slice.
 
+### Install verification (read-only)
+
+`pwsh -NoProfile -File desktop-pdf\tools\VerifyInstall.ps1` checks the installed
+package without changing anything: package status `Ok`; exactly one queue per
+`desktop-pdf:silent` / `desktop-pdf:save-as` port; `V4_PDC_ChangeID` present in
+the queue's `PrinterDriverData` (the app PDC was applied); queue capabilities and
+default ticket equal the installed `Config\IntegrationPdc.xml`; and `runtime.json`
+exists with an existing root. It prints JSON and exits 0 (pass), 1 (a check
+failed) or 2 (could not run). Run it after every install: Windows has been
+observed to create the Save As queue without applying the app PDC, leaving the
+class driver's stock capabilities (84 media sizes, 600 dpi). A remove and re-add of
+the package fixed that queue.
+
+A package remove/re-add also wipes `LocalCache`, including `runtime.json`; run
+`IntegrationClient.exe configure-runtime <root>` again before printing, or jobs
+fail at stage `runtime` with `0x80070002`.
+
 ## Source provenance and review evidence
 
 The dependency-only `renderer/` + `docs/renderer/` snapshot is byte-exact to

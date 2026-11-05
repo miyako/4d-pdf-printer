@@ -572,6 +572,19 @@ public:
         self.assertIn("ConvertFrom-ScopedBuildReceipt ([IO.File]::ReadAllText", package)
         self.assertIn("Get-Content -LiteralPath (Join-Path $BuildDirectory 'own-build.json') -Raw | ConvertFrom-Json", package)
 
+    def test_install_verifier_is_read_only(self):
+        text = (ROOT / "desktop-pdf/tools/VerifyInstall.ps1").read_text()
+        allowed = {"ConvertFrom-Json", "ConvertTo-Json", "ForEach-Object", "Get-AppxPackage", "Get-Content",
+                   "Get-Item", "Get-PrintConfiguration", "Get-Printer", "Join-Path", "Set-StrictMode",
+                   "Sort-Object", "Test-Path", "Where-Object"}
+        used = set(re.findall(r"\b[A-Z][a-z]+-[A-Z][A-Za-z]+\b", text))
+        self.assertEqual(used - allowed, set())
+        for forbidden in ("SetValue", "DeleteValue", "CreateSubKey", "OpenSubKey($", "WriteAll", "Invoke-",
+                          "Start-Process", "IntegrationClient.exe", "Out-File", "> "):
+            self.assertNotIn(forbidden, text)
+        self.assertIn("OpenSubKey('PrinterDriverData')", text)
+        self.assertIn("V4_PDC_ChangeID", text)
+
     def test_workflow_execution_contract(self):
         # Deliberately static guards, not a YAML parser or Windows execution proof.
         text = (ROOT / ".github/workflows/renderer-windows.yml").read_text()
