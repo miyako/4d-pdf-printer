@@ -22,8 +22,10 @@
     creation time kept.
   - Cancel in dialog: never reaches the product. `StartDoc` fails 1223, no
     job is spooled, and there is no Task activation or LocalCache change.
-  - The Save As queue defaults to 600 dpi and the silent queue to 300 dpi, so
-    the probe PDFs differ in geometry.
+  - Those runs used a Save As queue whose app PDC had not been applied at
+    install, so it fell back to 600 dpi. A reinstall of the same 0.1.0.8
+    package fixed it; both queues are now 300 dpi. See "Save As 600 dpi:
+    queue install fault".
 - **Still open:**
   - Save As runs are single-shot per scenario, with no repeat series.
   - No product acceptance criteria are defined. The runs are labelled
@@ -218,8 +220,8 @@ its `completion.json`. A person answered the Windows Save dialog. The run took
   ticket is `PageResolution=Dpi300`, giving a 28.8 pt margin and MediaBox
   595.2. The Save As queue's default is `ResOption1`, which is 600 dpi on this
   evidence: 14.4 pt margin, half-size box, and MediaBox 595.32 (4961 px).
-  Whether the two queues should share a default resolution is a configuration
-  question.
+  The 600 dpi turned out to be an install fault on the Save As queue; see
+  "Save As 600 dpi: queue install fault".
 - The transcript shows `Get-WinEvent` "no matching events" errors. The runner
   caught them (`errors: []`), and they did not affect the job.
 
@@ -269,6 +271,45 @@ No stop, retry or kill in either run.
   `post-complete-teardown` and `finish_sequence = last_published_sequence =
   17` (18 records). No failure or admission loss; flush 15/15. The queue was
   empty and no package process was left.
+
+### Save As 600 dpi: queue install fault, fixed by reinstall
+
+Decision: both queues should default to 300 dpi. That was already the
+product's intent. Both manifest entries use the same
+`Config\IntegrationPdc.xml`, and the installed copy is byte-identical to the
+source (`7eede583...2925`). That PDC offers only A4 / portrait / 300 dpi /
+color.
+
+**Diagnosis (read-only):**
+- The Save As queue's capabilities were identical to Microsoft Print to
+  PDF's: 84 media sizes, landscape, PDF password parameters, and a single
+  600 dpi `ResOption1`.
+- Its `PrinterDriverData` had no `V4_PDC_ChangeID`. Its V4 driver directory
+  held only the class driver's stock `pdc.xml` (42413 bytes, dated
+  2025-11-10) and no `device_bidi_pdc.xml`.
+- The Silent queue and the reference `pdf` file printer
+  (`VirtualPdfPrinter`) both had `V4_PDC_ChangeID` and their own PDC.
+- Conclusion: the app PDC was never applied when the Save As queue was
+  created (2026-11-02 00:20Z). That is an install-time fault, not a Windows
+  rule for `OutputFileTypes="pdf"`. No PrintService or AppX events from that
+  time remain.
+
+**Reinstall cycle** (`version008-reinstall-01`, runner `20b1353b...c072`,
+04:32:39Z-04:33:22Z):
+1. Snapshot the queues, then copy the app data (1472/1472 files to
+   `AppDataBefore`).
+2. Remove `Miyako.DesktopPdfIntegration_0.1.0.8_arm64`; both queues were
+   gone.
+3. Re-add the same signed package, `version008-build-03\SignCopy`
+   (`4b75a845...01bb`).
+4. Both queues now have `V4_PDC_ChangeID=1664389292`, 1 media size, 300 dpi
+   only, and default ticket `Dpi300`.
+5. Both queues' capabilities are byte-identical to the Silent queue's before
+   the cycle (`5741f544...`). Verdict PASS.
+
+Removal discarded the previous LocalState/LocalCache, including earlier
+journals and job folders. `AppDataBefore` is the only copy. A Save As print
+against the corrected queue has not been run yet.
 
 ## 007 (0.1.0.7) native journal records: build, package, update, print series
 
