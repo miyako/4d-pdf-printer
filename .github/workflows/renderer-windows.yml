@@ -244,7 +244,7 @@ jobs:
       - name: Prepare explicit native target toolchain
         run: |
           & renderer/tools/build-windows.ps1 -Architecture '${{ matrix.arch }}' -Stage Prepare `
-            -VisualStudioVersion '${{ matrix.visualStudio }}'
+            -VisualStudioVersion '${{ matrix.arch == 'arm64' && '2026' || '2022' }}'
       # Full scope only: local ephemeral caches, never public binary cache transfer.
       - name: Build dynamic dependencies and worker
         run: |
