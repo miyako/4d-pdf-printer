@@ -10,6 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import journal
 import journal_capture
+import journal_pending
 import journal_v1 as v1
 
 A, J = "a"*32, "b"*32
@@ -428,6 +429,73 @@ class Capture(unittest.TestCase):
         source.append(dict(path=marker+"\\unexpected", directory=False, attributes=32))
         with self.assertRaises(ValueError):
             check()
+
+
+class Pending(unittest.TestCase):
+    """Terminal-less journal: the 008 Save As series-02 run 05 shape (published 0..15, seq 16 pending)."""
+    LEAF = "pending-" + "c"*32
+
+    def entries(self, published=16, staged=True):
+        data = [b"\xef\xbb\xbf" + raw for raw in records()]
+        entries = {f"{i}.json": data[i] for i in range(published)}
+        if staged:
+            entries[self.LEAF] = data[published]
+        return entries
+
+    def test_written_not_renamed(self):
+        result = journal_pending.unterminated(self.entries(), A, terminal_present=False)
+        self.assertEqual(result["terminal"], "missing")
+        self.assertEqual(result["published_count"], 16)
+        self.assertEqual(result["last_published"]["checkpoint"], POINTS[15])
+        self.assertEqual(len(result["pending"]), 1)
+        staged = result["pending"][0]
+        self.assertEqual((staged["leaf"], staged["state"]), (self.LEAF, "written-not-renamed"))
+        self.assertEqual((staged["record"]["sequence"], staged["record"]["checkpoint"]), (16, POINTS[16]))
+        self.assertEqual((result["review_disposition"], result["decision_admission"]), ("review-only", "not-evaluable"))
+        self.assertIs(result["published_through_finish"], False)
+        self.assertIs(result["technical_success_promoted"], False)
+
+    def test_pending_states(self):
+        entries = self.entries()
+        entries[self.LEAF] = b""
+        self.assertEqual(journal_pending.unterminated(entries, A, terminal_present=False)["pending"][0]["state"],
+                         "created-not-written")
+        entries[self.LEAF] = b"\xef\xbb\xbf{\"schema\":"
+        self.assertEqual(journal_pending.unterminated(entries, A, terminal_present=False)["pending"][0]["state"],
+                         "unreadable")
+        entries[self.LEAF] = self.entries(published=17, staged=False)["3.json"]
+        self.assertEqual(journal_pending.unterminated(entries, A, terminal_present=False)["pending"][0]["state"],
+                         "unexpected-sequence")
+        result = journal_pending.unterminated(self.entries(staged=False), A, terminal_present=False)
+        self.assertEqual((result["published_count"], result["pending"]), (16, []))
+
+    def test_refusals(self):
+        with self.assertRaisesRegex(ValueError, "use journal.assess"):
+            journal_pending.unterminated(self.entries(), A, terminal_present=True)
+        entries = self.entries()
+        del entries["7.json"]
+        with self.assertRaisesRegex(ValueError, "published sequence gap"):
+            journal_pending.unterminated(entries, A, terminal_present=False)
+        entries = self.entries()
+        entries["pending-" + "d"*32] = b""
+        with self.assertRaisesRegex(ValueError, "at most one pending"):
+            journal_pending.unterminated(entries, A, terminal_present=False)
+        entries = self.entries()
+        entries["notes.txt"] = b"x"
+        with self.assertRaisesRegex(ValueError, "unknown activation folder entry"):
+            journal_pending.unterminated(entries, A, terminal_present=False)
+        entries = self.entries()
+        entries["5.json"] = entries["6.json"]
+        with self.assertRaisesRegex(ValueError, "published name matches sequence"):
+            journal_pending.unterminated(entries, A, terminal_present=False)
+        entries = self.entries()
+        other = json.loads(entries[self.LEAF][3:])
+        other["process"] = 101
+        entries[self.LEAF] = wire(other)
+        with self.assertRaisesRegex(ValueError, "one actual Task process"):
+            journal_pending.unterminated(entries, A, terminal_present=False)
+        with self.assertRaisesRegex(ValueError, "diagnostic source binding"):
+            journal_pending.unterminated(self.entries(), "e"*32, terminal_present=False)
 
 
 if __name__ == "__main__":
