@@ -40,6 +40,8 @@
     series 02". The cause was a ~415 ms stall of one record write, past the
     250 ms teardown budget. It is accepted as a known limit, with no product
     change. `tools/journal_pending.py` now reports such journals (review-only).
+    Merged via PR #12 (merge `24f5222`). CI run `42038646453` is green on all
+    4 jobs, after one re-run of the renderer jobs (vcpkg download HTTP 504).
   - No product acceptance criteria are defined. The runs are labelled
     `CAPTURED-FOR-REVIEW-NOT-PRODUCT-SUCCESS` by design.
   - The 008 work is merged into `miyako-desktop-pdf-integration` via PR #9
