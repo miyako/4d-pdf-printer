@@ -1,6 +1,10 @@
 # Windows continuation checkpoint
 
-## 008 (0.1.0.8): two failed build gates, redesigned to a native completion.json
+## 008 (0.1.0.8): native completion.json, 6/6 prints drained
+
+After two failed build gates (attempts 1 and 2 below), attempt 3 at
+`dfc6d9e` passed build, package+sign, update 0.1.0.7 -> 0.1.0.8 and the
+6-print silent series. All six journals are `drained` with `finish` published.
 
 ### Attempt 1: receipt reserve, `c687aab`
 
@@ -46,7 +50,7 @@ cycle was approved as a whole, stop-at-first-failure.
   point only moves the loss. The user chose the root-cause fix: remove the
   seal delay.
 
-### Attempt 3: native completion.json (current draft)
+### Attempt 3: native completion.json, `dfc6d9e`
 
 - `completion.json` is written synchronously by `PublishNative` (`Task.cpp`)
   through the journal's Win32 `JournalIo` Create/Write/Rename, with the same
@@ -58,8 +62,64 @@ cycle was approved as a whole, stop-at-first-failure.
   A new native fixture covers the `completion.json` bytes, read-back and
   collision.
 - Dev measurement (isolated test root): native publish 0.6–1.8 ms; StorageFile
-  publish 105–502 ms. Dev validation: Native 5/5 consecutive passes, contract
+  publish 105–502 ms. Dev validation: Native 8/8 consecutive passes, contract
   all modes, Python Source 14, Journal 15, CompleteJob 8 OK.
+
+Source `dfc6d9eed7071b5bc24acb0d2ac47eab547dd776` (tree
+`566da32b3cfa801f31c36e9ee233cc3bad04567c`), root
+`C:\Users\miyako\Desktop\version008-build-03`. The whole cycle was approved at
+once; each gate ran once, stop-at-first-failure, no retry or kill. Scripts are
+the build-02 / 007 scripts with commit, root, versions and hashes substituted.
+
+- **Build** (`RunBuild008.ps1` `0ca263ce...e6ae`): `build008.json`
+  (`cfa5b0a1...f6b7`) **`passed-scoped-build-only`**, including the
+  isolated-journal-v3 Native check. Payload SHA256:
+  IntegrationApp.exe `2a6e3408...c47f`, IntegrationTask.dll `c72fdbdc...388c`,
+  IntegrationHost.exe `b6eabe0c...1df4`, IntegrationClient.exe
+  `969a6ac6...8c2f`.
+- **Package + SignCopy** (`RunPackage008.ps1` `5511d40f...d469`):
+  `package008.json` (`6a585e75...cb3a`) **`packaged-and-signed-only`**.
+  Unsigned 621455 bytes
+  `d5bbfacc02a40aeb3249afd7104a1c0e467761423b5d2586ebf06ea6586aece0`; signed
+  624553 bytes
+  `4b75a845ea21e8b7e8ce9df95cf393a8fc7cfdcdfc8fbbf74976e242a2d601bb`,
+  signature Valid, thumbprint `0C2B96E9...37BB` (expires 2026-11-28).
+- **Update 007 -> 008** (`RunUpdate008.ps1` `737087ec...fb13`, one
+  `Add-AppxPackage` 01:10:04Z-01:10:07Z): `Update/result.json`
+  (`bbd5cedf...856b`) **`verified-update-only`**. 633/633 package data files
+  unchanged, queues unchanged, installed payload matches the build.
+- **Silent print series** (`RunSilentPrintRun008.ps1` `69c161a5...5b99`,
+  `RunSilentPrintSeries008.ps1` `d51a2c84...2eca`):
+  `SilentPrintSeries/series.json` (`1e5c5dfb...67a5`). All 6
+  `CAPTURED-FOR-REVIEW-NOT-PRODUCT-SUCCESS`, completion `succeeded`, PDFs
+  17670 bytes SHA256 `45572825...16c1` (identical to 005/006/007). Queues
+  empty.
+
+  | run | finalize_reason | drain | cancellation_drain | accepted | last pub = finish | rejected after seal | flush ms | return-to-seal ms | seal minus cancel ms |
+  |---|---|---|---|---|---|---|---|---|---|
+  | 01 | post-complete-teardown | drained | continued | 21 | 20 | 0 | 16 | 47 | 0 |
+  | 02 | post-complete-teardown | drained | continued | 21 | 20 | 0 | 0 | 32 | 32 |
+  | 03 | normal | drained | continued | 20 | 19 | 1 | 16 | 15 | 0 |
+  | 04 | normal | drained | continued | 20 | 19 | 1 | 16 | 16 | 0 |
+  | 05 | normal | drained | none | 20 | 19 | 0 | 16 | 0 | (no cancel) |
+  | 06 | normal | drained | continued | 20 | 19 | 1 | 16 | 16 | -15 |
+
+  All: flush 18/18 `flushed`, `CompleteJob(Succeeded)` returned without
+  error, framework cancel reason 7 where present, terminal receipt v5
+  present with no in-flight I/O and no failure. Every
+  `completion.json` is BOM + compact JSON with `outcome` `succeeded`, and the
+  client read it (the series completion column). Tick resolution is about
+  15.6 ms.
+
+  **Interpretation.** Publishing `completion.json` natively removes the
+  62–125 ms StorageFile delay between CompleteJob and `Finish`. The seal now
+  lands 0–47 ms after CompleteJob returns, at or before the teardown cancel
+  (007: 62–125 ms after it). In 4/6 runs the seal won the race against the
+  cancel (`normal`). The late cancel is rejected after seal (03/04/06) or
+  never arrives (05), so `finish` is seq 19 there. In 2/6 the cancel came
+  first and the teardown drain published every record, including `finish`
+  (seq 20). There are no `deadline` outcomes and no lost records, against 2/6
+  in 007. 0.1.0.8 is installed.
 
 ## 007 (0.1.0.7) native journal records: build, package, update, print series
 
