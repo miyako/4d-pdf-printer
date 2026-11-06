@@ -7,6 +7,7 @@
 #include <memory>
 #include <utility>
 #include <winrt/Windows.Security.Cryptography.Core.h>
+#include <winrt/Windows.ApplicationModel.h>
 
 namespace pdf {
 #if defined(_M_ARM64)
@@ -242,12 +243,12 @@ void Machine(HANDLE file) {
     Check(ReadFile(file, &header, sizeof(header), &count, nullptr));
     Require(count == sizeof(header) && header.Machine == TargetMachine, "runtime architecture mismatch");
 }
-Runtime InspectRuntime(fs::path const& root) {
+Runtime InspectRuntime(fs::path const& root, bool bundled) {
     USHORT process{}, native{};
     Check(IsWow64Process2(GetCurrentProcess(), &process, &native));
     Require(process == IMAGE_FILE_MACHINE_UNKNOWN && native == TargetMachine, "native runtime host required");
     Runtime runtime; runtime.root = root;
-    runtime.locks = SafeParents(root / L"runtime-imports.json", true);
+    if (!bundled) runtime.locks = SafeParents(root / L"runtime-imports.json", true);
     for (auto name : {L"runtime-imports.json", L"native-test-receipt.json", L"build-provenance.json"})
         runtime.locks.push_back(OpenRead(root / name));
     runtime.inventory = Hash(root / L"runtime-imports.json");
@@ -285,7 +286,12 @@ Runtime InspectRuntime(fs::path const& root) {
     }
     return runtime;
 }
+Runtime BundledRuntime() {
+    // The package install folder is OS-owned and read-only, so the profile-only SafeParents rule does not apply.
+    return InspectRuntime(fs::path(std::wstring(Windows::ApplicationModel::Package::Current().InstalledPath())) / L"Runtime", true);
+}
 Runtime ConfiguredRuntime(StorageFolder const& root) {
+    if (!Exists(root, L"runtime.json").get()) return BundledRuntime();
     auto config = Read(root, L"runtime.json").get();
     Fields(config, {L"root", L"inventory", L"receipt", L"provenance"});
     auto runtime = InspectRuntime(fs::path(std::wstring(config.GetNamedString(L"root"))));

@@ -42,7 +42,8 @@ struct Runtime {
     std::wstring inventory, receipt, provenance;
     std::vector<Handle> locks;
 };
-Runtime InspectRuntime(fs::path const& root);
+Runtime InspectRuntime(fs::path const& root, bool bundled = false);
+Runtime BundledRuntime();
 Runtime ConfiguredRuntime(StorageFolder const& root);
 std::uint64_t Render(Runtime const& runtime, fs::path const& source, fs::path const& output,
     fs::path const& work, std::function<bool()> stop, JsonObject const& observation);
